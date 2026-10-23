@@ -52,8 +52,12 @@ change its place in the order.
 
 The companion keeps a durable, monotonic `seq` high-water mark, with or without HMAC, independent of the app's
 bounded id journal; it is advanced and flushed before each command file is created and never lowered. If
-it ever loses that state, it first lists `commands/` and `results/` and continues above the highest `seq` it finds,
-and a new command never overwrites an existing file name.
+it ever loses that state, it continues above the highest `seq` it can find in `commands/`, in `results/` and in the
+`seq` the app echoes in `status.json` and in every result (`results/<id>.json` carries the command's `seq`, and the
+app never lowers the echoed value). Consumed commands and pruned results can leave no trace, so if all of those
+sources are gone or unreadable the companion does not guess: it starts a new `seq` epoch at the current UTC time in
+milliseconds (always above any earlier counter value, since earlier values grow by one) and a new command never
+overwrites an existing file name.
 
 **One total order with the legacy files.** While `control/v1/capabilities.json` is valid, the app treats the legacy
 `load` and `unload` files as follows: when it finds one, it first drains every v1 command already present, then
@@ -80,6 +84,17 @@ the command HMAC does not authenticate this file. The companion therefore adopts
 content, or the operator has explicitly confirmed that every FTP writer on this console is trusted (the default
 for an unsigned file is to stay on the legacy files). Unknown `protocol` values or an invalid `sig` mean legacy
 mode, and the companion re-checks the gate on every start and when the file changes.
+
+The signed `capabilities.json` includes the running app's current `bootId`, and the companion rejects a file whose
+`bootId` differs from the one in the fresh `status.json`, so an old signed file cannot be replayed after a restart
+(the unsigned, trusted-writer path keeps the documented replay risk). Independently of what is advertised, the app
+rejects `download_model` with `invalid` while `remoteDownloads` is off.
+
+`processed.json`, `results/<id>.json` and `status.json` are covered the same way: each carries an HMAC `sig` over its
+canonical content (with `bootId` and a `seq`), and the companion ignores records that fail the check. On the
+trusted-writer path, the effective FTP permissions are the stated risk: any FTP writer can forge them, and the
+companion treats results as informational and re-reads the model state from the console rather than trusting a
+result alone.
 
 ### `status.json`
 
