@@ -46,7 +46,9 @@ Configuration (environment variables use `__` for nesting):
 | `HuggingFace:Token` | none | Access token, only for gated or private repositories |
 
 The companion refuses to start on a non-loopback address without `Companion:AccessToken`, unless
-`Companion:AllowAnonymous` is set.
+`Companion:AllowAnonymous` is set. The check covers `urls`/`ASPNETCORE_URLS`, `HTTP_PORTS`, `HTTPS_PORTS` and
+`Kestrel:Endpoints`. The token travels in clear text over plain HTTP: put the companion behind a TLS reverse proxy
+(the login cookie is marked `Secure` on HTTPS) unless the network is trusted.
 
 ## REST API
 
