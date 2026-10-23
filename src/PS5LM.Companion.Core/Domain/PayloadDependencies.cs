@@ -55,7 +55,7 @@ public static class PayloadDependencies
     private static readonly DependencyDefinition[] Definitions =
     [
         new(KstuffLite, "kstuff-lite", DependencyRequirement.Required, Verification.Process, true, ["kstuff.elf", "kstuff-lite.elf"]),
-        new(EtaHen, "etaHEN", DependencyRequirement.Required, Verification.Process, true, ["etahen.elf"]),
+        new(EtaHen, "etaHEN", DependencyRequirement.Required, Verification.Process, true, ["etahen.elf", "daemon.elf", "util.elf"]),
         new(ShadowMountPlus, "ShadowMountPlus", DependencyRequirement.Required, Verification.Process, true, ["shadowmountplus.elf"]),
         new(Elfldr, "elfldr", DependencyRequirement.Recommended, Verification.ElfldrPort, false, []),
         new(FtpSrv, "ftpsrv", DependencyRequirement.Recommended, Verification.Ftp, true, []),
