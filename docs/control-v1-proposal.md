@@ -88,7 +88,7 @@ mode, and the companion re-checks the gate on every start and when the file chan
 The signed `capabilities.json` includes the running app's current `bootId`, and the companion rejects a file whose
 `bootId` differs from the one in the fresh `status.json`, so an old signed file cannot be replayed after a restart
 (the unsigned, trusted-writer path keeps the documented replay risk). Independently of what is advertised, the app
-rejects `download_model` with `invalid` while `remoteDownloads` is off.
+rejects `download_model` with `rejected` while `remoteDownloads` is off.
 
 `processed.json`, `results/<id>.json` and `status.json` are covered the same way: each carries an HMAC `sig` over its
 canonical content (with `bootId` and a `seq`), and the companion ignores records that fail the check. On the
