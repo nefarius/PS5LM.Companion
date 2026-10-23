@@ -35,6 +35,13 @@
                 These payloads have to be loaded first.
             </MudAlert>
         }
+        @if (!ShowManagerWarning && NotRunningRequired.Count > 0)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mt-2">
+                @string.Join(", ", NotRunningRequired.Select(dependency => dependency.Name)) @(NotRunningRequired.Count == 1 ? "is" : "are") installed but not running.
+                Launch @(NotRunningRequired.Count == 1 ? "it" : "them") below before starting PS5LM Plus.
+            </MudAlert>
+        }
         @if (ElfldrWarning is { } elfldrWarning)
         {
             <MudAlert Severity="Severity.Warning" Class="mt-2">@elfldrWarning</MudAlert>
@@ -45,8 +52,8 @@
         <MudPaper Class="pa-4" Elevation="1">
             <MudText Typo="Typo.h6" Class="mb-2">Payloads</MudText>
             <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
-                kstuff-lite, etaHEN and ShadowMountPlus have no running check.
-                Launch recorded means Payload Manager sent the file. It does not mean the payload is still active.
+                kstuff-lite, etaHEN and ShadowMountPlus are checked against Payload Manager's process list.
+                When that list cannot be read, Launch recorded only means Payload Manager sent the file.
             </MudText>
             <MudTable Items="Status.Dependencies" Hover="true" Dense="true" T="DependencyStatus">
                 <HeaderContent>
@@ -171,6 +178,9 @@
 
     private IReadOnlyList<DependencyStatus> MissingRequired =>
         Status.Dependencies.Where(dependency => dependency.Requirement == DependencyRequirement.Required && dependency.Presence == DependencyPresence.NotInstalled).ToList();
+
+    private IReadOnlyList<DependencyStatus> NotRunningRequired =>
+        Status.Dependencies.Where(dependency => dependency.Requirement == DependencyRequirement.Required && dependency.Health == DependencyHealth.NotRunning).ToList();
 
     private string? ElfldrWarning =>
         Checked && Status.Dependencies.FirstOrDefault(dependency => dependency.Id == PayloadDependencies.Elfldr) is { Health: not DependencyHealth.Verified } elfldr

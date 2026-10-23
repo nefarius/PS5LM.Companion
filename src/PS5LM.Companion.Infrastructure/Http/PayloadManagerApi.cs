@@ -16,6 +16,9 @@ public interface IPayloadManagerApi
     [Get("/autoload_status")]
     Task<IApiResponse<PayloadAutoloadResponse>> AutoloadAsync(CancellationToken cancellationToken);
 
+    [Get("/processes_list")]
+    Task<IApiResponse<PayloadProcessesResponse>> ProcessesAsync(CancellationToken cancellationToken);
+
     [Post("/loadpayload:{slot}")]
     [Headers("X-PLDMGR-Request: 1")]
     Task<IApiResponse<string>> LoadPayloadAsync(string slot, CancellationToken cancellationToken);
@@ -33,3 +36,7 @@ public sealed record PayloadHistoryResponse([property: JsonPropertyName("history
 public sealed record PayloadAutoloadResponse(
     [property: JsonPropertyName("list")] string? List,
     [property: JsonPropertyName("outcomes")] string? Outcomes);
+
+public sealed record PayloadProcessesResponse([property: JsonPropertyName("processes")] IReadOnlyList<PayloadProcess>? Processes);
+
+public sealed record PayloadProcess([property: JsonPropertyName("name")] string? Name);

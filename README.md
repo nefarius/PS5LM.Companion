@@ -15,14 +15,14 @@ works before any model exists. It needs no changes to either app.
 - Lists models on the console; loads and unloads a model through the apps' command files.
 - Downloads GGUF models from Hugging Face on the companion and uploads them to the console.
 - Live telemetry from llama-server (port 8081) and ps5-exporter (port 9100) when they are available.
-- Shows whether the PS5LM Plus payloads are installed, records Payload Manager launches, and checks ftpsrv, elfldr and ps5-exporter directly. Launches an installed payload through [PS5 Payload Manager](https://github.com/itsPLK/ps5-payload-manager).
+- Shows whether the PS5LM Plus payloads are installed, reads Payload Manager's process list to see whether kstuff-lite, etaHEN and ShadowMountPlus are running, records its launches, and checks ftpsrv, elfldr and ps5-exporter directly. Launches an installed payload through [PS5 Payload Manager](https://github.com/itsPLK/ps5-payload-manager).
 
 ## Support scope
 
 - Companion: Linux, Windows or macOS with .NET 10, or the Docker image (linux/amd64, linux/arm64 via .NET base images).
 - Console: jailbroken PS5 running PS5LM or PS5LM Plus with [ftpsrv](https://github.com/ps5-payload-dev/ftpsrv) on port 2121.
 - Payload launch needs [PS5 Payload Manager](https://github.com/itsPLK/ps5-payload-manager) on port 8084 and elfldr already listening on port 9021. Payload Manager cannot start elfldr itself.
-- Not supported: launching or killing the PS5LM app remotely, editing the apps' `settings.json`, or proving that kstuff-lite, etaHEN and ShadowMountPlus stay active after a launch. Payload Manager only confirms that it sent the file.
+- Not supported: launching or killing the PS5LM app remotely, editing the apps' `settings.json`, or detecting a payload that patches the system and leaves no process. Running checks match process names (for example `kstuff.elf`, `etahen.elf`, `shadowmountplus.elf`) from Payload Manager's `/processes_list`.
 
 ## Quick start
 
@@ -59,7 +59,7 @@ The companion refuses to start on a non-loopback address without `Companion:Acce
 Open `http://<companion>:8080/`. The dashboard is Blazor Server with MudBlazor and updates live over its circuit; it
 needs no extra configuration.
 
-- **Status**: lifecycle, loaded model, generation speed, sensors, drive space, and the payload dependencies. Launch sends an installed payload through Payload Manager. The result confirms the file was transferred. For kstuff-lite, etaHEN and ShadowMountPlus it does not confirm that the payload is still active.
+- **Status**: lifecycle, loaded model, generation speed, sensors, drive space, and the payload dependencies. Launch sends an installed payload through Payload Manager. The result confirms the file was transferred. Whether kstuff-lite, etaHEN and ShadowMountPlus are running comes from the process list.
 - **Models**: models on the console with Load and Unload.
 - **Downloads**: search Hugging Face, queue a file, watch download and upload progress, cancel.
 

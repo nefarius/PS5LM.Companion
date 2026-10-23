@@ -12,12 +12,14 @@ public sealed record InstalledPayload(string Id, string Slot, string Name);
 /// <param name="Message">Why the manager could not be read, when <see cref="Available"/> is false.</param>
 /// <param name="Installed">Installed slots. Empty when the manager did not answer.</param>
 /// <param name="LaunchRecordedSlots">Slots whose file Payload Manager successfully handed to elfldr.</param>
+/// <param name="RunningProcesses">Process names from Payload Manager's process list, or null when the list could not be read.</param>
 public sealed record PayloadCatalogSnapshot(
     bool Available,
     bool Checked,
     string? Message,
     IReadOnlyList<InstalledPayload> Installed,
-    IReadOnlySet<string> LaunchRecordedSlots)
+    IReadOnlySet<string> LaunchRecordedSlots,
+    IReadOnlySet<string>? RunningProcesses = null)
 {
     private static readonly IReadOnlySet<string> NoSlots = new HashSet<string>();
 
@@ -52,12 +54,12 @@ public static class PayloadDependencies
 
     private static readonly DependencyDefinition[] Definitions =
     [
-        new(KstuffLite, "kstuff-lite", DependencyRequirement.Required, Verification.None, true),
-        new(EtaHen, "etaHEN", DependencyRequirement.Required, Verification.None, true),
-        new(ShadowMountPlus, "ShadowMountPlus", DependencyRequirement.Required, Verification.None, true),
-        new(Elfldr, "elfldr", DependencyRequirement.Recommended, Verification.ElfldrPort, false),
-        new(FtpSrv, "ftpsrv", DependencyRequirement.Recommended, Verification.Ftp, true),
-        new(Exporter, "ps5-exporter", DependencyRequirement.Bundled, Verification.Exporter, false),
+        new(KstuffLite, "kstuff-lite", DependencyRequirement.Required, Verification.Process, true, ["kstuff.elf", "kstuff-lite.elf"]),
+        new(EtaHen, "etaHEN", DependencyRequirement.Required, Verification.Process, true, ["etahen.elf"]),
+        new(ShadowMountPlus, "ShadowMountPlus", DependencyRequirement.Required, Verification.Process, true, ["shadowmountplus.elf"]),
+        new(Elfldr, "elfldr", DependencyRequirement.Recommended, Verification.ElfldrPort, false, []),
+        new(FtpSrv, "ftpsrv", DependencyRequirement.Recommended, Verification.Ftp, true, []),
+        new(Exporter, "ps5-exporter", DependencyRequirement.Bundled, Verification.Exporter, false, []),
     ];
 
     /// <summary>Turns a catalog read and the port checks into the rows the dashboard shows.</summary>
@@ -101,6 +103,10 @@ public static class PayloadDependencies
             payload.Id.Equals(definition.Id, StringComparison.OrdinalIgnoreCase)
             && catalog.LaunchRecordedSlots.Contains(payload.Slot))
             ?? catalog.Installed.FirstOrDefault(payload => payload.Id.Equals(definition.Id, StringComparison.OrdinalIgnoreCase));
+        var runningName = catalog.RunningProcesses is null
+            ? null
+            : definition.ProcessNames.FirstOrDefault(catalog.RunningProcesses.Contains);
+        var running = runningName is not null;
         var installed = match is not null;
         var recorded = match is not null && catalog.LaunchRecordedSlots.Contains(match.Slot);
         var verified = definition.VerificationKind switch
@@ -115,9 +121,9 @@ public static class PayloadDependencies
             ? DependencyPresence.Bundled
             : !catalog.Available
                 ? DependencyPresence.Unknown
-                : installed ? DependencyPresence.Installed : DependencyPresence.NotInstalled;
+                : installed || running ? DependencyPresence.Installed : DependencyPresence.NotInstalled;
 
-        var (health, message) = Describe(definition, catalog, installed, recorded, verified, elfldrPort);
+        var (health, message) = Describe(definition, catalog, installed, recorded, verified, runningName, elfldrPort);
         var canLaunch = definition.Launchable
             && catalog.Available
             && match is not null
@@ -133,6 +139,7 @@ public static class PayloadDependencies
         bool installed,
         bool recorded,
         bool verified,
+        string? runningName,
         int elfldrPort)
     {
         if (!catalog.Checked)
@@ -169,6 +176,13 @@ public static class PayloadDependencies
             return (DependencyHealth.Unknown, "ps5-exporter is not answering. PS5LM Plus starts its bundled copy through elfldr once the app is running.");
         }
 
+        if (runningName is not null)
+        {
+            return (DependencyHealth.Verified, installed
+                ? $"{definition.Name} is running (process {runningName})."
+                : $"{definition.Name} is running (process {runningName}). It was loaded outside Payload Manager.");
+        }
+
         if (!catalog.Available)
         {
             return (DependencyHealth.Unavailable, "Payload Manager is not reachable, so this payload cannot be checked.");
@@ -177,6 +191,14 @@ public static class PayloadDependencies
         if (!installed)
         {
             return (DependencyHealth.Unknown, $"{definition.Name} is not installed in Payload Manager.");
+        }
+
+        if (catalog.RunningProcesses is not null)
+        {
+            var names = string.Join(" or ", definition.ProcessNames);
+            return (DependencyHealth.NotRunning, recorded
+                ? $"Payload Manager recorded a launch, and no process named {names} is running now."
+                : $"{definition.Name} is installed, and no process named {names} is running.");
         }
 
         if (recorded)
@@ -196,12 +218,12 @@ public static class PayloadDependencies
 
     private enum Verification
     {
-        None,
         Ftp,
         Exporter,
         ElfldrPort,
+        Process,
     }
 
     /// <summary>A payload the companion knows how to describe.</summary>
-    private sealed record DependencyDefinition(string Id, string Name, DependencyRequirement Requirement, Verification VerificationKind, bool Launchable);
+    private sealed record DependencyDefinition(string Id, string Name, DependencyRequirement Requirement, Verification VerificationKind, bool Launchable, IReadOnlyList<string> ProcessNames);
 }

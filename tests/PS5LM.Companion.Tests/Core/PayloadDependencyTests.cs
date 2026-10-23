@@ -67,6 +67,33 @@ public sealed class PayloadDependencyTests
     }
 
     [Fact]
+    public void A_running_process_verifies_a_payload_even_outside_payload_manager()
+    {
+        var catalog = new PayloadCatalogSnapshot(true, true, null, [], new HashSet<string>(), new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "KStuff.elf", "shadowmountplus.elf" });
+
+        var rows = PayloadDependencies.Evaluate(catalog, false, false, false, 9021);
+
+        var kstuff = Row(rows, PayloadDependencies.KstuffLite);
+        Assert.Equal(DependencyHealth.Verified, kstuff.Health);
+        Assert.Equal(DependencyPresence.Installed, kstuff.Presence);
+        Assert.Contains("outside Payload Manager", kstuff.Message, StringComparison.Ordinal);
+        Assert.Equal(DependencyHealth.Verified, Row(rows, PayloadDependencies.ShadowMountPlus).Health);
+        Assert.Equal(DependencyPresence.NotInstalled, Row(rows, PayloadDependencies.EtaHen).Presence);
+    }
+
+    [Fact]
+    public void An_installed_payload_without_a_process_is_not_running_when_the_list_was_read()
+    {
+        var catalog = new PayloadCatalogSnapshot(true, true, null, [Kstuff], new HashSet<string> { Kstuff.Slot }, new HashSet<string>());
+
+        var row = Row(PayloadDependencies.Evaluate(catalog, false, false, false, 9021), PayloadDependencies.KstuffLite);
+
+        Assert.Equal(DependencyHealth.NotRunning, row.Health);
+        Assert.Contains("kstuff.elf", row.Message, StringComparison.Ordinal);
+        Assert.True(row.CanLaunch);
+    }
+
+    [Fact]
     public void Port_checks_outrank_a_recorded_launch_and_elfldr_is_never_offered()
     {
         var recorded = new PayloadCatalogSnapshot(

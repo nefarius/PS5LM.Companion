@@ -42,6 +42,25 @@ public sealed class PayloadManagerClientTests
     }
 
     [Fact]
+    public async Task The_process_list_feeds_running_names_and_a_failed_list_leaves_them_unknown()
+    {
+        string Respond(string path, bool processes) => path switch
+        {
+            "/list_payloads" => """{"items":[]}""",
+            "/processes_list" when processes => """{"processes":[{"pid":94,"name":"kstuff.elf","memory":1.5,"is_daemon":true},{"pid":1,"name":""}]}""",
+            _ => string.Empty,
+        };
+
+        var good = await Client(new RoutingHandler(path => Respond(path, true) is { Length: > 0 } body ? Json(body) : new HttpResponseMessage(HttpStatusCode.NotFound))).ReadAsync(CancellationToken.None);
+        var bad = await Client(new RoutingHandler(path => Respond(path, false) is { Length: > 0 } body ? Json(body) : new HttpResponseMessage(HttpStatusCode.NotFound))).ReadAsync(CancellationToken.None);
+
+        Assert.Equal(["kstuff.elf"], good.RunningProcesses!.ToArray());
+        Assert.Contains("KSTUFF.ELF", good.RunningProcesses!, StringComparer.OrdinalIgnoreCase);
+        Assert.True(bad.Available);
+        Assert.Null(bad.RunningProcesses);
+    }
+
+    [Fact]
     public async Task A_refused_list_is_an_unavailable_manager()
     {
         var handler = new RoutingHandler(_ => throw new HttpRequestException("refused"));

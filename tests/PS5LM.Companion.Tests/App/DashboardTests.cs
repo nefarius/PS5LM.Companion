@@ -36,7 +36,7 @@ public sealed class DashboardTests
 
         Assert.Contains("Payloads", html);
         Assert.Contains("kstuff-lite", html);
-        Assert.Contains("does not mean the payload is still active", html);
+        Assert.Contains("only means Payload Manager sent the file", html);
     }
 
     [Fact]

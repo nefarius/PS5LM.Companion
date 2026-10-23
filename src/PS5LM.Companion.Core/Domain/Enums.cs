@@ -94,4 +94,7 @@ public enum DependencyHealth
 
     /// <summary>An external check saw the service answering.</summary>
     Verified = 3,
+
+    /// <summary>Payload Manager's process list was read, and no process of this payload is running.</summary>
+    NotRunning = 4,
 }

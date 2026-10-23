@@ -33,7 +33,14 @@ public sealed class PayloadManagerClient(IPayloadManagerApi api) : IPayloadCatal
             var history = await TryAsync(api.HistoryAsync, cancellationToken);
             RecordHistory(recorded, installed, history?.History);
             RecordAutoload(recorded, await TryAsync(api.AutoloadAsync, cancellationToken));
-            return new PayloadCatalogSnapshot(true, true, null, installed, recorded);
+            var processes = await TryAsync(api.ProcessesAsync, cancellationToken);
+            var running = processes?.Processes is null
+                ? null
+                : processes.Processes
+                    .Where(process => !string.IsNullOrWhiteSpace(process.Name))
+                    .Select(process => process.Name!)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            return new PayloadCatalogSnapshot(true, true, null, installed, recorded, running);
         }
         catch (Exception ex)
         {

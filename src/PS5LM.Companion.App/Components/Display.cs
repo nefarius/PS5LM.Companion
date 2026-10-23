@@ -64,6 +64,7 @@ internal static class Display
         DependencyHealth.Unknown => "Unknown",
         DependencyHealth.LaunchRecorded => "Launch recorded",
         DependencyHealth.Verified => "Verified",
+        DependencyHealth.NotRunning => "Not running",
         _ => health.ToString(),
     };
 
@@ -71,7 +72,7 @@ internal static class Display
     {
         DependencyHealth.Verified => Color.Success,
         DependencyHealth.LaunchRecorded => Color.Info,
-        DependencyHealth.Unknown => Color.Warning,
+        DependencyHealth.Unknown or DependencyHealth.NotRunning => Color.Warning,
         _ => Color.Default,
     };
 
