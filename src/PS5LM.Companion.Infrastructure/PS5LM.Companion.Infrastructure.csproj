@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>PS5LM.Companion.Infrastructure</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PS5LM.Companion.Core\PS5LM.Companion.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,16 @@
+---
+description: Every feature or fix lives on its own branch and is delivered through a pull request
+alwaysApply: true
+---
+
+# Branch and PR workflow
+
+`master` is the default branch. The only direct commit to it is the initial repository foundation.
+
+- Start every feature or fix from current `master` on a new branch (`feature/<topic>` or `fix/<topic>`).
+- Never commit feature or fix work to `master`; never push to `master` unless the user explicitly asks.
+- Before switching branches, check for uncommitted changes. If the worktree is dirty, stop and ask the user.
+- Deliver the branch as a pull request (`gh pr create`) with a summary and a test plan.
+- Keep each PR below 100 changed files. Prefer cohesive, independently testable vertical slices; split a
+  PR when review gets hard, but do not fragment tightly coupled code just to shrink it.
+- Run `dotnet build` and `dotnet test` before pushing; CI must stay green.

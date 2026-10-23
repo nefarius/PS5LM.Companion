@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/PS5LM.Companion.App/PS5LM.Companion.App.csproj" />
+    <Project Path="src/PS5LM.Companion.Core/PS5LM.Companion.Core.csproj" />
+    <Project Path="src/PS5LM.Companion.Infrastructure/PS5LM.Companion.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/PS5LM.Companion.Tests/PS5LM.Companion.Tests.csproj" />
+  </Folder>
+</Solution>

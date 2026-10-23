@@ -1,0 +1,16 @@
+---
+description: Nefarius README documentation style
+globs:
+  - README.md
+  - "**/README.md"
+alwaysApply: false
+---
+
+# README style
+
+- Pragmatic, technical, direct. No marketing language; prefer bullets and short sections.
+- One-line value proposition near the top.
+- State support scope explicitly (OS, architecture, .NET version, supported PS5LM variants and versions).
+- Include a quick start, exact build prerequisites and deterministic build steps.
+- State support boundaries and unsupported scenarios; the issue tracker is not a help desk.
+- Credit dependencies and related projects; include licence and trademark disclaimers.
