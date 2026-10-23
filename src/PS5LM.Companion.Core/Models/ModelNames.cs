@@ -31,8 +31,11 @@ public static partial class ModelNames
         }
 
         var normalized = loadedId.Replace('\\', '/');
+
+        // A reported path must match exactly: the same file name in another folder is another model.
+        // Only a bare name (no directory) is compared with the file name.
         return normalized.Equals(appPath, StringComparison.OrdinalIgnoreCase)
-               || normalized[(normalized.LastIndexOf('/') + 1)..].Equals(fileName, StringComparison.OrdinalIgnoreCase);
+               || (!normalized.Contains('/', StringComparison.Ordinal) && normalized.Equals(fileName, StringComparison.OrdinalIgnoreCase));
     }
 
     [GeneratedRegex(@"^[A-Za-z0-9][A-Za-z0-9._\-+()\[\] ]*$")]

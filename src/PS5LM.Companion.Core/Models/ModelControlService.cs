@@ -39,6 +39,9 @@ public sealed class ModelControlService(
     CompanionStatusStore store,
     LoadTracker loadTracker)
 {
+    // The check for a pending command and the write must not interleave between concurrent requests.
+    private readonly SemaphoreSlim _commandGate = new(1, 1);
+
     public async Task<OperationResult> LoadAsync(string? appPath, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(appPath))
@@ -60,19 +63,28 @@ public sealed class ModelControlService(
             return new OperationResult(OperationOutcome.NotFound, "That model is not on the console.");
         }
 
-        if (model.Loaded)
+        await _commandGate.WaitAsync(cancellationToken);
+        try
         {
-            return new OperationResult(OperationOutcome.NoChange, "That model is already loaded.");
-        }
+            // A pending command (say an unload) may still change what is loaded, so it outranks the no-op.
+            if (await CommandPendingAsync(root, cancellationToken))
+            {
+                return new OperationResult(OperationOutcome.Conflict, "A previous command has not been picked up yet.");
+            }
 
-        if (await CommandPendingAsync(root, cancellationToken))
+            if (model.Loaded)
+            {
+                return new OperationResult(OperationOutcome.NoChange, "That model is already loaded.");
+            }
+
+            await fileSystem.WriteTextAsync($"{root.FtpPath}/{VariantProfile.LoadCommandFile}", model.AppPath + "\n", cancellationToken);
+            loadTracker.MarkRequested(model.AppPath);
+            return new OperationResult(OperationOutcome.Accepted, "Load requested; the app restarts to give the model all memory.");
+        }
+        finally
         {
-            return new OperationResult(OperationOutcome.Conflict, "A previous command has not been picked up yet.");
+            _commandGate.Release();
         }
-
-        await fileSystem.WriteTextAsync($"{root.FtpPath}/{VariantProfile.LoadCommandFile}", model.AppPath + "\n", cancellationToken);
-        loadTracker.MarkRequested(model.AppPath);
-        return new OperationResult(OperationOutcome.Accepted, "Load requested; the app restarts to give the model all memory.");
     }
 
     public async Task<OperationResult> UnloadAsync(CancellationToken cancellationToken)
@@ -83,14 +95,22 @@ public sealed class ModelControlService(
             return Unavailable(installation);
         }
 
-        if (await CommandPendingAsync(root, cancellationToken))
+        await _commandGate.WaitAsync(cancellationToken);
+        try
         {
-            return new OperationResult(OperationOutcome.Conflict, "A previous command has not been picked up yet.");
-        }
+            if (await CommandPendingAsync(root, cancellationToken))
+            {
+                return new OperationResult(OperationOutcome.Conflict, "A previous command has not been picked up yet.");
+            }
 
-        await fileSystem.WriteTextAsync($"{root.FtpPath}/{VariantProfile.UnloadCommandFile}", "-\n", cancellationToken);
-        loadTracker.Clear();
-        return new OperationResult(OperationOutcome.Accepted, "Unload requested; the app restarts without a model.");
+            await fileSystem.WriteTextAsync($"{root.FtpPath}/{VariantProfile.UnloadCommandFile}", "-\n", cancellationToken);
+            loadTracker.Clear();
+            return new OperationResult(OperationOutcome.Accepted, "Unload requested; the app restarts without a model.");
+        }
+        finally
+        {
+            _commandGate.Release();
+        }
     }
 
     private async Task<Installation?> InstallationAsync(CancellationToken cancellationToken)

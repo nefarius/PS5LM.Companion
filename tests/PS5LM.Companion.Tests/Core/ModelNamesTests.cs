@@ -39,7 +39,7 @@ public sealed class ModelNamesTests
     [Theory]
     [InlineData("/data/PS5LM/models/a.gguf", "a.gguf", "/data/PS5LM/models/a.gguf", true)]
     [InlineData("A.GGUF", "a.gguf", "/data/PS5LM/models/a.gguf", true)]
-    [InlineData("/other/dir/a.gguf", "a.gguf", "/data/PS5LM/models/a.gguf", true)]
+    [InlineData("/other/dir/a.gguf", "a.gguf", "/data/PS5LM/models/a.gguf", false)]
     [InlineData("b.gguf", "a.gguf", "/data/PS5LM/models/a.gguf", false)]
     [InlineData(null, "a.gguf", "/data/PS5LM/models/a.gguf", false)]
     public void Matches_the_loaded_model_id_by_path_or_file_name(string? id, string file, string appPath, bool expected) =>

@@ -14,6 +14,9 @@ public sealed class HuggingFaceHub(IHuggingFaceApi api, IHttpClientFactory httpC
 
     private const int BufferSize = 1 << 20;
 
+    /// <summary>How long a download may receive nothing before it is treated as dropped.</summary>
+    public TimeSpan IdleTimeout { get; init; } = TimeSpan.FromSeconds(60);
+
     public async Task<IReadOnlyList<HubRepo>> SearchAsync(string query, CancellationToken cancellationToken)
     {
         var models = await Hub(() => api.SearchAsync(query, "gguf", "downloads", "-1", 20, cancellationToken));
@@ -39,7 +42,7 @@ public sealed class HuggingFaceHub(IHuggingFaceApi api, IHttpClientFactory httpC
         {
             return await call();
         }
-        catch (Exception ex) when (ex is ApiException or HttpRequestException or TaskCanceledException)
+        catch (Exception ex) when (ex is ApiException or ApiRequestException or HttpRequestException or TaskCanceledException or Polly.ExecutionRejectedException)
         {
             throw new HubUnavailableException($"The model hub did not answer: {ex.Message}", ex);
         }
@@ -86,11 +89,30 @@ public sealed class HuggingFaceHub(IHuggingFaceApi api, IHttpClientFactory httpC
 
         var buffer = new byte[BufferSize];
         int read;
-        while ((read = await source.ReadAsync(buffer, cancellationToken)) > 0)
+        while ((read = await ReadWithIdleTimeoutAsync(source, buffer, cancellationToken)) > 0)
         {
             await target.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
             total += read;
             progress?.Report(total);
+        }
+    }
+
+    /// <summary>
+    /// Reads with a per-read idle timeout, so a connection that stalls without closing cannot block the single
+    /// transfer worker forever. A timeout is an <see cref="IOException"/> (a failed transfer that can be retried),
+    /// while the caller's own cancellation still propagates as cancellation.
+    /// </summary>
+    private async Task<int> ReadWithIdleTimeoutAsync(Stream source, byte[] buffer, CancellationToken cancellationToken)
+    {
+        using var idle = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        idle.CancelAfter(IdleTimeout);
+        try
+        {
+            return await source.ReadAsync(buffer, idle.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new IOException($"The download stalled: no data for {IdleTimeout.TotalSeconds:0} seconds.");
         }
     }
 }

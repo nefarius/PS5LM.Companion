@@ -7,6 +7,7 @@ public sealed partial class TransferWorker(TransferService service, ILogger<Tran
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        service.PersistenceFailed += LogPersistenceFailed;
         try
         {
             await service.InitializeAsync(stoppingToken);
@@ -20,7 +21,16 @@ public sealed partial class TransferWorker(TransferService service, ILogger<Tran
         {
             LogWorkerStopped(ex);
         }
+        finally
+        {
+            service.PersistenceFailed -= LogPersistenceFailed;
+        }
     }
+
+    private void LogPersistenceFailed(Exception exception) => LogSaveFailed(exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Could not save the transfer list; the next change retries")]
+    private partial void LogSaveFailed(Exception exception);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "The transfer worker stopped unexpectedly")]
     private partial void LogWorkerStopped(Exception exception);

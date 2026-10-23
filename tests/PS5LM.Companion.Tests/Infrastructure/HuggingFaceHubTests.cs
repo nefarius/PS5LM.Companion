@@ -67,6 +67,69 @@ public sealed class HuggingFaceHubTests : IDisposable
     }
 
     [Fact]
+    public async Task A_resilience_timeout_or_open_circuit_is_reported_as_unavailable()
+    {
+        var timeout = new StubHandler(_ => throw new Polly.Timeout.TimeoutRejectedException("timed out"));
+        var broken = new StubHandler(_ => throw new Polly.CircuitBreaker.BrokenCircuitException("open"));
+
+        await Assert.ThrowsAsync<HubUnavailableException>(() => Hub(timeout).SearchAsync("x", CancellationToken.None));
+        await Assert.ThrowsAsync<HubUnavailableException>(() => Hub(broken).ListFilesAsync("a/b", CancellationToken.None));
+    }
+
+    private sealed class StalledStream : Stream
+    {
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            return 0;
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
+    [Fact]
+    public async Task A_stalled_download_fails_with_an_io_error_instead_of_blocking_forever()
+    {
+        var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new StalledStream()) });
+        var hub = new HuggingFaceHub(RestService.For<IHuggingFaceApi>(new HttpClient(handler) { BaseAddress = new Uri("https://hf.test") }), new StubHttpClientFactory(handler))
+        {
+            IdleTimeout = TimeSpan.FromMilliseconds(100),
+        };
+
+        await Assert.ThrowsAsync<IOException>(() => hub.DownloadAsync("a/b", "m.gguf", Path.Combine(_dir, "m.gguf"), null, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Caller_cancellation_of_a_stalled_download_is_still_cancellation()
+    {
+        var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new StalledStream()) });
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            Hub(handler).DownloadAsync("a/b", "m.gguf", Path.Combine(_dir, "m.gguf"), null, cts.Token));
+    }
+
+    [Fact]
     public async Task A_fresh_download_writes_the_whole_body()
     {
         var path = Path.Combine(_dir, "m.gguf");

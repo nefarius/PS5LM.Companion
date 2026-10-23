@@ -243,6 +243,57 @@ public sealed class TransferServiceTests
     }
 
     [Fact]
+    public async Task A_failing_save_does_not_stop_the_worker_from_running_later_transfers()
+    {
+        var (harness, first) = await EnqueuedAsync();
+        await using var _ = harness;
+        harness.Hub.Files[Repo].Add(new HubFile("tiny-Q8.gguf", FakeHub.Content.Length, FakeHub.Sha256));
+        var persistenceFailures = 0;
+        harness.Service.PersistenceFailed += _ => Interlocked.Increment(ref persistenceFailures);
+        harness.TransferStore.FailSaves = true;
+        harness.StartWorker();
+
+        await harness.WaitUntilFinishedAsync(first.Id);
+        harness.TransferStore.FailSaves = false;
+        var (result, second) = await harness.Service.EnqueueAsync(Request(file: "tiny-Q8.gguf"), CancellationToken.None);
+        var done = await harness.WaitUntilFinishedAsync(second!.Id);
+
+        Assert.Equal(OperationOutcome.Accepted, result.Outcome);
+        Assert.Equal(TransferState.Completed, done.State);
+        Assert.True(persistenceFailures > 0);
+    }
+
+    [Fact]
+    public async Task A_restored_transfer_can_run_before_the_first_status_refresh()
+    {
+        var (first, queued) = await EnqueuedAsync();
+        var saved = first.TransferStore.Saved.ToList();
+        await first.DisposeAsync();
+
+        await using var second = new TransferHarness();
+        second.TransferStore.Saved = saved;
+        await second.Service.InitializeAsync(CancellationToken.None);
+        second.StartWorker();
+
+        Assert.Equal(TransferState.Completed, (await second.WaitUntilFinishedAsync(queued.Id)).State);
+    }
+
+    [Fact]
+    public async Task A_finished_transfer_keeps_its_final_byte_counts()
+    {
+        var (harness, queued) = await EnqueuedAsync();
+        await using var _ = harness;
+        harness.StartWorker();
+
+        var done = await harness.WaitUntilFinishedAsync(queued.Id);
+        await Task.Delay(100);
+        var later = harness.Service.Snapshot().Single();
+
+        Assert.Equal(done.SizeBytes, later.UploadedBytes);
+        Assert.Equal(done.UpdatedAt, later.UpdatedAt);
+    }
+
+    [Fact]
     public async Task Raises_changed_while_a_transfer_progresses()
     {
         var (harness, queued) = await EnqueuedAsync();

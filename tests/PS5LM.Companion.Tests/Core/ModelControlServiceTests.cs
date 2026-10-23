@@ -98,6 +98,35 @@ public sealed class ModelControlServiceTests
     }
 
     [Fact]
+    public async Task A_pending_unload_outranks_the_already_loaded_no_op()
+    {
+        var fs = ConsoleFixtures.PS5LMInstalled()
+            .AddFile("/data/PS5LM/models/a.gguf", new byte[1])
+            .AddFile("/data/PS5LM/unload", "-\n");
+        _store.Publish(CompanionStatus.Initial with { LoadedModel = "/data/PS5LM/models/a.gguf" });
+
+        var result = await Create(fs).LoadAsync("/data/PS5LM/models/a.gguf", CancellationToken.None);
+
+        Assert.Equal(OperationOutcome.Conflict, result.Outcome);
+    }
+
+    [Fact]
+    public async Task Concurrent_commands_cannot_both_be_accepted()
+    {
+        var fs = ConsoleFixtures.PS5LMInstalled().AddFile("/data/PS5LM/models/a.gguf", new byte[1]);
+        var control = Create(fs);
+
+        var results = await Task.WhenAll(
+            control.LoadAsync("/data/PS5LM/models/a.gguf", CancellationToken.None),
+            control.UnloadAsync(CancellationToken.None),
+            control.LoadAsync("/data/PS5LM/models/a.gguf", CancellationToken.None),
+            control.UnloadAsync(CancellationToken.None));
+
+        Assert.Single(results, r => r.Outcome == OperationOutcome.Accepted);
+        Assert.Equal(3, results.Count(r => r.Outcome == OperationOutcome.Conflict));
+    }
+
+    [Fact]
     public async Task Unload_writes_a_dash_because_an_empty_file_would_be_ignored_and_clears_the_pending_load()
     {
         var fs = ConsoleFixtures.PS5LMInstalled();

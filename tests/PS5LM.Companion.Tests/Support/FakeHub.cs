@@ -67,8 +67,16 @@ internal sealed class MemoryTransferStore : ITransferStore
     public Task<IReadOnlyList<Transfer>> LoadAsync(CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<Transfer>>(Saved.ToList());
 
+    /// <summary>Simulates a full disk.</summary>
+    public bool FailSaves { get; set; }
+
     public Task SaveAsync(IReadOnlyList<Transfer> transfers, CancellationToken cancellationToken)
     {
+        if (FailSaves)
+        {
+            throw new IOException("No space left on device.");
+        }
+
         Saved = transfers.ToList();
         return Task.CompletedTask;
     }

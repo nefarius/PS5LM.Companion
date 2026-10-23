@@ -34,6 +34,9 @@ public sealed class TransferService(
 
     public event Action? Changed;
 
+    /// <summary>Raised when the transfer list could not be saved; the worker carries on.</summary>
+    public event Action<Exception>? PersistenceFailed;
+
     public IReadOnlyList<Transfer> Snapshot()
     {
         lock (_gate)
@@ -206,7 +209,7 @@ public sealed class TransferService(
                 transfer.Repo,
                 transfer.FileName,
                 cachePath,
-                new Progress<long>(bytes => Update(transfer.Id, t => t with { DownloadedBytes = bytes })),
+                new InlineProgress(bytes => Update(transfer.Id, t => t.State == TransferState.Downloading ? t with { DownloadedBytes = bytes } : t)),
                 token);
 
             Update(transfer.Id, t => t with { State = TransferState.Verifying, DownloadedBytes = new FileInfo(cachePath).Length });
@@ -244,11 +247,39 @@ public sealed class TransferService(
             Update(transfer.Id, t => t with { State = TransferState.Failed, Error = ex.Message });
         }
 
-        await PersistAsync(CancellationToken.None);
+        await TryPersistAsync();
+    }
+
+    /// <summary>
+    /// Saves the list without letting a disk fault stop the worker: the in-memory state stays authoritative
+    /// and the next save retries.
+    /// </summary>
+    private async Task TryPersistAsync()
+    {
+        try
+        {
+            await PersistAsync(CancellationToken.None);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            PersistenceFailed?.Invoke(ex);
+        }
+    }
+
+    /// <summary>Reports on the caller's thread, so updates arrive in order (unlike <see cref="Progress{T}"/>, which posts).</summary>
+    private sealed class InlineProgress(Action<long> report) : IProgress<long>
+    {
+        public void Report(long value) => report(value);
     }
 
     private async Task<StorageRoot> ResolveTargetAsync(Transfer transfer, CancellationToken token)
     {
+        // A restored transfer can run before the status monitor's first discovery has finished.
+        if (statusService.LastInstallation is null)
+        {
+            await statusService.RefreshAsync(token);
+        }
+
         var installation = statusService.LastInstallation
                            ?? throw new InvalidOperationException("The console's installation is not known.");
         var targets = await catalog.UploadTargetsAsync(installation, token);
@@ -304,7 +335,7 @@ public sealed class TransferService(
             await fileSystem.UploadAsync(
                 stream,
                 part,
-                new Progress<long>(bytes => Update(transfer.Id, t => t with { UploadedBytes = bytes })),
+                new InlineProgress(bytes => Update(transfer.Id, t => t.State == TransferState.Uploading ? t with { UploadedBytes = bytes } : t)),
                 token);
             await fileSystem.MoveAsync(part, final, token);
         }
@@ -331,10 +362,19 @@ public sealed class TransferService(
     {
         lock (_gate)
         {
-            if (_transfers.TryGetValue(id, out var current))
+            if (!_transfers.TryGetValue(id, out var current))
             {
-                _transfers[id] = change(current) with { UpdatedAt = time.GetUtcNow() };
+                return;
             }
+
+            var next = change(current);
+            if (ReferenceEquals(next, current))
+            {
+                // A stale progress report for a state the transfer has left: nothing changed.
+                return;
+            }
+
+            _transfers[id] = next with { UpdatedAt = time.GetUtcNow() };
         }
 
         Changed?.Invoke();
