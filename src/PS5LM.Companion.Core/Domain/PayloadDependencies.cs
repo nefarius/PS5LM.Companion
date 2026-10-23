@@ -121,7 +121,7 @@ public static class PayloadDependencies
             ? DependencyPresence.Bundled
             : !catalog.Available
                 ? DependencyPresence.Unknown
-                : installed || running ? DependencyPresence.Installed : DependencyPresence.NotInstalled;
+                : installed || running || verified ? DependencyPresence.Installed : DependencyPresence.NotInstalled;
 
         var (health, message) = Describe(definition, catalog, installed, recorded, verified, runningName, elfldrPort);
         var canLaunch = definition.Launchable

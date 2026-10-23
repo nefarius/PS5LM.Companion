@@ -82,6 +82,15 @@ public sealed class PayloadDependencyTests
     }
 
     [Fact]
+    public void A_service_answering_on_its_port_is_present_even_when_payload_manager_does_not_list_it()
+    {
+        var rows = PayloadDependencies.Evaluate(Available(), true, false, true, 9021);
+
+        Assert.Equal(DependencyPresence.Installed, Row(rows, PayloadDependencies.FtpSrv).Presence);
+        Assert.Equal(DependencyPresence.Installed, Row(rows, PayloadDependencies.Elfldr).Presence);
+    }
+
+    [Fact]
     public void An_installed_payload_without_a_process_is_not_running_when_the_list_was_read()
     {
         var catalog = new PayloadCatalogSnapshot(true, true, null, [Kstuff], new HashSet<string> { Kstuff.Slot }, new HashSet<string>());
