@@ -54,7 +54,7 @@ public sealed class DependencyLaunchService(
                 return new OperationResult(OperationOutcome.Unavailable, snapshot.Message ?? "Payload Manager is not reachable.");
             }
 
-            var payload = snapshot.Installed.FirstOrDefault(item => item.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+            var payload = snapshot.Installed.FirstOrDefault(item => PayloadDependencies.Satisfies(id!, item.Id));
             if (payload is null)
             {
                 return new OperationResult(OperationOutcome.NotFound, $"{name} is not installed in Payload Manager.");

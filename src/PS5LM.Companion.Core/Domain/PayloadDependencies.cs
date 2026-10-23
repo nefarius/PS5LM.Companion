@@ -44,6 +44,7 @@ public static class PayloadDependencies
 {
     public const string KstuffLite = "kstuff-lite";
     public const string EtaHen = "etahen";
+    public const string OnionHen = "onionhen";
     public const string ShadowMountPlus = "shadowmountplus";
     public const string Elfldr = "elfldr";
     public const string FtpSrv = "ftpsrv";
@@ -55,7 +56,7 @@ public static class PayloadDependencies
     private static readonly DependencyDefinition[] Definitions =
     [
         new(KstuffLite, "kstuff-lite", DependencyRequirement.Required, Verification.Process, true, ["kstuff.elf", "kstuff-lite.elf"]),
-        new(EtaHen, "etaHEN", DependencyRequirement.Required, Verification.Process, true, ["etahen.elf", "daemon.elf", "util.elf"]),
+        new(EtaHen, "etaHEN or onionHEN", DependencyRequirement.Required, Verification.Process, true, ["etahen.elf", "daemon.elf", "util.elf", "onion_daemon.elf", "onion_util.elf"], [OnionHen]),
         new(ShadowMountPlus, "ShadowMountPlus", DependencyRequirement.Required, Verification.Process, true, ["shadowmountplus.elf"]),
         new(Elfldr, "elfldr", DependencyRequirement.Recommended, Verification.ElfldrPort, false, []),
         new(FtpSrv, "ftpsrv", DependencyRequirement.Recommended, Verification.Ftp, true, []),
@@ -87,6 +88,13 @@ public static class PayloadDependencies
         return true;
     }
 
+    /// <summary>True when a Payload Manager payload id satisfies the dependency, for example onionHEN for etaHEN.</summary>
+    public static bool Satisfies(string dependencyId, string installedId)
+    {
+        var definition = Definitions.FirstOrDefault(item => item.Id.Equals(dependencyId, StringComparison.OrdinalIgnoreCase));
+        return definition is not null && definition.Accepts(installedId);
+    }
+
     /// <summary>Why elfldr has to be loaded before Payload Manager can launch anything.</summary>
     public static string ElfldrBootstrap(int port) =>
         $"elfldr is not listening on port {port}. Payload Manager sends every payload through elfldr and cannot start elfldr itself. Load elfldr another way, then launch the other payloads.";
@@ -100,9 +108,9 @@ public static class PayloadDependencies
         int elfldrPort)
     {
         var match = catalog.Installed.FirstOrDefault(payload =>
-            payload.Id.Equals(definition.Id, StringComparison.OrdinalIgnoreCase)
+            definition.Accepts(payload.Id)
             && catalog.LaunchRecordedSlots.Contains(payload.Slot))
-            ?? catalog.Installed.FirstOrDefault(payload => payload.Id.Equals(definition.Id, StringComparison.OrdinalIgnoreCase));
+            ?? catalog.Installed.FirstOrDefault(payload => definition.Accepts(payload.Id));
         var runningName = catalog.RunningProcesses is null
             ? null
             : definition.ProcessNames.FirstOrDefault(catalog.RunningProcesses.Contains);
@@ -225,5 +233,10 @@ public static class PayloadDependencies
     }
 
     /// <summary>A payload the companion knows how to describe.</summary>
-    private sealed record DependencyDefinition(string Id, string Name, DependencyRequirement Requirement, Verification VerificationKind, bool Launchable, IReadOnlyList<string> ProcessNames);
+    private sealed record DependencyDefinition(string Id, string Name, DependencyRequirement Requirement, Verification VerificationKind, bool Launchable, IReadOnlyList<string> ProcessNames, IReadOnlyList<string>? Aliases = null)
+    {
+        public bool Accepts(string payloadId) =>
+            Id.Equals(payloadId, StringComparison.OrdinalIgnoreCase)
+            || (Aliases?.Any(alias => alias.Equals(payloadId, StringComparison.OrdinalIgnoreCase)) ?? false);
+    }
 }

@@ -91,6 +91,22 @@ public sealed class PayloadDependencyTests
     }
 
     [Fact]
+    public async Task OnionHen_satisfies_the_etaHEN_dependency_and_launches_by_its_own_slot()
+    {
+        var onion = new InstalledPayload(PayloadDependencies.OnionHen, "repo/onionhen@abc", "onionHEN");
+        var running = new PayloadCatalogSnapshot(true, true, null, [onion], new HashSet<string>(), new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "onion_daemon.elf" });
+
+        var row = Row(PayloadDependencies.Evaluate(running, false, false, false, 9021), PayloadDependencies.EtaHen);
+        var (service, launcher, _) = Harness(Available(onion), listening: true);
+        var result = await service.LaunchAsync(PayloadDependencies.EtaHen, CancellationToken.None);
+
+        Assert.Equal(DependencyPresence.Installed, row.Presence);
+        Assert.Equal(DependencyHealth.Verified, row.Health);
+        Assert.Equal(OperationOutcome.Accepted, result.Outcome);
+        Assert.Equal(["repo/onionhen@abc"], launcher.Launched);
+    }
+
+    [Fact]
     public void An_installed_payload_without_a_process_is_not_running_when_the_list_was_read()
     {
         var catalog = new PayloadCatalogSnapshot(true, true, null, [Kstuff], new HashSet<string> { Kstuff.Slot }, new HashSet<string>());
