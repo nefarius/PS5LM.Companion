@@ -80,7 +80,7 @@ so the companion sees a rejection rather than silence. A file whose name has no 
 
 **Protocol gate and trust.** `capabilities.json` is app-owned metadata, but FTP gives every writer the same rights, and
 the command HMAC does not authenticate this file. The companion therefore adopts v1 only when `protocol` is exactly
-`1` and the file is authenticated: it carries an HMAC `sig` (same secret and canonical rules as commands) over its
+`1` and the file is authenticated: it carries an HMAC `sig` (see Signed app-owned records below) over its
 content, or the operator has explicitly confirmed that every FTP writer on this console is trusted (the default
 for an unsigned file is to stay on the legacy files). Unknown `protocol` values or an invalid `sig` mean legacy
 mode, and the companion re-checks the gate on every start and when the file changes.
@@ -90,8 +90,11 @@ The signed `capabilities.json` includes the running app's current `bootId`, and 
 (the unsigned, trusted-writer path keeps the documented replay risk). Independently of what is advertised, the app
 rejects `download_model` with `rejected` while `remoteDownloads` is off.
 
-`processed.json`, `results/<id>.json` and `status.json` are covered the same way: each carries an HMAC `sig` over its
-canonical content (with `bootId` and a `seq`), and the companion ignores records that fail the check. On the
+**Signed app-owned records.** `capabilities.json`, `processed.json`, `results/<id>.json` and `status.json` all use one
+rule. The record is a JSON object that carries `bootId`, `seq` and `sig`. `sig` is the lowercase hex of HMAC-SHA-256,
+keyed with the UTF-8 bytes of the secret, over the UTF-8 bytes of `v1-record\n<kind>\n` followed by the RFC 8785
+(JCS) canonical JSON of the whole object with `sig` removed. `<kind>` is `capabilities`, `processed`, `result` or
+`status`, so a signature for one kind is not valid for another. The companion ignores records that fail the check. On the
 trusted-writer path, the effective FTP permissions are the stated risk: any FTP writer can forge them, and the
 companion treats results as informational and re-reads the model state from the console rather than trusting a
 result alone.
@@ -127,7 +130,8 @@ Every command has `id`, `type` and optional `args`:
 ### Results
 
 ```json
-{ "id": "…", "status": "ok" | "invalid" | "rejected" | "failed", "message": "…" }
+{ "id": "…", "seq": 17, "bootId": "…", "status": "ok" | "invalid" | "rejected" | "failed", "message": "…",
+  "sig": "<64 hex>" }
 ```
 
 `invalid` means the command was malformed, `rejected` that the app refused it (unknown path, busy), `failed`
