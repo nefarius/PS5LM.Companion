@@ -17,6 +17,9 @@ public sealed class HuggingFaceHub(IHuggingFaceApi api, IHttpClientFactory httpC
     /// <summary>How long a download may receive nothing before it is treated as dropped.</summary>
     public TimeSpan IdleTimeout { get; init; } = TimeSpan.FromSeconds(60);
 
+    /// <summary>How long to wait for the response headers of a download request.</summary>
+    public TimeSpan HeaderTimeout { get; init; } = TimeSpan.FromSeconds(60);
+
     public async Task<IReadOnlyList<HubRepo>> SearchAsync(string query, CancellationToken cancellationToken)
     {
         var models = await Hub(() => api.SearchAsync(query, "gguf", "downloads", "-1", 20, cancellationToken));
@@ -64,7 +67,7 @@ public sealed class HuggingFaceHub(IHuggingFaceApi api, IHttpClientFactory httpC
             request.Headers.Range = new RangeHeaderValue(existing, null);
         }
 
-        using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        using var response = await SendWithHeaderTimeoutAsync(http, request, cancellationToken);
         if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
         {
             // The partial file already holds everything; verification decides whether it is right.
@@ -94,6 +97,20 @@ public sealed class HuggingFaceHub(IHuggingFaceApi api, IHttpClientFactory httpC
             await target.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
             total += read;
             progress?.Report(total);
+        }
+    }
+
+    private async Task<HttpResponseMessage> SendWithHeaderTimeoutAsync(HttpClient http, HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        using var headers = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        headers.CancelAfter(HeaderTimeout);
+        try
+        {
+            return await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, headers.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new IOException($"The model hub sent no response within {HeaderTimeout.TotalSeconds:0} seconds.");
         }
     }
 

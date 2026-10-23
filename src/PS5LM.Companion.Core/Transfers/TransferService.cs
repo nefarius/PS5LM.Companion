@@ -356,7 +356,7 @@ public sealed class TransferService(
     }
 
     private string CachePath(Transfer transfer) =>
-        Path.Combine(options.CacheDirectory, transfer.Repo.Replace('/', '_'), transfer.FileName);
+        Path.Combine(options.CacheDirectory, transfer.Repo, transfer.FileName);
 
     private void Update(Guid id, Func<Transfer, Transfer> change)
     {

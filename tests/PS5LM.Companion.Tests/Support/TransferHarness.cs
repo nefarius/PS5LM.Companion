@@ -70,7 +70,7 @@ internal sealed class TransferHarness : IAsyncDisposable
         }
     }
 
-    public string CachedFile(string repo, string name) => Path.Combine(CacheDirectory, repo.Replace('/', '_'), name);
+    public string CachedFile(string repo, string name) => Path.Combine(CacheDirectory, repo, name);
 
     public async ValueTask DisposeAsync()
     {

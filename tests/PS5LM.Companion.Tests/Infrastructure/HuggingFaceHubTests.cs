@@ -119,6 +119,27 @@ public sealed class HuggingFaceHubTests : IDisposable
         await Assert.ThrowsAsync<IOException>(() => hub.DownloadAsync("a/b", "m.gguf", Path.Combine(_dir, "m.gguf"), null, CancellationToken.None));
     }
 
+    private sealed class HangingHandler : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            throw new InvalidOperationException();
+        }
+    }
+
+    [Fact]
+    public async Task A_hub_that_never_sends_headers_fails_with_an_io_error()
+    {
+        var handler = new HangingHandler();
+        var hub = new HuggingFaceHub(RestService.For<IHuggingFaceApi>(new HttpClient(handler) { BaseAddress = new Uri("https://hf.test") }), new StubHttpClientFactory(handler))
+        {
+            HeaderTimeout = TimeSpan.FromMilliseconds(100),
+        };
+
+        await Assert.ThrowsAsync<IOException>(() => hub.DownloadAsync("a/b", "m.gguf", Path.Combine(_dir, "m.gguf"), null, CancellationToken.None));
+    }
+
     [Fact]
     public async Task Caller_cancellation_of_a_stalled_download_is_still_cancellation()
     {
