@@ -54,6 +54,9 @@ public sealed class Program
             builder.Services.AddPS5Connectivity(builder.Configuration);
             builder.Services.AddModelManagement(builder.Configuration);
             builder.Services.AddSingleton<CompanionStatusStore>();
+            // Open Blazor circuits and SignalR sockets never end on their own, so the default 30 s grace period
+            // is always spent in full. Nothing here needs more than a few seconds to stop.
+            builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = TimeSpan.FromSeconds(3));
             builder.Services.AddHostedService<StatusMonitor>();
             builder.Services.AddHostedService<TransferWorker>();
 
