@@ -123,19 +123,41 @@
     private IReadOnlyList<HubRepo> _repos = [];
     private IReadOnlyList<HubFile>? _files;
 
-    protected override async Task OnInitializedAsync()
+    private string? _targetsFor;
+    private bool _loadingTargets;
+
+    protected override Task OnInitializedAsync() => RefreshTargetsAsync();
+
+    // The console (or its state folder) can appear after this page opened.
+    protected override Task OnLiveChangeAsync() => RefreshTargetsAsync();
+
+    private async Task RefreshTargetsAsync()
     {
-        if (StatusService.LastInstallation is { StateRoot: not null } installation)
+        var installation = StatusService.LastInstallation;
+        var key = installation?.StateRoot?.FtpPath;
+        if (installation is not { StateRoot: not null } || key == _targetsFor || _loadingTargets)
         {
-            try
+            return;
+        }
+
+        _loadingTargets = true;
+        try
+        {
+            var targets = (await Catalog.UploadTargetsAsync(installation, CancellationToken.None)).Select(t => t.Name).ToList();
+            _targets = targets;
+            _targetsFor = key;
+            if (_target is null || !targets.Contains(_target))
             {
-                _targets = (await Catalog.UploadTargetsAsync(installation, CancellationToken.None)).Select(t => t.Name).ToList();
-                _target = _targets.FirstOrDefault();
+                _target = targets.FirstOrDefault();
             }
-            catch (Core.Abstractions.ConsoleUnreachableException)
-            {
-                // The status page already says the console is unreachable.
-            }
+        }
+        catch (Core.Abstractions.ConsoleUnreachableException)
+        {
+            // The status page already says the console is unreachable.
+        }
+        finally
+        {
+            _loadingTargets = false;
         }
     }
 
