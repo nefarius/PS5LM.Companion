@@ -36,11 +36,11 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IPS5FileSystem, FtpFileSystem>();
 
         services
-            .AddRefitClient<ILlamaServerApi>()
+            .AddRefitGeneratedClient<ILlamaServerApi>()
             .ConfigureHttpClient((sp, client) => client.BaseAddress = BaseAddress(sp, o => o.LlamaPort))
             .AddResilienceHandler("llama-probe", builder => builder.AddTimeout(ProbeTimeout));
         services
-            .AddRefitClient<IPS5ExporterApi>()
+            .AddRefitGeneratedClient<IPS5ExporterApi>()
             .ConfigureHttpClient((sp, client) => client.BaseAddress = BaseAddress(sp, o => o.ExporterPort))
             .AddResilienceHandler("exporter-probe", builder => builder.AddTimeout(ProbeTimeout));
 
@@ -71,7 +71,7 @@ public static class ServiceCollectionExtensions
 
         services.AddTransient<HuggingFaceAuthHandler>();
         services
-            .AddRefitClient<IHuggingFaceApi>()
+            .AddRefitGeneratedClient<IHuggingFaceApi>()
             .ConfigureHttpClient((sp, client) => client.BaseAddress = new Uri(sp.GetRequiredService<IOptions<HuggingFaceOptions>>().Value.BaseUrl))
             .AddHttpMessageHandler<HuggingFaceAuthHandler>()
             .AddStandardResilienceHandler();

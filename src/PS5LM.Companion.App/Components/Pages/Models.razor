@@ -1,0 +1,122 @@
+@page "/models"
+@inherits LiveComponent
+@inject ModelCatalog Catalog
+@inject ModelControlService Control
+@inject CompanionStatusService StatusService
+@inject ISnackbar Snackbar
+
+<PageTitle>Models</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+    <MudText Typo="Typo.h4">Models</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh" OnClick="ReloadAsync" Disabled="_loading">Refresh</MudButton>
+    <MudButton Variant="Variant.Outlined" Color="Color.Warning" StartIcon="@Icons.Material.Filled.Eject"
+               OnClick="UnloadAsync" Disabled="@(Status.LoadedModel is null && !Status.CommandPending)">Unload</MudButton>
+</MudStack>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-2">@_error</MudAlert>
+}
+
+@if (Status.CommandPending)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-2">A command is waiting on the console; further load or unload requests are refused until it was picked up.</MudAlert>
+}
+
+<MudPaper Elevation="1">
+    <MudTable Items="_models" Hover="true" Loading="_loading" Dense="true" T="ModelFile">
+        <HeaderContent>
+            <MudTh>Model</MudTh>
+            <MudTh>Location</MudTh>
+            <MudTh>Size</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Model">
+                @context.FileName
+                @if (IsLoaded(context))
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Class="ml-2">Loaded</MudChip>
+                }
+                @if (context.IsProjector)
+                {
+                    <MudChip T="string" Size="Size.Small" Class="ml-2">Vision projector</MudChip>
+                }
+            </MudTd>
+            <MudTd DataLabel="Location">@context.Location</MudTd>
+            <MudTd DataLabel="Size">@Display.Bytes(context.SizeBytes)</MudTd>
+            <MudTd>
+                @if (!context.IsProjector)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.PlayArrow"
+                               Disabled="@(IsLoaded(context) || Status.CommandPending)"
+                               OnClick="@(() => LoadAsync(context))">Load</MudButton>
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Class="pa-4" Color="Color.Secondary">No models on the console yet. Download one on the Downloads page.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private IReadOnlyList<ModelFile> _models = [];
+    private bool _loading;
+    private string? _error;
+    private int _completed;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _completed = CompletedCount();
+        await ReloadAsync();
+    }
+
+    protected override async Task OnLiveChangeAsync()
+    {
+        // A finished transfer put a new model on the console.
+        var completed = CompletedCount();
+        if (completed != _completed)
+        {
+            _completed = completed;
+            await ReloadAsync();
+        }
+    }
+
+    private int CompletedCount() => Transfers.Snapshot().Count(t => t.State == TransferState.Completed);
+
+    private bool IsLoaded(ModelFile model) => !model.IsProjector && ModelNames.IsSameModel(Status.LoadedModel, model.FileName, model.AppPath);
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            var installation = StatusService.LastInstallation;
+            _models = installation?.StateRoot is null
+                ? []
+                : await Catalog.ListAsync(installation, null, CancellationToken.None);
+            _error = installation?.StateRoot is null ? installation?.Message ?? "The console is not reachable." : null;
+        }
+        catch (Exception ex) when (ex is Core.Abstractions.ConsoleUnreachableException)
+        {
+            _error = ex.Message;
+            _models = [];
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadAsync(ModelFile model) => Report(await Control.LoadAsync(model.AppPath, CancellationToken.None), $"Loading {model.FileName}");
+
+    private async Task UnloadAsync() => Report(await Control.UnloadAsync(CancellationToken.None), "Unloading the model");
+
+    private void Report(OperationResult result, string started) =>
+        Snackbar.Add(result.Succeeded ? started : result.Message ?? result.Outcome.ToString(), result.Succeeded ? Severity.Success : Severity.Error);
+}

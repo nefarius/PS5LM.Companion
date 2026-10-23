@@ -3,6 +3,8 @@ using System.Net;
 using PS5LM.Companion.Core.Abstractions;
 using PS5LM.Companion.Core.Domain;
 
+using Refit;
+
 namespace PS5LM.Companion.Infrastructure.Http;
 
 /// <summary>
@@ -16,6 +18,12 @@ public sealed class LlamaServerProbe(ILlamaServerApi api) : ILlamaServerProbe
         try
         {
             using var metrics = await api.GetMetricsAsync(cancellationToken);
+
+            // Refit reports a transport failure (refused, unreachable) as a response without a status code.
+            if (metrics.Error is not null and not ApiException || metrics.StatusCode is null)
+            {
+                return LlamaProbeResult.Closed;
+            }
 
             if (metrics.StatusCode == HttpStatusCode.ServiceUnavailable)
             {

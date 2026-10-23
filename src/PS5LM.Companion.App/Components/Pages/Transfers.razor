@@ -1,0 +1,190 @@
+@page "/transfers"
+@inherits LiveComponent
+@inject IModelHub Hub
+@inject ModelCatalog Catalog
+@inject CompanionStatusService StatusService
+@inject ISnackbar Snackbar
+
+<PageTitle>Downloads</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-2">Downloads</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudText Typo="Typo.h6" Class="mb-2">Find a model on Hugging Face</MudText>
+    <MudStack Row="true" AlignItems="AlignItems.Center">
+        <MudTextField @bind-Value="_query" Label="Search GGUF repositories" Variant="Variant.Outlined" Margin="Margin.Dense"
+                      Immediate="true" OnKeyDown="OnSearchKey" Style="max-width:32rem" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SearchAsync" Disabled="_busy">Search</MudButton>
+        @if (_targets.Count > 1)
+        {
+            <MudSelect T="string" @bind-Value="_target" Label="Upload to" Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width:14rem">
+                @foreach (var target in _targets)
+                {
+                    <MudSelectItem Value="@target">@target</MudSelectItem>
+                }
+            </MudSelect>
+        }
+    </MudStack>
+
+    @if (_error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
+    }
+
+    @if (_repos.Count > 0)
+    {
+        <MudList T="HubRepo" Class="mt-2" Style="max-height:16rem;overflow:auto" SelectedValueChanged="OnRepoSelected">
+            @foreach (var repo in _repos)
+            {
+                <MudListItem T="HubRepo" Value="@repo" Text="@repo.Id" SecondaryText="@($"{repo.Downloads:N0} downloads")" />
+            }
+        </MudList>
+    }
+
+    @if (_files is not null)
+    {
+        <MudText Typo="Typo.subtitle1" Class="mt-3">@_selectedRepo</MudText>
+        <MudSimpleTable Dense="true" Hover="true">
+            <thead><tr><th>File</th><th>Size</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var file in _files)
+                {
+                    <tr>
+                        <td>@file.Name</td>
+                        <td>@Display.Bytes(file.SizeBytes)</td>
+                        <td><MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Download"
+                                       OnClick="@(() => EnqueueAsync(file))">Download to console</MudButton></td>
+                    </tr>
+                }
+                @if (_files.Count == 0)
+                {
+                    <tr><td colspan="3">This repository has no top-level .gguf files.</td></tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    }
+</MudPaper>
+
+<MudPaper Elevation="1">
+    <MudTable Items="Transfers.Snapshot()" Dense="true" Hover="true" T="Transfer">
+        <ToolBarContent><MudText Typo="Typo.h6">Transfers</MudText></ToolBarContent>
+        <HeaderContent>
+            <MudTh>File</MudTh>
+            <MudTh>State</MudTh>
+            <MudTh Style="min-width:12rem">Progress</MudTh>
+            <MudTh>Target</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="File">
+                @context.FileName<br />
+                <MudText Typo="Typo.caption" Color="Color.Secondary">@context.Repo · @Display.Bytes(context.SizeBytes)</MudText>
+            </MudTd>
+            <MudTd DataLabel="State">
+                <MudChip T="string" Size="Size.Small" Color="@Display.TransferColor(context.State)">@context.State</MudChip>
+                @if (context.Error is not null)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Error">@context.Error</MudText>
+                }
+            </MudTd>
+            <MudTd DataLabel="Progress">
+                @if (context.IsActive)
+                {
+                    <MudProgressLinear Value="@Display.Progress(context)" Color="Color.Info" />
+                }
+                else if (context.State == TransferState.Completed)
+                {
+                    <MudProgressLinear Value="100" Color="Color.Success" />
+                }
+            </MudTd>
+            <MudTd DataLabel="Target">@context.TargetRoot</MudTd>
+            <MudTd>
+                @if (context.IsActive)
+                {
+                    <MudButton Size="Size.Small" Color="Color.Warning" OnClick="@(() => CancelAsync(context))">Cancel</MudButton>
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Class="pa-4" Color="Color.Secondary">No transfers yet.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private string _query = string.Empty;
+    private string? _target;
+    private string? _error;
+    private string? _selectedRepo;
+    private bool _busy;
+    private IReadOnlyList<string> _targets = [];
+    private IReadOnlyList<HubRepo> _repos = [];
+    private IReadOnlyList<HubFile>? _files;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (StatusService.LastInstallation is { StateRoot: not null } installation)
+        {
+            try
+            {
+                _targets = (await Catalog.UploadTargetsAsync(installation, CancellationToken.None)).Select(t => t.Name).ToList();
+                _target = _targets.FirstOrDefault();
+            }
+            catch (Core.Abstractions.ConsoleUnreachableException)
+            {
+                // The status page already says the console is unreachable.
+            }
+        }
+    }
+
+    private async Task OnSearchKey(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter")
+        {
+            await SearchAsync();
+        }
+    }
+
+    private Task SearchAsync() => GuardHubAsync(async () =>
+    {
+        _files = null;
+        _repos = await Hub.SearchAsync(_query, CancellationToken.None);
+    });
+
+    private Task OnRepoSelected(HubRepo? repo) => repo is null ? Task.CompletedTask : GuardHubAsync(async () =>
+    {
+        _selectedRepo = repo.Id;
+        _files = await Hub.ListFilesAsync(repo.Id, CancellationToken.None);
+    });
+
+    private async Task GuardHubAsync(Func<Task> action)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            await action();
+        }
+        catch (HubUnavailableException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task EnqueueAsync(HubFile file)
+    {
+        if (_selectedRepo is null)
+        {
+            return;
+        }
+
+        var (result, _) = await Transfers.EnqueueAsync(new TransferRequest(_selectedRepo, file.Name, _target), CancellationToken.None);
+        Snackbar.Add(result.Succeeded ? $"Queued {file.Name}" : result.Message ?? result.Outcome.ToString(), result.Succeeded ? Severity.Success : Severity.Error);
+    }
+
+    private async Task CancelAsync(Transfer transfer) => await Transfers.CancelAsync(transfer.Id, CancellationToken.None);
+}
