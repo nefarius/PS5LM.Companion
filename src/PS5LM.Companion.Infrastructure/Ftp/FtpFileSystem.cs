@@ -88,9 +88,16 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
         RunAsync(
             async client =>
             {
-                var relay = progress is null ? null : new Progress<FtpProgress>(p => progress.Report(p.TransferredBytes));
+                var relay = progress is null ? null : new InlineProgress<FtpProgress>(p => progress.Report(p.TransferredBytes));
                 var status = await client.UploadStream(content, path, FtpRemoteExists.Overwrite, true, relay, cancellationToken);
                 EnsureUploaded(status, path);
+
+                // Chunk reports arrive synchronously (InlineProgress), so this final report cannot be overtaken.
+                if (content.CanSeek)
+                {
+                    progress?.Report(content.Length);
+                }
+
                 return true;
             },
             cancellationToken);
@@ -171,4 +178,10 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
         DataConnectionType = FtpDataConnectionType.AutoPassive,
         SocketKeepAlive = false,
     };
+
+    /// <summary>Invokes the callback on the reporting thread instead of posting it, so reports stay ordered.</summary>
+    private sealed class InlineProgress<T>(Action<T> report) : IProgress<T>
+    {
+        public void Report(T value) => report(value);
+    }
 }
