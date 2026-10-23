@@ -68,14 +68,23 @@ public sealed class FtpFileSystemTests : IAsyncLifetime
         Assert.Null(await _fs.ReadTextAsync("/data/PS5LM/missing", 1024, CancellationToken.None));
     }
 
+    /// <summary>Records progress synchronously, so nothing is lost to a posted callback.</summary>
+    private sealed class SyncProgress : IProgress<long>
+    {
+        public long Last { get; private set; }
+
+        public void Report(long value) => Last = Math.Max(Last, value);
+    }
+
     [Fact]
     public async Task Uploads_as_a_part_file_reports_progress_and_renames_into_place()
     {
         var content = Enumerable.Range(0, 300_000).Select(i => (byte)(i % 251)).ToArray();
-        long reported = 0;
+        var progress = new SyncProgress();
         await using var stream = new MemoryStream(content);
 
-        await _fs.UploadAsync(stream, "/data/PS5LM/models/m.gguf.part", new Progress<long>(b => reported = Math.Max(reported, b)), CancellationToken.None);
+        await _fs.UploadAsync(stream, "/data/PS5LM/models/m.gguf.part", progress, CancellationToken.None);
+        Assert.Equal(content.LongLength, progress.Last);
         Assert.True(File.Exists(_server.Local("/data/PS5LM/models/m.gguf.part")));
         Assert.False(File.Exists(_server.Local("/data/PS5LM/models/m.gguf")));
 

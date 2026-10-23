@@ -175,6 +175,19 @@ public sealed class VariantContractTests
     }
 
     [Fact]
+    public async Task PS5LM_Plus_app_folder_model_uses_the_app_path_in_the_load_command()
+    {
+        var fs = ConsoleFixtures.PS5LMPlusInstalled(sandboxed: true)
+            .AddFile("/data/homebrew/PPSA99581/models/bundled.gguf", new byte[1]);
+
+        var (_, control) = Create(fs);
+        var result = await control.LoadAsync("/app0/models/bundled.gguf", CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("/app0/models/bundled.gguf\n", fs.Text("/mnt/sandbox/PPSA99581_000/download0/PS5LM/load"));
+    }
+
+    [Fact]
     public async Task PS5LM_Plus_prefers_the_state_folder_the_app_really_uses_when_both_exist()
     {
         var fs = ConsoleFixtures.PS5LMPlusInstalled(sandboxed: true).AddDirectory("/data/PS5LM");

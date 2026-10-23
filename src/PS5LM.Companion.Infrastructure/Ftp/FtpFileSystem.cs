@@ -91,6 +91,13 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
                 var relay = progress is null ? null : new Progress<FtpProgress>(p => progress.Report(p.TransferredBytes));
                 var status = await client.UploadStream(content, path, FtpRemoteExists.Overwrite, true, relay, cancellationToken);
                 EnsureUploaded(status, path);
+
+                // FluentFTP reports in chunks through a posted callback; a finished upload always ends at the full size.
+                if (content.CanSeek)
+                {
+                    progress?.Report(content.Length);
+                }
+
                 return true;
             },
             cancellationToken);
