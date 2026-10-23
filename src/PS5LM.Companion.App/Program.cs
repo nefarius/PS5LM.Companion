@@ -2,6 +2,8 @@ using System.Text.Json.Serialization;
 
 using FastEndpoints;
 
+using MudBlazor.Services;
+
 using PS5LM.Companion.App.Monitoring;
 using PS5LM.Companion.App.Security;
 using PS5LM.Companion.Core.Status;
@@ -47,6 +49,8 @@ public sealed class Program
             builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
             builder.Services.AddHealthChecks();
             builder.Services.AddFastEndpoints();
+            builder.Services.AddRazorComponents().AddInteractiveServerComponents();
+            builder.Services.AddMudServices();
             builder.Services.AddPS5Connectivity(builder.Configuration);
             builder.Services.AddModelManagement(builder.Configuration);
             builder.Services.AddSingleton<CompanionStatusStore>();
@@ -57,6 +61,8 @@ public sealed class Program
 
             app.UseSerilogRequestLogging();
             app.UseMiddleware<AccessTokenMiddleware>();
+            app.UseAntiforgery();
+            app.MapStaticAssets();
             app.MapHealthChecks("/health");
             app.MapLogin();
             app.UseFastEndpoints(config =>
@@ -64,6 +70,8 @@ public sealed class Program
                 config.Endpoints.RoutePrefix = "api";
                 config.Serializer.Options.Converters.Add(new JsonStringEnumConverter());
             });
+
+            app.MapRazorComponents<Components.App>().AddInteractiveServerRenderMode();
 
             await app.RunAsync();
             return 0;

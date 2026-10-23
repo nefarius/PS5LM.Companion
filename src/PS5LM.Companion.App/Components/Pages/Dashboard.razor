@@ -1,0 +1,112 @@
+@page "/"
+@inherits LiveComponent
+
+<PageTitle>Status</PageTitle>
+
+<MudGrid>
+    <MudItem xs="12">
+        <MudText Typo="Typo.h4" HtmlTag="h1" Class="mb-2">Status</MudText>
+        @if (Status.Message is { Length: > 0 })
+        {
+            <MudAlert Severity="@(Status.Lifecycle == CompanionLifecycle.Disconnected ? Severity.Error : Severity.Info)" Class="mb-2">
+                @Status.Message
+            </MudAlert>
+        }
+        @if (Status.CommandPending)
+        {
+            <MudAlert Severity="Severity.Warning">
+                A load or unload command is waiting on the console. If it is not picked up within a few seconds,
+                PS5LM is probably not running.
+            </MudAlert>
+        }
+    </MudItem>
+
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudText Typo="Typo.h6" Class="mb-2">Console</MudText>
+            <MudSimpleTable Dense="true" Hover="false" Elevation="0">
+                <tbody>
+                    <tr><td>State</td><td><MudChip T="string" Size="Size.Small" Color="@Display.LifecycleColor(Status.Lifecycle)">@Display.Lifecycle(Status.Lifecycle)</MudChip></td></tr>
+                    <tr><td>App</td><td>@(Status.Variant == PS5Variant.Unknown ? "Not detected" : Status.Variant.ToString())</td></tr>
+                    <tr><td>Loaded model</td><td>@(Status.LoadedModel ?? "None")</td></tr>
+                    <tr><td>Command folder</td><td>@(Status.ControlRoot ?? "Unknown")</td></tr>
+                </tbody>
+            </MudSimpleTable>
+            <MudStack Row="true" Spacing="1" Class="mt-3">
+                <MudChip T="string" Size="Size.Small" Color="@Flag(Status.Capabilities.Ftp)">FTP</MudChip>
+                <MudChip T="string" Size="Size.Small" Color="@Flag(Status.Capabilities.ModelControl)">Model control</MudChip>
+                <MudChip T="string" Size="Size.Small" Color="@Flag(Status.Capabilities.Telemetry)">llama-server</MudChip>
+                <MudChip T="string" Size="Size.Small" Color="@Flag(Status.Capabilities.Sensors)">ps5-exporter</MudChip>
+            </MudStack>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudText Typo="Typo.h6" Class="mb-2">Generation</MudText>
+            @if (Status.Telemetry is { } telemetry)
+            {
+                <MudSimpleTable Dense="true" Hover="false" Elevation="0">
+                    <tbody>
+                        <tr><td>Generation speed</td><td>@telemetry.GenerationTokensPerSecond.ToString("0.0") tokens/s</td></tr>
+                        <tr><td>Prompt speed</td><td>@telemetry.PromptTokensPerSecond.ToString("0.0") tokens/s</td></tr>
+                        <tr><td>Tokens generated</td><td>@telemetry.TokensGenerated.ToString("N0")</td></tr>
+                        <tr><td>Requests in progress</td><td>@telemetry.RequestsProcessing.ToString("0")</td></tr>
+                    </tbody>
+                </MudSimpleTable>
+            }
+            else
+            {
+                <MudText Color="Color.Secondary">Available once a model is loaded and llama-server answers on its port.</MudText>
+            }
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudText Typo="Typo.h6" Class="mb-2">Sensors</MudText>
+            @if (Status.Sensors is { } sensors)
+            {
+                <MudSimpleTable Dense="true" Hover="false" Elevation="0">
+                    <tbody>
+                        <tr><td>SoC temperature</td><td>@Value(sensors.SocTemperatureC, "°C")</td></tr>
+                        <tr><td>CPU temperature</td><td>@Value(sensors.CpuTemperatureC, "°C")</td></tr>
+                        <tr><td>SoC power</td><td>@Value(sensors.SocPowerWatts, "W")</td></tr>
+                        <tr><td>Fan duty</td><td>@Value(sensors.FanDuty, "%")</td></tr>
+                    </tbody>
+                </MudSimpleTable>
+            }
+            else
+            {
+                <MudText Color="Color.Secondary">ps5-exporter is not reachable on the console.</MudText>
+            }
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="1">
+            <MudText Typo="Typo.h6" Class="mb-2">Storage</MudText>
+            @if (Status.Sensors is { Drives.Count: > 0 } storage)
+            {
+                @foreach (var drive in storage.Drives.Where(d => d.TotalBytes > 0))
+                {
+                    var used = drive.TotalBytes - drive.FreeBytes;
+                    <div class="mb-3">
+                        <MudText Typo="Typo.body2">@drive.MountPoint: @Display.Bytes(drive.FreeBytes) free of @Display.Bytes(drive.TotalBytes)</MudText>
+                        <MudProgressLinear Value="@(100.0 * used / drive.TotalBytes)" Color="@(used > 0.9 * drive.TotalBytes ? Color.Error : Color.Primary)" />
+                    </div>
+                }
+            }
+            else
+            {
+                <MudText Color="Color.Secondary">Free space is only known when ps5-exporter is running.</MudText>
+            }
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private static Color Flag(bool on) => on ? Color.Success : Color.Default;
+
+    private static string Value(double? value, string unit) => value is { } v ? $"{v:0.#} {unit}" : "n/a";
+}

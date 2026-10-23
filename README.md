@@ -50,6 +50,17 @@ The companion refuses to start on a non-loopback address without `Companion:Acce
 `Kestrel:Endpoints`. The token travels in clear text over plain HTTP: put the companion behind a TLS reverse proxy
 (the login cookie is marked `Secure` on HTTPS) unless the network is trusted.
 
+## Dashboard
+
+Open `http://<companion>:8080/`. The dashboard is Blazor Server with MudBlazor and updates live over its circuit; it
+needs no extra configuration.
+
+- **Status**: lifecycle, loaded model, generation speed, sensors and drive space.
+- **Models**: models on the console with Load and Unload.
+- **Downloads**: search Hugging Face, queue a file, watch download and upload progress, cancel.
+
+With `Companion:AccessToken` set, the browser is sent to `/login` once and keeps an HttpOnly cookie.
+
 ## REST API
 
 All routes live under `/api` and need the token when one is configured (`Authorization: Bearer <token>`).

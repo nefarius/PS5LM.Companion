@@ -1,0 +1,16 @@
+#blazor-error-ui {
+    background: #b32121;
+    color: #fff;
+    bottom: 0;
+    display: none;
+    left: 0;
+    padding: 0.6rem 1.25rem;
+    position: fixed;
+    width: 100%;
+    z-index: 2000;
+}
+
+#blazor-error-ui a {
+    color: #fff;
+    margin-left: 0.5rem;
+}
