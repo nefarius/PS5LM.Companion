@@ -21,7 +21,7 @@ downloads, but it cannot:
   (`protocol`, `app`, `version`, `commands`); anything else (missing, malformed, another protocol number) means the
   legacy files stay in use.
 - **Tiny**: one polling loop the apps already have (about once a second), a JSON parser they already use, no new
-  threads or sockets.
+  sockets, and no new threads required (downloads advance in small steps from that loop).
 - **Safe by construction**: whitelist of settings, validated values, atomic writes, no arbitrary paths or commands,
   and a stated trust model (see below).
 - **Observable**: every command gets a result file, so the companion never has to guess.
@@ -44,7 +44,18 @@ partial file; the app ignores `*.tmp`.
 
 **Ordering.** `<seq>` is a zero-padded 12-digit counter that the companion increments per command and also repeats
 inside the file as `seq`. The app processes commands in file-name order. A name without a valid `<seq>-` prefix is
-processed after all well-formed ones, ordered by modification time and then name.
+processed after all well-formed ones, ordered by modification time and then name. The app rejects (`invalid`,
+message `seq mismatch`) a command whose file-name `seq` differs from its JSON `seq`, so renaming a file cannot
+change its place in the order.
+
+The companion persists the next `seq` durably (written before the command file is created) and never lowers it. If
+it ever loses that state, it first lists `commands/` and `results/` and continues above the highest `seq` it finds,
+and a new command never overwrites an existing file name.
+
+**One total order with the legacy files.** While `control/v1/capabilities.json` is valid, the app treats the legacy
+`load` and `unload` files as follows: when it finds one, it first drains every v1 command already present, then
+runs the legacy command, so a leftover legacy file cannot jump between two v1 commands. A companion that has
+adopted v1 never writes the legacy files.
 
 **Malformed and oversized files.** Files over 64 KiB are not read. If the `<id>` can be taken from the file name, the
 app writes a `results/<id>.json` with status `invalid` (message `too large` or `malformed`) and deletes the command,
@@ -85,7 +96,7 @@ Every command has `id`, `type` and optional `args`:
 | `load` | `{ "path": "<app path>" }` | Same as the legacy `load` file, but acknowledged |
 | `unload` | none | Same as the legacy `unload` file |
 | `set_settings` | `{ "context_size": 8192, … }` | Validates and applies only whitelisted keys; the app writes `settings.json` itself |
-| `download_model` | `{ "url": "https://huggingface.co/…", "sha256": "<64 hex>", "target": "models" }` | App-native download to `<target>/<name>.part`; verify the SHA-256, then rename (see rules) |
+| `download_model` | `{ "url": "https://huggingface.co/…", "sha256": "<64 hex>", "target": "models", "fileName": "a.gguf" }` | App-native download to `<target>/<fileName>.part`; verify the SHA-256, then rename (see rules) |
 | `cancel_download` | `{ "id": "<download command id>" }` | Stops and removes the partial file |
 
 ### Results
@@ -105,18 +116,36 @@ who can reach the console. What it changes is the impact of a forged command (`s
 so the riskier commands are gated on the app side instead of trusting the channel:
 
 - `download_model` is off unless the user turns on remote downloads in the app (`remoteDownloads` in
-  `capabilities.json` reports the state, default `false`). `set_settings` only touches the whitelisted keys.
+  `capabilities.json` reports the state, default `false`; the app lists `download_model` in `commands` only while
+  it is on). `set_settings` only touches the whitelisted keys.
 - Optionally the user can set a shared secret in the app and in the companion (`Companion:ControlSecret`), entered
   out of band and never stored under `control/v1/` or in `settings.json`, which are readable over FTP. When a secret
-  is set, every command carries `sig`, an HMAC-SHA-256 of `id`, `type`, `seq` and the canonical `args`, and the app
-  answers unsigned or mismatching commands with status `rejected`, message `unauthorized`, without acting.
+  is set, every command carries `sig` and `issuedAt` (UTC, ISO 8601), and the app answers unsigned, mismatching,
+  expired or replayed commands with status `rejected`, message `unauthorized`, without acting.
+  - `sig` is the lowercase hex of HMAC-SHA-256 over the UTF-8 bytes of the canonical string
+    `v1\n<id>\n<type>\n<seq>\n<issuedAt>\n<canonical args>`, keyed with the UTF-8 bytes of the secret.
+  - *Canonical args* is JSON with object keys sorted by ordinal UTF-16 order at every level, no insignificant
+    whitespace, strings escaped as in RFC 8785 (only `"`, `\\` and control characters; all other characters are
+    emitted as UTF-8), integers without a fraction or exponent, no floats (settings are integers, booleans or
+    strings), and absent keys omitted rather than `null`. An empty `args` is `{}`.
+  - *Replay protection:* the app accepts only commands whose `issuedAt` is at most 10 minutes old (clocks are
+    expected to agree within that window) and whose `seq` is greater than the highest `seq` it has accepted for
+    signed commands, which it persists in `processed.json` and never lowers. A copied command therefore stays
+    rejected after its id has left the journal.
 - Without a secret the console is exactly as exposed as before, which the companion shows in its UI.
 
 ## Rules for the app side
 
 1. Poll `control/v1/commands/` in the same loop that polls `load`/`unload`; process commands in `<seq>` order.
+   The loop must never block on a download: `download_model` only starts a transfer and returns, and the transfer
+   advances in small steps (one chunk per loop pass, or the app's existing background download mechanism) while
+   the loop keeps polling, handling `cancel_download` and publishing the status heartbeat. If the app cannot do
+   this without a thread, it does not advertise `download_model`.
 2. Never act on a path outside the model roots the app already knows. For `download_model`:
    - HTTPS only; `target` names `models` or a mounted drive's model folder.
+   - The destination name is `fileName` from the command, never taken from the URL. It must match
+     `[A-Za-z0-9][A-Za-z0-9._()+ -]*\.gguf` (no separators, no leading dot), and the app checks that the resolved
+     `.part` and final paths stay inside the chosen model folder before writing.
    - The host must be on a fixed allowlist held in the app (default `huggingface.co` and its CDN hosts); the list
      can only be extended in the app, never by a command. Re-check the host on every redirect hop, cap the number
      of redirects, and refuse targets that resolve to loopback, link-local or private address ranges.
@@ -135,7 +164,9 @@ Delivery is at-least-once with idempotent handling, so a crash at any point is s
 2. For a new command the app performs it, then records the id and result in `processed.json`, then writes
    `results/<id>.json`, then deletes the command file. A crash between any two steps replays at most the last
    step's work: handlers are idempotent (loading the loaded model, a repeated download of the same file, and
-   applying the same settings are no-ops).
+   applying the same settings are no-ops). If deleting the command file fails, the app keeps the id in
+   `processed.json` for as long as that file exists (it is exempt from the 256-entry eviction) and retries the
+   deletion on every pass; it does not process further commands past a command it cannot delete.
 3. The companion deletes a result only after it has recorded the outcome durably. The app never deletes results on
    its own; it prunes ones older than 24 hours or beyond the newest 256, so a companion that was down still finds
    them. A companion that restarts re-reads `results/` and ignores ids it already recorded.
@@ -157,7 +188,7 @@ rather than a shared one.
 
 ## How the companion adopts it
 
-- If `capabilities.json` exists, the companion switches load/unload to commands (with results), reads `status.json`
+- If a valid `capabilities.json` exists (see the protocol gate above), the companion switches load/unload to commands (with results), reads `status.json`
   for the lifecycle while 8081 is closed, and enables a Settings page limited to `capabilities.settings`.
 - If `download_model` is advertised, the Downloads page offers "Download on the console" next to the current
   companion-managed transfer.
