@@ -106,12 +106,33 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
         RunAsync(
             async client =>
             {
+                // Keep an existing destination under a backup name until the rename succeeds, so a failed or
+                // cancelled move never leaves the console without the old file.
+                string? backup = null;
                 if (await FindAsync(client, to, cancellationToken) is { Type: FtpObjectType.File })
                 {
-                    await client.DeleteFile(to, cancellationToken);
+                    backup = $"{to}.{Guid.NewGuid():N}.bak";
+                    await client.Rename(to, backup, cancellationToken);
                 }
 
-                await client.Rename(from, to, cancellationToken);
+                try
+                {
+                    await client.Rename(from, to, cancellationToken);
+                }
+                catch
+                {
+                    if (backup is not null)
+                    {
+                        await client.Rename(backup, to, CancellationToken.None);
+                    }
+
+                    throw;
+                }
+
+                if (backup is not null)
+                {
+                    await client.DeleteFile(backup, CancellationToken.None);
+                }
 
                 return true;
             },
