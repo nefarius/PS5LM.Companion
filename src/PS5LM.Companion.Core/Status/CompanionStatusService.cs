@@ -20,6 +20,7 @@ public sealed class CompanionStatusService(
     TimeProvider time)
 {
     private readonly TelemetryCalculator _telemetry = new();
+    private readonly SemaphoreSlim _refreshGate = new(1, 1);
     private Installation? _installation;
     private DateTimeOffset _installationAt = DateTimeOffset.MinValue;
 
@@ -29,7 +30,24 @@ public sealed class CompanionStatusService(
     /// <summary>Forgets the cached installation, e.g. after the user changed the console settings.</summary>
     public void InvalidateInstallation() => _installationAt = DateTimeOffset.MinValue;
 
+    /// <summary>
+    /// Refreshes the status. Calls are serialized, because the monitor, transfers, model control and payload
+    /// launches all refresh, and the telemetry calculator and installation cache are not thread-safe.
+    /// </summary>
     public async Task<CompanionStatus> RefreshAsync(CancellationToken cancellationToken)
+    {
+        await _refreshGate.WaitAsync(cancellationToken);
+        try
+        {
+            return await RefreshCoreAsync(cancellationToken);
+        }
+        finally
+        {
+            _refreshGate.Release();
+        }
+    }
+
+    private async Task<CompanionStatus> RefreshCoreAsync(CancellationToken cancellationToken)
     {
         var now = time.GetUtcNow();
 

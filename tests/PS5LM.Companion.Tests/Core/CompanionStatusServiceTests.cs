@@ -22,6 +22,59 @@ public sealed class CompanionStatusServiceTests
         new(_options, fs, _llama, _sensors, new FakePayloadCatalog(), new FakeElfldrProbe(), _tracker, _time);
 
     [Fact]
+    public async Task Overlapping_refreshes_run_one_at_a_time()
+    {
+        var catalog = new BlockingCatalog();
+        var service = new CompanionStatusService(_options, ConsoleFixtures.PS5LMInstalled(), _llama, _sensors, catalog, new FakeElfldrProbe(), _tracker, _time);
+
+        var first = service.RefreshAsync(CancellationToken.None);
+        await catalog.FirstStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var second = service.RefreshAsync(CancellationToken.None);
+        await Task.Delay(100);
+
+        Assert.Equal(1, catalog.Reads);
+        catalog.Release.SetResult();
+        await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(2, catalog.Reads);
+    }
+
+    [Fact]
+    public async Task A_cancelled_refresh_waiting_for_the_gate_does_not_block_later_refreshes()
+    {
+        var catalog = new BlockingCatalog();
+        var service = new CompanionStatusService(_options, ConsoleFixtures.PS5LMInstalled(), _llama, _sensors, catalog, new FakeElfldrProbe(), _tracker, _time);
+        var first = service.RefreshAsync(CancellationToken.None);
+        await catalog.FirstStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        using var cts = new CancellationTokenSource();
+        var waiting = service.RefreshAsync(cts.Token);
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => waiting);
+        catalog.Release.SetResult();
+        await first.WaitAsync(TimeSpan.FromSeconds(5));
+        await service.RefreshAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    private sealed class BlockingCatalog : IPayloadCatalog
+    {
+        private int _reads;
+
+        public TaskCompletionSource FirstStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public int Reads => Volatile.Read(ref _reads);
+
+        public async Task<PayloadCatalogSnapshot> ReadAsync(CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref _reads);
+            FirstStarted.TrySetResult();
+            await Release.Task.WaitAsync(cancellationToken);
+            return PayloadCatalogSnapshot.NotChecked;
+        }
+    }
+
+    [Fact]
     public async Task Before_a_model_is_loaded_the_status_comes_from_ftp_alone()
     {
         var status = await Create(ConsoleFixtures.PS5LMInstalled()).RefreshAsync(CancellationToken.None);
