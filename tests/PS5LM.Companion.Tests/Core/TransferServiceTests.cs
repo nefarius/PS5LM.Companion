@@ -264,6 +264,23 @@ public sealed class TransferServiceTests
     }
 
     [Fact]
+    public async Task A_failed_save_while_enqueueing_leaves_nothing_behind_and_a_retry_works()
+    {
+        await using var harness = new TransferHarness();
+        await harness.PrimeAsync();
+        harness.TransferStore.FailSaves = true;
+
+        await Assert.ThrowsAsync<IOException>(() => harness.Service.EnqueueAsync(Request(), CancellationToken.None));
+
+        Assert.Empty(harness.Service.Snapshot());
+        harness.TransferStore.FailSaves = false;
+        var (result, transfer) = await harness.Service.EnqueueAsync(Request(), CancellationToken.None);
+
+        Assert.Equal(OperationOutcome.Accepted, result.Outcome);
+        Assert.NotNull(transfer);
+    }
+
+    [Fact]
     public async Task A_restored_transfer_can_run_before_the_first_status_refresh()
     {
         var (first, queued) = await EnqueuedAsync();

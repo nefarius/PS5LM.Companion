@@ -113,7 +113,21 @@ public sealed class TransferService(
             _transfers[transfer.Id] = transfer;
         }
 
-        await PersistAsync(cancellationToken);
+        try
+        {
+            await PersistAsync(cancellationToken);
+        }
+        catch
+        {
+            // Only durable transfers are queued: take the new one back out so it cannot block a retry.
+            lock (_gate)
+            {
+                _transfers.Remove(transfer.Id);
+            }
+
+            throw;
+        }
+
         _queue.Writer.TryWrite(transfer.Id);
         Changed?.Invoke();
         return (new OperationResult(OperationOutcome.Accepted), transfer);
