@@ -131,7 +131,15 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
 
                 if (backup is not null)
                 {
-                    await client.DeleteFile(backup, CancellationToken.None);
+                    // The move already succeeded. A leftover backup is harmless clutter and must not fail it.
+                    try
+                    {
+                        await client.DeleteFile(backup, CancellationToken.None);
+                    }
+                    catch (Exception ex) when (ex is FtpException or SocketException or TimeoutException or IOException)
+                    {
+                        logger.LogWarning(ex, "Moved {To} on the console, but could not delete the backup {Backup}", to, backup);
+                    }
                 }
 
                 return true;
