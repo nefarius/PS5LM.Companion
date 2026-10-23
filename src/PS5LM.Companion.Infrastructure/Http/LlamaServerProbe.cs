@@ -22,6 +22,8 @@ public sealed class LlamaServerProbe(ILlamaServerApi api) : ILlamaServerProbe
             // Refit reports a transport failure (refused, unreachable) as a response without a status code.
             if (metrics.Error is not null and not ApiException || metrics.StatusCode is null)
             {
+                // An aborted probe is not a closed server.
+                cancellationToken.ThrowIfCancellationRequested();
                 return LlamaProbeResult.Closed;
             }
 

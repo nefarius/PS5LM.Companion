@@ -8,11 +8,11 @@
 <PageTitle>Models</PageTitle>
 
 <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
-    <MudText Typo="Typo.h4">Models</MudText>
+    <MudText Typo="Typo.h4" HtmlTag="h1">Models</MudText>
     <MudSpacer />
     <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh" OnClick="ReloadAsync" Disabled="_loading">Refresh</MudButton>
     <MudButton Variant="Variant.Outlined" Color="Color.Warning" StartIcon="@Icons.Material.Filled.Eject"
-               OnClick="UnloadAsync" Disabled="@(Status.LoadedModel is null && !Status.CommandPending)">Unload</MudButton>
+               OnClick="UnloadAsync" Disabled="@(Status.LoadedModel is null || Status.CommandPending || _acting)">Unload</MudButton>
 </MudStack>
 
 @if (_error is not null)
@@ -52,7 +52,7 @@
                 {
                     <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
                                StartIcon="@Icons.Material.Filled.PlayArrow"
-                               Disabled="@(IsLoaded(context) || Status.CommandPending)"
+                               Disabled="@(IsLoaded(context) || Status.CommandPending || _acting)"
                                OnClick="@(() => LoadAsync(context))">Load</MudButton>
                 }
             </MudTd>
@@ -68,23 +68,30 @@
     private bool _loading;
     private string? _error;
     private int _completed;
+    private bool _acting;
+    private string? _installationKey;
 
     protected override async Task OnInitializedAsync()
     {
         _completed = CompletedCount();
+        _installationKey = InstallationKey();
         await ReloadAsync();
     }
 
     protected override async Task OnLiveChangeAsync()
     {
-        // A finished transfer put a new model on the console.
+        // A finished transfer put a new model on the console, or the console (or its state folder) just appeared.
         var completed = CompletedCount();
-        if (completed != _completed)
+        var key = InstallationKey();
+        if (completed != _completed || key != _installationKey)
         {
             _completed = completed;
+            _installationKey = key;
             await ReloadAsync();
         }
     }
+
+    private string? InstallationKey() => StatusService.LastInstallation?.StateRoot?.FtpPath;
 
     private int CompletedCount() => Transfers.Snapshot().Count(t => t.State == TransferState.Completed);
 
@@ -113,9 +120,29 @@
         }
     }
 
-    private async Task LoadAsync(ModelFile model) => Report(await Control.LoadAsync(model.AppPath, CancellationToken.None), $"Loading {model.FileName}");
+    private Task LoadAsync(ModelFile model) =>
+        ActAsync(() => Control.LoadAsync(model.AppPath, CancellationToken.None), $"Loading {model.FileName}");
 
-    private async Task UnloadAsync() => Report(await Control.UnloadAsync(CancellationToken.None), "Unloading the model");
+    private Task UnloadAsync() => ActAsync(() => Control.UnloadAsync(CancellationToken.None), "Unloading the model");
+
+    /// <summary>One command at a time per page: a second click while one is running is ignored.</summary>
+    private async Task ActAsync(Func<Task<OperationResult>> command, string started)
+    {
+        if (_acting)
+        {
+            return;
+        }
+
+        _acting = true;
+        try
+        {
+            Report(await command(), started);
+        }
+        finally
+        {
+            _acting = false;
+        }
+    }
 
     private void Report(OperationResult result, string started) =>
         Snackbar.Add(result.Succeeded ? started : result.Message ?? result.Outcome.ToString(), result.Succeeded ? Severity.Success : Severity.Error);

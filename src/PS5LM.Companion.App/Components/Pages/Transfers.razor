@@ -7,14 +7,14 @@
 
 <PageTitle>Downloads</PageTitle>
 
-<MudText Typo="Typo.h4" Class="mb-2">Downloads</MudText>
+<MudText Typo="Typo.h4" HtmlTag="h1" Class="mb-2">Downloads</MudText>
 
 <MudPaper Class="pa-4 mb-4" Elevation="1">
     <MudText Typo="Typo.h6" Class="mb-2">Find a model on Hugging Face</MudText>
     <MudStack Row="true" AlignItems="AlignItems.Center">
         <MudTextField @bind-Value="_query" Label="Search GGUF repositories" Variant="Variant.Outlined" Margin="Margin.Dense"
                       Immediate="true" OnKeyDown="OnSearchKey" Style="max-width:32rem" />
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SearchAsync" Disabled="_busy">Search</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SearchAsync" Disabled="@(_pending > 0)">Search</MudButton>
         @if (_targets.Count > 1)
         {
             <MudSelect T="string" @bind-Value="_target" Label="Upload to" Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width:14rem">
@@ -53,7 +53,7 @@
                         <td>@file.Name</td>
                         <td>@Display.Bytes(file.SizeBytes)</td>
                         <td><MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Download"
-                                       OnClick="@(() => EnqueueAsync(file))">Download to console</MudButton></td>
+                                       OnClick="@(() => EnqueueAsync(file))" Disabled="@_enqueuing.Contains(file.Name)">Download to console</MudButton></td>
                     </tr>
                 }
                 @if (_files.Count == 0)
@@ -116,7 +116,10 @@
     private string? _target;
     private string? _error;
     private string? _selectedRepo;
-    private bool _busy;
+    private int _pending;
+    private int _searchVersion;
+    private int _selectionVersion;
+    private readonly HashSet<string> _enqueuing = [];
     private IReadOnlyList<string> _targets = [];
     private IReadOnlyList<HubRepo> _repos = [];
     private IReadOnlyList<HubFile>? _files;
@@ -147,19 +150,35 @@
 
     private Task SearchAsync() => GuardHubAsync(async () =>
     {
+        // Latest search wins: an older response that arrives late is dropped.
+        var version = ++_searchVersion;
+        _selectionVersion++;
         _files = null;
-        _repos = await Hub.SearchAsync(_query, CancellationToken.None);
+        _selectedRepo = null;
+        var repos = await Hub.SearchAsync(_query, CancellationToken.None);
+        if (version == _searchVersion)
+        {
+            _repos = repos;
+        }
     });
 
     private Task OnRepoSelected(HubRepo? repo) => repo is null ? Task.CompletedTask : GuardHubAsync(async () =>
     {
-        _selectedRepo = repo.Id;
-        _files = await Hub.ListFilesAsync(repo.Id, CancellationToken.None);
+        // The repository and its file list are committed together, and only for the latest selection.
+        var version = ++_selectionVersion;
+        _files = null;
+        _selectedRepo = null;
+        var files = await Hub.ListFilesAsync(repo.Id, CancellationToken.None);
+        if (version == _selectionVersion)
+        {
+            _selectedRepo = repo.Id;
+            _files = files;
+        }
     });
 
     private async Task GuardHubAsync(Func<Task> action)
     {
-        _busy = true;
+        _pending++;
         _error = null;
         try
         {
@@ -171,18 +190,28 @@
         }
         finally
         {
-            _busy = false;
+            _pending--;
         }
     }
 
     private async Task EnqueueAsync(HubFile file)
     {
-        if (_selectedRepo is null)
+        var repo = _selectedRepo;
+        if (repo is null || !_enqueuing.Add(file.Name))
         {
             return;
         }
 
-        var (result, _) = await Transfers.EnqueueAsync(new TransferRequest(_selectedRepo, file.Name, _target), CancellationToken.None);
+        OperationResult result;
+        try
+        {
+            (result, _) = await Transfers.EnqueueAsync(new TransferRequest(repo, file.Name, _target), CancellationToken.None);
+        }
+        finally
+        {
+            _enqueuing.Remove(file.Name);
+        }
+
         Snackbar.Add(result.Succeeded ? $"Queued {file.Name}" : result.Message ?? result.Outcome.ToString(), result.Succeeded ? Severity.Success : Severity.Error);
     }
 

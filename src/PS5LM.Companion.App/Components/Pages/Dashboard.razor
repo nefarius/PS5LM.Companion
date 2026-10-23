@@ -5,7 +5,7 @@
 
 <MudGrid>
     <MudItem xs="12">
-        <MudText Typo="Typo.h4" Class="mb-2">Status</MudText>
+        <MudText Typo="Typo.h4" HtmlTag="h1" Class="mb-2">Status</MudText>
         @if (Status.Message is { Length: > 0 })
         {
             <MudAlert Severity="@(Status.Lifecycle == CompanionLifecycle.Disconnected ? Severity.Error : Severity.Info)" Class="mb-2">

@@ -22,6 +22,8 @@ public sealed class DashboardTests
         Assert.Contains("PS5LM Companion", html);
         Assert.Contains("_content/MudBlazor/MudBlazor.min.js", html);
         Assert.Contains("_framework/blazor.web.js", html);
+        Assert.Contains("<h1", html);
+        Assert.Contains("aria-label=\"Toggle navigation menu\"", html);
     }
 
     [Fact]
