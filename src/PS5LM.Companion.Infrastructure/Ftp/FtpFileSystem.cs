@@ -78,7 +78,7 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
             async client =>
             {
                 var bytes = Encoding.UTF8.GetBytes(content);
-                var status = await client.UploadBytes(bytes, path, FtpRemoteExists.Overwrite, true, null, cancellationToken);
+                var status = await client.UploadBytes(bytes, path, FtpRemoteExists.NoCheck, true, null, cancellationToken);
                 EnsureUploaded(status, path);
                 return true;
             },
@@ -89,7 +89,7 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
             async client =>
             {
                 var relay = progress is null ? null : new InlineProgress<FtpProgress>(p => progress.Report(p.TransferredBytes));
-                var status = await client.UploadStream(content, path, FtpRemoteExists.Overwrite, true, relay, cancellationToken);
+                var status = await client.UploadStream(content, path, FtpRemoteExists.NoCheck, true, relay, cancellationToken);
                 EnsureUploaded(status, path);
 
                 // Chunk reports arrive synchronously (InlineProgress), so this final report cannot be overtaken.
@@ -133,6 +133,8 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
     // ftpsrv answers MLSD only. It has no NLST, and it does not advertise SIZE or MDTM, so FluentFTP's own
     // FileExists/DirectoryExists fail with 502. It also ignores the path argument of MLSD and lists the working
     // folder, so listings change into the folder first and send no path. Existence is read from the parent's listing.
+    // Uploads use NoCheck for the same reason: FluentFTP's other modes look the file up with NLST first. STOR replaces
+    // an existing file, so nothing is lost.
     private static async Task<FtpListItem?> FindAsync(AsyncFtpClient client, string path, CancellationToken cancellationToken)
     {
         var trimmed = path.TrimEnd('/');
@@ -192,7 +194,16 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
         catch (Exception ex) when (ex is FtpException or SocketException or TimeoutException or IOException
                                        && ex is not ConsoleUnreachableException)
         {
-            logger.LogDebug(ex, "FTP operation against {Host}:{Port} failed", options.Host, options.FtpPort);
+            if (ex is FtpException)
+            {
+                // The console answered and refused the command. That is a bug or an unsupported server, so it is logged.
+                logger.LogWarning(ex, "FTP command against {Host}:{Port} failed", options.Host, options.FtpPort);
+            }
+            else
+            {
+                logger.LogDebug(ex, "FTP operation against {Host}:{Port} failed", options.Host, options.FtpPort);
+            }
+
             throw new ConsoleUnreachableException($"FTP to {options.Host}:{options.FtpPort} failed: {ex.Message}", ex);
         }
         finally
