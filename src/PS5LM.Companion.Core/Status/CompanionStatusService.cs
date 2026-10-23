@@ -23,6 +23,13 @@ public sealed class CompanionStatusService(
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
     private Installation? _installation;
     private DateTimeOffset _installationAt = DateTimeOffset.MinValue;
+    private FtpView? _lastFtp;
+
+    /// <summary>
+    /// FTP is the slowest source, and ftpsrv crawls while the app loads a model. The status is published with the
+    /// last known FTP view after this long, so the lifecycle reflects llama-server and the sensors in time.
+    /// </summary>
+    private static readonly TimeSpan FtpBudget = TimeSpan.FromSeconds(6);
 
     /// <summary>The installation found by the last successful lookup, for services that act on the console.</summary>
     public Installation? LastInstallation => _installation;
@@ -55,7 +62,7 @@ public sealed class CompanionStatusService(
         var sensorTask = sensorProbe.ReadAsync(cancellationToken);
         var catalogTask = payloads.ReadAsync(cancellationToken);
         var elfldrTask = elfldr.IsListeningAsync(cancellationToken);
-        var ftp = await ReadFtpAsync(now, cancellationToken);
+        var ftp = await ReadFtpWithinBudgetAsync(now, cancellationToken);
         var probe = await llamaTask;
         var sensors = await sensorTask;
         var catalog = await catalogTask;
@@ -129,6 +136,20 @@ public sealed class CompanionStatusService(
     {
         _telemetry.Reset();
         return null;
+    }
+
+    private async Task<FtpView> ReadFtpWithinBudgetAsync(DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        budget.CancelAfter(FtpBudget);
+        try
+        {
+            return _lastFtp = await ReadFtpAsync(now, budget.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return _lastFtp ?? new FtpView(false, null, false, false, "The console's FTP service is slow to answer.");
+        }
     }
 
     private async Task<FtpView> ReadFtpAsync(DateTimeOffset now, CancellationToken cancellationToken)

@@ -55,6 +55,43 @@ public sealed class CompanionStatusServiceTests
         await service.RefreshAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
     }
 
+    [Fact]
+    public async Task A_hanging_ftp_service_does_not_delay_the_llama_status()
+    {
+        _llama.Result = new LlamaProbeResult(LlamaServerState.Serving, null, "m.gguf");
+        var service = new CompanionStatusService(_options, new HangingFileSystem(), _llama, _sensors, new FakePayloadCatalog(), new FakeElfldrProbe(), _tracker, _time);
+
+        var status = await service.RefreshAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(15));
+
+        Assert.Equal(CompanionLifecycle.Ready, status.Lifecycle);
+        Assert.False(status.Capabilities.Ftp);
+    }
+
+    private sealed class HangingFileSystem : IPS5FileSystem
+    {
+        private static async Task<T> HangAsync<T>(CancellationToken token)
+        {
+            await Task.Delay(Timeout.Infinite, token);
+            return default!;
+        }
+
+        public Task<bool> DirectoryExistsAsync(string path, CancellationToken cancellationToken) => HangAsync<bool>(cancellationToken);
+
+        public Task<bool> FileExistsAsync(string path, CancellationToken cancellationToken) => HangAsync<bool>(cancellationToken);
+
+        public Task<IReadOnlyList<RemoteEntry>> ListAsync(string path, CancellationToken cancellationToken) => HangAsync<IReadOnlyList<RemoteEntry>>(cancellationToken);
+
+        public Task<string?> ReadTextAsync(string path, int maxBytes, CancellationToken cancellationToken) => HangAsync<string?>(cancellationToken);
+
+        public Task WriteTextAsync(string path, string content, CancellationToken cancellationToken) => HangAsync<bool>(cancellationToken);
+
+        public Task UploadAsync(Stream content, string path, IProgress<long>? progress, CancellationToken cancellationToken) => HangAsync<bool>(cancellationToken);
+
+        public Task MoveAsync(string from, string to, CancellationToken cancellationToken) => HangAsync<bool>(cancellationToken);
+
+        public Task DeleteAsync(string path, CancellationToken cancellationToken) => HangAsync<bool>(cancellationToken);
+    }
+
     private sealed class BlockingCatalog : IPayloadCatalog
     {
         private int _reads;
