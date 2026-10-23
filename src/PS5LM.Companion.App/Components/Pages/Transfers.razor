@@ -208,6 +208,11 @@
         {
             (result, _) = await Transfers.EnqueueAsync(new TransferRequest(repo, file.Name, _target), CancellationToken.None);
         }
+        catch (Exception ex) when (ex is Core.Abstractions.ConsoleUnreachableException or HubUnavailableException)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+            return;
+        }
         finally
         {
             _enqueuing.Remove(file.Name);
