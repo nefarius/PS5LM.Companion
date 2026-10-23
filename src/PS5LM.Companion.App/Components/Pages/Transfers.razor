@@ -117,8 +117,7 @@
     private string? _error;
     private string? _selectedRepo;
     private int _pending;
-    private int _searchVersion;
-    private int _selectionVersion;
+    private int _requestVersion;
     private readonly HashSet<string> _enqueuing = [];
     private IReadOnlyList<string> _targets = [];
     private IReadOnlyList<HubRepo> _repos = [];
@@ -148,45 +147,47 @@
         }
     }
 
-    private Task SearchAsync() => GuardHubAsync(async () =>
+    private Task SearchAsync() => GuardHubAsync(async version =>
     {
-        // Latest search wins: an older response that arrives late is dropped.
-        var version = ++_searchVersion;
-        _selectionVersion++;
         _files = null;
         _selectedRepo = null;
         var repos = await Hub.SearchAsync(_query, CancellationToken.None);
-        if (version == _searchVersion)
+        if (version == _requestVersion)
         {
             _repos = repos;
         }
     });
 
-    private Task OnRepoSelected(HubRepo? repo) => repo is null ? Task.CompletedTask : GuardHubAsync(async () =>
+    private Task OnRepoSelected(HubRepo? repo) => repo is null ? Task.CompletedTask : GuardHubAsync(async version =>
     {
-        // The repository and its file list are committed together, and only for the latest selection.
-        var version = ++_selectionVersion;
+        // The repository and its file list are committed together, and only for the latest request.
         _files = null;
         _selectedRepo = null;
         var files = await Hub.ListFilesAsync(repo.Id, CancellationToken.None);
-        if (version == _selectionVersion)
+        if (version == _requestVersion)
         {
             _selectedRepo = repo.Id;
             _files = files;
         }
     });
 
-    private async Task GuardHubAsync(Func<Task> action)
+    /// <summary>Latest request wins: results and errors of a superseded request are dropped.</summary>
+    private async Task GuardHubAsync(Func<int, Task> action)
     {
+        var version = ++_requestVersion;
         _pending++;
         _error = null;
         try
         {
-            await action();
+            await action(version);
         }
-        catch (HubUnavailableException ex)
+        catch (HubUnavailableException ex) when (version == _requestVersion)
         {
             _error = ex.Message;
+        }
+        catch (HubUnavailableException)
+        {
+            // Superseded by a newer request.
         }
         finally
         {

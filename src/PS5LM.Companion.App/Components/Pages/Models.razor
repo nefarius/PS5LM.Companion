@@ -138,6 +138,10 @@
         {
             Report(await command(), started);
         }
+        catch (Core.Abstractions.ConsoleUnreachableException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
         finally
         {
             _acting = false;
