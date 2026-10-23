@@ -25,21 +25,21 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
     public void Dispose() => _gate.Dispose();
 
     public Task<bool> DirectoryExistsAsync(string path, CancellationToken cancellationToken) =>
-        RunAsync(client => client.DirectoryExists(path, cancellationToken), cancellationToken);
+        RunAsync(async client => path == "/" || await FindAsync(client, path, cancellationToken) is { Type: FtpObjectType.Directory }, cancellationToken);
 
     public Task<bool> FileExistsAsync(string path, CancellationToken cancellationToken) =>
-        RunAsync(client => client.FileExists(path, cancellationToken), cancellationToken);
+        RunAsync(async client => await FindAsync(client, path, cancellationToken) is { Type: FtpObjectType.File }, cancellationToken);
 
     public Task<IReadOnlyList<RemoteEntry>> ListAsync(string path, CancellationToken cancellationToken) =>
         RunAsync<IReadOnlyList<RemoteEntry>>(
             async client =>
             {
-                if (!await client.DirectoryExists(path, cancellationToken))
+                var items = await TryListAsync(client, path, cancellationToken);
+                if (items is null)
                 {
                     return [];
                 }
 
-                var items = await client.GetListing(path, FtpListOption.Auto, cancellationToken);
                 return items
                     .Where(i => i.Type is FtpObjectType.File or FtpObjectType.Directory)
                     .Select(i => new RemoteEntry(
@@ -56,12 +56,12 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
         RunAsync<string?>(
             async client =>
             {
-                if (!await client.FileExists(path, cancellationToken))
+                if (await FindAsync(client, path, cancellationToken) is not { Type: FtpObjectType.File } file)
                 {
                     return null;
                 }
 
-                if (await client.GetFileSize(path, -1, cancellationToken) is var size and > 0 && size > maxBytes)
+                if (file.Size > maxBytes)
                 {
                     return null;
                 }
@@ -106,10 +106,12 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
         RunAsync(
             async client =>
             {
-                if (!await client.MoveFile(from, to, FtpRemoteExists.Overwrite, cancellationToken))
+                if (await FindAsync(client, to, cancellationToken) is { Type: FtpObjectType.File })
                 {
-                    throw new IOException($"Could not rename {from} to {to} on the console.");
+                    await client.DeleteFile(to, cancellationToken);
                 }
+
+                await client.Rename(from, to, cancellationToken);
 
                 return true;
             },
@@ -119,7 +121,7 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
         RunAsync(
             async client =>
             {
-                if (await client.FileExists(path, cancellationToken))
+                if (await FindAsync(client, path, cancellationToken) is { Type: FtpObjectType.File })
                 {
                     await client.DeleteFile(path, cancellationToken);
                 }
@@ -127,6 +129,38 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
                 return true;
             },
             cancellationToken);
+
+    // ftpsrv answers MLSD only. It has no NLST, and it does not advertise SIZE or MDTM, so FluentFTP's own
+    // FileExists/DirectoryExists fail with 502. It also ignores the path argument of MLSD and lists the working
+    // folder, so listings change into the folder first and send no path. Existence is read from the parent's listing.
+    private static async Task<FtpListItem?> FindAsync(AsyncFtpClient client, string path, CancellationToken cancellationToken)
+    {
+        var trimmed = path.TrimEnd('/');
+        var split = trimmed.LastIndexOf('/');
+        if (split < 0 || trimmed.Length == 0)
+        {
+            return null;
+        }
+
+        var parent = split == 0 ? "/" : trimmed[..split];
+        var name = trimmed[(split + 1)..];
+        var items = await TryListAsync(client, parent, cancellationToken);
+        return items?.FirstOrDefault(item => string.Equals(item.Name, name, StringComparison.Ordinal));
+    }
+
+    /// <summary>A missing folder is a normal answer (550), not a failure of the console.</summary>
+    private static async Task<FtpListItem[]?> TryListAsync(AsyncFtpClient client, string path, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await client.SetWorkingDirectory(path, cancellationToken);
+            return await client.GetListing(path, FtpListOption.Auto | FtpListOption.NoPath, cancellationToken);
+        }
+        catch (FtpCommandException ex) when (ex.CompletionCode is "550" or "450")
+        {
+            return null;
+        }
+    }
 
     private static void EnsureUploaded(FtpStatus status, string path)
     {
