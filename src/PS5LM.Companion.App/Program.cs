@@ -35,7 +35,7 @@ public sealed class Program
                 .WriteTo.Console());
 
             var companion = builder.Configuration.GetSection(CompanionOptions.SectionName).Get<CompanionOptions>() ?? new();
-            ListenAddressGuard.EnsureSafe(builder.Configuration["urls"], companion);
+            ListenAddressGuard.EnsureSafe(builder.Configuration, companion);
 
             builder.Services
                 .AddOptions<CompanionOptions>()

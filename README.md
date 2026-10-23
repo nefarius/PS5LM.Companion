@@ -44,7 +44,9 @@ Configuration (environment variables use `__` for nesting):
 | `Companion:AllowAnonymous` | false | Allow a network listener without a token (trusted networks only) |
 
 The companion refuses to start on a non-loopback address without `Companion:AccessToken`, unless
-`Companion:AllowAnonymous` is set. `GET /api/status` returns the normalised console status.
+`Companion:AllowAnonymous` is set. The check covers `urls`/`ASPNETCORE_URLS`, `HTTP_PORTS`, `HTTPS_PORTS` and
+`Kestrel:Endpoints`. The token travels in clear text over plain HTTP: put the companion behind a TLS reverse proxy
+(the login cookie is marked `Secure` on HTTPS) unless the network is trusted. `GET /api/status` returns the normalised console status.
 
 ## Build
 
