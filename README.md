@@ -26,8 +26,27 @@ works before any model exists. It needs no changes to either app.
 
 ```sh
 docker build -f docker/Dockerfile -t ps5lm-companion .
-docker run -p 8080:8080 -v ps5lm-companion:/data ps5lm-companion
+docker run -p 8080:8080 -v ps5lm-companion:/data \
+  -e PS5__Host=192.168.1.50 \
+  -e Companion__AccessToken=change-me \
+  ps5lm-companion
 ```
+
+Configuration (environment variables use `__` for nesting):
+
+| Key | Default | Purpose |
+|---|---|---|
+| `PS5:Host` | required | Console IP or host name |
+| `PS5:FtpPort` / `LlamaPort` / `ExporterPort` | 2121 / 8081 / 9100 | Service ports |
+| `PS5:Variant` | auto | `PS5LM` or `PS5LMPlus`; required when both apps are installed |
+| `PS5:PollIntervalSeconds` | 3 | Status refresh interval |
+| `Companion:AccessToken` | none | Shared secret for the dashboard and `/api` (bearer token or login cookie) |
+| `Companion:AllowAnonymous` | false | Allow a network listener without a token (trusted networks only) |
+
+The companion refuses to start on a non-loopback address without `Companion:AccessToken`, unless
+`Companion:AllowAnonymous` is set. The check covers `urls`/`ASPNETCORE_URLS`, `HTTP_PORTS`, `HTTPS_PORTS` and
+`Kestrel:Endpoints`. The token travels in clear text over plain HTTP: put the companion behind a TLS reverse proxy
+(the login cookie is marked `Secure` on HTTPS) unless the network is trusted. `GET /api/status` returns the normalised console status.
 
 ## Build
 

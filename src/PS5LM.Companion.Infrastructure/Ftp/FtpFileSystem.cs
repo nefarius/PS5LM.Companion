@@ -1,0 +1,174 @@
+using System.Net.Sockets;
+using System.Text;
+
+using FluentFTP;
+using FluentFTP.Exceptions;
+
+using Microsoft.Extensions.Logging;
+
+using PS5LM.Companion.Core.Abstractions;
+using PS5LM.Companion.Core.Discovery;
+using PS5LM.Companion.Core.Domain;
+
+namespace PS5LM.Companion.Infrastructure.Ftp;
+
+/// <summary>
+/// <see cref="IPS5FileSystem"/> over FluentFTP. ftpsrv is a small server, so every operation uses a short-lived
+/// connection and operations are serialised: that avoids stale control connections after the console sleeps.
+/// </summary>
+public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> logger) : IPS5FileSystem, IDisposable
+{
+    private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(5);
+
+    private readonly SemaphoreSlim _gate = new(1, 1);
+
+    public void Dispose() => _gate.Dispose();
+
+    public Task<bool> DirectoryExistsAsync(string path, CancellationToken cancellationToken) =>
+        RunAsync(client => client.DirectoryExists(path, cancellationToken), cancellationToken);
+
+    public Task<bool> FileExistsAsync(string path, CancellationToken cancellationToken) =>
+        RunAsync(client => client.FileExists(path, cancellationToken), cancellationToken);
+
+    public Task<IReadOnlyList<RemoteEntry>> ListAsync(string path, CancellationToken cancellationToken) =>
+        RunAsync<IReadOnlyList<RemoteEntry>>(
+            async client =>
+            {
+                if (!await client.DirectoryExists(path, cancellationToken))
+                {
+                    return [];
+                }
+
+                var items = await client.GetListing(path, FtpListOption.Auto, cancellationToken);
+                return items
+                    .Where(i => i.Type is FtpObjectType.File or FtpObjectType.Directory)
+                    .Select(i => new RemoteEntry(
+                        i.Name,
+                        i.FullName,
+                        i.Type == FtpObjectType.Directory,
+                        i.Size < 0 ? 0 : i.Size,
+                        i.Modified == default ? null : new DateTimeOffset(i.Modified, TimeSpan.Zero)))
+                    .ToList();
+            },
+            cancellationToken);
+
+    public Task<string?> ReadTextAsync(string path, int maxBytes, CancellationToken cancellationToken) =>
+        RunAsync<string?>(
+            async client =>
+            {
+                if (!await client.FileExists(path, cancellationToken))
+                {
+                    return null;
+                }
+
+                if (await client.GetFileSize(path, -1, cancellationToken) is var size and > 0 && size > maxBytes)
+                {
+                    return null;
+                }
+
+                using var stream = new MemoryStream();
+                return await client.DownloadStream(stream, path, token: cancellationToken)
+                    ? Encoding.UTF8.GetString(stream.ToArray())
+                    : null;
+            },
+            cancellationToken);
+
+    public Task WriteTextAsync(string path, string content, CancellationToken cancellationToken) =>
+        RunAsync(
+            async client =>
+            {
+                var bytes = Encoding.UTF8.GetBytes(content);
+                var status = await client.UploadBytes(bytes, path, FtpRemoteExists.Overwrite, true, null, cancellationToken);
+                EnsureUploaded(status, path);
+                return true;
+            },
+            cancellationToken);
+
+    public Task UploadAsync(Stream content, string path, IProgress<long>? progress, CancellationToken cancellationToken) =>
+        RunAsync(
+            async client =>
+            {
+                var relay = progress is null ? null : new Progress<FtpProgress>(p => progress.Report(p.TransferredBytes));
+                var status = await client.UploadStream(content, path, FtpRemoteExists.Overwrite, true, relay, cancellationToken);
+                EnsureUploaded(status, path);
+                return true;
+            },
+            cancellationToken);
+
+    public Task MoveAsync(string from, string to, CancellationToken cancellationToken) =>
+        RunAsync(
+            async client =>
+            {
+                if (!await client.MoveFile(from, to, FtpRemoteExists.Overwrite, cancellationToken))
+                {
+                    throw new IOException($"Could not rename {from} to {to} on the console.");
+                }
+
+                return true;
+            },
+            cancellationToken);
+
+    public Task DeleteAsync(string path, CancellationToken cancellationToken) =>
+        RunAsync(
+            async client =>
+            {
+                if (await client.FileExists(path, cancellationToken))
+                {
+                    await client.DeleteFile(path, cancellationToken);
+                }
+
+                return true;
+            },
+            cancellationToken);
+
+    private static void EnsureUploaded(FtpStatus status, string path)
+    {
+        if (status == FtpStatus.Failed)
+        {
+            throw new IOException($"Uploading {path} to the console failed.");
+        }
+    }
+
+    private async Task<T> RunAsync<T>(Func<AsyncFtpClient, Task<T>> operation, CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            await using var client = new AsyncFtpClient(options.Host, "anonymous", "anonymous", options.FtpPort, CreateConfig());
+            using var connectTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            connectTimeout.CancelAfter(ConnectTimeout);
+            try
+            {
+                await client.Connect(connectTimeout.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                throw new ConsoleUnreachableException($"Timed out connecting to {options.Host}:{options.FtpPort}.");
+            }
+
+            return await operation(client);
+        }
+        catch (Exception ex) when (ex is FtpException or SocketException or TimeoutException or IOException
+                                       && ex is not ConsoleUnreachableException)
+        {
+            logger.LogDebug(ex, "FTP operation against {Host}:{Port} failed", options.Host, options.FtpPort);
+            throw new ConsoleUnreachableException($"FTP to {options.Host}:{options.FtpPort} failed: {ex.Message}", ex);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private static FtpConfig CreateConfig() => new()
+    {
+        ConnectTimeout = (int)ConnectTimeout.TotalMilliseconds,
+        DataConnectionConnectTimeout = (int)ConnectTimeout.TotalMilliseconds,
+        ReadTimeout = 20_000,
+        RetryAttempts = 1,
+        // ftpsrv speaks plain FTP, and its listings are Unix style.
+        EncryptionMode = FtpEncryptionMode.None,
+        DataConnectionType = FtpDataConnectionType.AutoPassive,
+        SocketKeepAlive = false,
+    };
+}
