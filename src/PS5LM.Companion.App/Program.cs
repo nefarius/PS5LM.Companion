@@ -1,3 +1,12 @@
+using System.Text.Json.Serialization;
+
+using FastEndpoints;
+
+using PS5LM.Companion.App.Monitoring;
+using PS5LM.Companion.App.Security;
+using PS5LM.Companion.Core.Status;
+using PS5LM.Companion.Infrastructure;
+
 using Serilog;
 
 namespace PS5LM.Companion.App;
@@ -25,12 +34,32 @@ public sealed class Program
                 .ReadFrom.Services(services)
                 .WriteTo.Console());
 
+            var companion = builder.Configuration.GetSection(CompanionOptions.SectionName).Get<CompanionOptions>() ?? new();
+            ListenAddressGuard.EnsureSafe(builder.Configuration["urls"], companion);
+
+            builder.Services
+                .AddOptions<CompanionOptions>()
+                .Bind(builder.Configuration.GetSection(CompanionOptions.SectionName))
+                .ValidateDataAnnotations()
+                .ValidateOnStart();
+
             builder.Services.AddHealthChecks();
+            builder.Services.AddFastEndpoints();
+            builder.Services.AddPS5Connectivity(builder.Configuration);
+            builder.Services.AddSingleton<CompanionStatusStore>();
+            builder.Services.AddHostedService<StatusMonitor>();
 
             var app = builder.Build();
 
             app.UseSerilogRequestLogging();
+            app.UseMiddleware<AccessTokenMiddleware>();
             app.MapHealthChecks("/health");
+            app.MapLogin();
+            app.UseFastEndpoints(config =>
+            {
+                config.Endpoints.RoutePrefix = "api";
+                config.Serializer.Options.Converters.Add(new JsonStringEnumConverter());
+            });
 
             await app.RunAsync();
             return 0;

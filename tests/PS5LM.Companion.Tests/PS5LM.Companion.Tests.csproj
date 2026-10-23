@@ -11,6 +11,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio">
@@ -25,6 +26,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\PS5LM.Companion.App\PS5LM.Companion.App.csproj" />
+    <ProjectReference Include="..\..\src\PS5LM.Companion.Core\PS5LM.Companion.Core.csproj" />
+    <ProjectReference Include="..\..\src\PS5LM.Companion.Infrastructure\PS5LM.Companion.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
