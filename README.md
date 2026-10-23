@@ -42,9 +42,34 @@ Configuration (environment variables use `__` for nesting):
 | `PS5:PollIntervalSeconds` | 3 | Status refresh interval |
 | `Companion:AccessToken` | none | Shared secret for the dashboard and `/api` (bearer token or login cookie) |
 | `Companion:AllowAnonymous` | false | Allow a network listener without a token (trusted networks only) |
+| `Companion:DataDirectory` | `data` | Download cache and transfer list (`/data` in the Docker image; mount a volume) |
+| `HuggingFace:Token` | none | Access token, only for gated or private repositories |
 
 The companion refuses to start on a non-loopback address without `Companion:AccessToken`, unless
-`Companion:AllowAnonymous` is set. `GET /api/status` returns the normalised console status.
+`Companion:AllowAnonymous` is set.
+
+## REST API
+
+All routes live under `/api` and need the token when one is configured (`Authorization: Bearer <token>`).
+
+| Route | Purpose |
+|---|---|
+| `GET /api/status` | Normalised console status |
+| `GET /api/models` | Models on the console and the storage locations that accept uploads |
+| `POST /api/models/load` | `{ "path": "<appPath from /api/models>" }`; only known model paths are accepted |
+| `POST /api/models/unload` | Unload the current model |
+| `GET /api/hub/search?q=` | Search Hugging Face for GGUF repositories |
+| `GET /api/hub/files?repo=owner/name` | List a repository's `.gguf` files |
+| `GET` / `POST /api/transfers` | List, or queue `{ "repo", "fileName", "targetRoot"? }` |
+| `DELETE /api/transfers/{id}` | Cancel a transfer |
+
+Load and unload write the apps' command file and return `202`; the app picks it up within about a second and
+restarts its llama-server. A second command while one is unconsumed returns `409`. If the file is never consumed,
+the app is probably not running, which the companion cannot tell apart from "running without a model" while
+port 8081 is closed.
+
+Transfers run one at a time: download to the cache (resumes after a dropped connection or restart), verify size and
+SHA-256, upload as `name.gguf.part`, then rename. The apps never see a half-copied model.
 
 ## Build
 

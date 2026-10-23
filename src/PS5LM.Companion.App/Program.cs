@@ -43,11 +43,15 @@ public sealed class Program
                 .ValidateDataAnnotations()
                 .ValidateOnStart();
 
+            // IResult-based endpoints use the minimal-API serializer, not FastEndpoints': keep enums readable in both.
+            builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
             builder.Services.AddHealthChecks();
             builder.Services.AddFastEndpoints();
             builder.Services.AddPS5Connectivity(builder.Configuration);
+            builder.Services.AddModelManagement(builder.Configuration);
             builder.Services.AddSingleton<CompanionStatusStore>();
             builder.Services.AddHostedService<StatusMonitor>();
+            builder.Services.AddHostedService<TransferWorker>();
 
             var app = builder.Build();
 

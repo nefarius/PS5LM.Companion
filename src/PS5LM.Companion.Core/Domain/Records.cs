@@ -35,7 +35,11 @@ public sealed record StorageRoot(string Name, string FtpPath, string AppPath, bo
 /// <param name="SizeBytes">Size in bytes.</param>
 /// <param name="Location">The storage root's display name (e.g. "Internal storage", "USB 0").</param>
 /// <param name="Loaded">Whether llama-server reports this model as the loaded one.</param>
-public sealed record ModelFile(string FileName, string FtpPath, string AppPath, long SizeBytes, string Location, bool Loaded);
+public sealed record ModelFile(string FileName, string FtpPath, string AppPath, long SizeBytes, string Location, bool Loaded)
+{
+    /// <summary>Vision projector files (<c>mmproj-*.gguf</c>) sit beside a model and are not loadable on their own.</summary>
+    public bool IsProjector => FileName.StartsWith("mmproj", StringComparison.OrdinalIgnoreCase);
+}
 
 /// <summary>What the companion can do against the console right now. Features degrade independently.</summary>
 public sealed record ConsoleCapabilities(
