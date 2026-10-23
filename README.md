@@ -15,12 +15,14 @@ works before any model exists. It needs no changes to either app.
 - Lists models on the console; loads and unloads a model through the apps' command files.
 - Downloads GGUF models from Hugging Face on the companion and uploads them to the console.
 - Live telemetry from llama-server (port 8081) and ps5-exporter (port 9100) when they are available.
+- Shows whether the PS5LM Plus payloads are installed, records Payload Manager launches, and checks ftpsrv, elfldr and ps5-exporter directly. Launches an installed payload through [PS5 Payload Manager](https://github.com/itsPLK/ps5-payload-manager).
 
 ## Support scope
 
 - Companion: Linux, Windows or macOS with .NET 10, or the Docker image (linux/amd64, linux/arm64 via .NET base images).
 - Console: jailbroken PS5 running PS5LM or PS5LM Plus with [ftpsrv](https://github.com/ps5-payload-dev/ftpsrv) on port 2121.
-- Not supported: launching or killing the app remotely, editing the apps' `settings.json`.
+- Payload launch needs [PS5 Payload Manager](https://github.com/itsPLK/ps5-payload-manager) on port 8084 and elfldr already listening on port 9021. Payload Manager cannot start elfldr itself.
+- Not supported: launching or killing the PS5LM app remotely, editing the apps' `settings.json`, or proving that kstuff-lite, etaHEN and ShadowMountPlus stay active after a launch. Payload Manager only confirms that it sent the file.
 
 ## Quick start
 
@@ -38,6 +40,8 @@ Configuration (environment variables use `__` for nesting):
 |---|---|---|
 | `PS5:Host` | required | Console IP or host name |
 | `PS5:FtpPort` / `LlamaPort` / `ExporterPort` | 2121 / 8081 / 9100 | Service ports |
+| `PS5:ElfldrPort` | 9021 | elfldr, required before Payload Manager can launch anything |
+| `PS5:PayloadManagerUrl` | `http://{Host}:8084` | Payload Manager base URL when it is not on port 8084 of the console |
 | `PS5:Variant` | auto | `PS5LM` or `PS5LMPlus`; required when both apps are installed |
 | `PS5:PollIntervalSeconds` | 3 | Status refresh interval |
 | `Companion:AccessToken` | none | Shared secret for the dashboard and `/api` (bearer token or login cookie) |
@@ -55,7 +59,7 @@ The companion refuses to start on a non-loopback address without `Companion:Acce
 Open `http://<companion>:8080/`. The dashboard is Blazor Server with MudBlazor and updates live over its circuit; it
 needs no extra configuration.
 
-- **Status**: lifecycle, loaded model, generation speed, sensors and drive space.
+- **Status**: lifecycle, loaded model, generation speed, sensors, drive space, and the payload dependencies. Launch sends an installed payload through Payload Manager. The result confirms the file was transferred. For kstuff-lite, etaHEN and ShadowMountPlus it does not confirm that the payload is still active.
 - **Models**: models on the console with Load and Unload.
 - **Downloads**: search Hugging Face, queue a file, watch download and upload progress, cancel.
 
@@ -67,7 +71,9 @@ All routes live under `/api` and need the token when one is configured (`Authori
 
 | Route | Purpose |
 |---|---|
-| `GET /api/status` | Normalised console status |
+| `GET /api/status` | Normalised console status, including payload dependencies |
+| `GET /api/dependencies` | Payload installation and health from the latest status check |
+| `POST /api/dependencies/{id}/launch` | Launch an installed payload by its stable id (`kstuff-lite`, `etahen`, `shadowmountplus`, `ftpsrv`) |
 | `GET /api/models` | Models on the console and the storage locations that accept uploads |
 | `POST /api/models/load` | `{ "path": "<appPath from /api/models>" }`; only known model paths are accepted |
 | `POST /api/models/unload` | Unload the current model |

@@ -29,6 +29,8 @@ public static class ServiceCollectionExtensions
             .AddOptions<PS5Options>()
             .Bind(configuration.GetSection(PS5Options.SectionName))
             .ValidateDataAnnotations()
+            .Validate(static options => string.IsNullOrWhiteSpace(options.PayloadManagerUrl) || IsHttpUrl(options.PayloadManagerUrl),
+                "PS5:PayloadManagerUrl must be an absolute http or https URL.")
             .ValidateOnStart();
         services.AddSingleton(sp => sp.GetRequiredService<IOptions<PS5Options>>().Value);
         services.AddSingleton(TimeProvider.System);
@@ -44,13 +46,27 @@ public static class ServiceCollectionExtensions
             .ConfigureHttpClient((sp, client) => client.BaseAddress = BaseAddress(sp, o => o.ExporterPort))
             .AddResilienceHandler("exporter-probe", builder => builder.AddTimeout(ProbeTimeout));
 
+        services
+            .AddRefitGeneratedClient<IPayloadManagerApi>()
+            .ConfigureHttpClient((sp, client) => client.BaseAddress = sp.GetRequiredService<PS5Options>().PayloadManagerBaseAddress())
+            .AddResilienceHandler("payload-manager", builder => builder.AddTimeout(ProbeTimeout));
+
         services.AddSingleton<ILlamaServerProbe, LlamaServerProbe>();
         services.AddSingleton<IConsoleSensorProbe, ExporterSensorProbe>();
+        services.AddSingleton<PayloadManagerClient>();
+        services.AddSingleton<IPayloadCatalog>(sp => sp.GetRequiredService<PayloadManagerClient>());
+        services.AddSingleton<IPayloadLauncher>(sp => sp.GetRequiredService<PayloadManagerClient>());
+        services.AddSingleton<IElfldrProbe, TcpElfldrProbe>();
 
         services.AddSingleton<LoadTracker>();
         services.AddSingleton<CompanionStatusService>();
+        services.AddSingleton<DependencyLaunchService>();
         return services;
     }
+
+    private static bool IsHttpUrl(string value) =>
+        Uri.TryCreate(value.Trim(), UriKind.Absolute, out var uri)
+        && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 
     /// <summary>Registers model listing, load/unload, the Hugging Face hub and the transfer pipeline.</summary>
     public static IServiceCollection AddModelManagement(

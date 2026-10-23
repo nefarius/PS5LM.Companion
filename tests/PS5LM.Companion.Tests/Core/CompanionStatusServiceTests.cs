@@ -18,7 +18,8 @@ public sealed class CompanionStatusServiceTests
 
     public CompanionStatusServiceTests() => _tracker = new LoadTracker(_time);
 
-    private CompanionStatusService Create(FakeFileSystem fs) => new(_options, fs, _llama, _sensors, _tracker, _time);
+    private CompanionStatusService Create(FakeFileSystem fs) =>
+        new(_options, fs, _llama, _sensors, new FakePayloadCatalog(), new FakeElfldrProbe(), _tracker, _time);
 
     [Fact]
     public async Task Before_a_model_is_loaded_the_status_comes_from_ftp_alone()

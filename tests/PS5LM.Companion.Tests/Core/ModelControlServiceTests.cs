@@ -18,7 +18,7 @@ public sealed class ModelControlServiceTests
 
     private ModelControlService Create(FakeFileSystem fs)
     {
-        var status = new CompanionStatusService(new PS5Options { Host = "ps5" }, fs, new FakeLlamaProbe(), new FakeSensorProbe(), _tracker, _time);
+        var status = new CompanionStatusService(new PS5Options { Host = "ps5" }, fs, new FakeLlamaProbe(), new FakeSensorProbe(), new FakePayloadCatalog(), new FakeElfldrProbe(), _tracker, _time);
         return new ModelControlService(fs, new ModelCatalog(fs), status, _store, _tracker);
     }
 

@@ -41,6 +41,40 @@ internal static class Display
         _ => Color.Default,
     };
 
+    public static string Requirement(DependencyRequirement requirement) => requirement switch
+    {
+        DependencyRequirement.Required => "Required",
+        DependencyRequirement.Recommended => "Recommended",
+        DependencyRequirement.Bundled => "Bundled",
+        _ => requirement.ToString(),
+    };
+
+    public static string Presence(DependencyPresence presence) => presence switch
+    {
+        DependencyPresence.Unknown => "Unknown",
+        DependencyPresence.NotInstalled => "Not installed",
+        DependencyPresence.Installed => "Installed",
+        DependencyPresence.Bundled => "Bundled",
+        _ => presence.ToString(),
+    };
+
+    public static string Health(DependencyHealth health) => health switch
+    {
+        DependencyHealth.Unavailable => "Unavailable",
+        DependencyHealth.Unknown => "Unknown",
+        DependencyHealth.LaunchRecorded => "Launch recorded",
+        DependencyHealth.Verified => "Verified",
+        _ => health.ToString(),
+    };
+
+    public static Color HealthColor(DependencyHealth health) => health switch
+    {
+        DependencyHealth.Verified => Color.Success,
+        DependencyHealth.LaunchRecorded => Color.Info,
+        DependencyHealth.Unknown => Color.Warning,
+        _ => Color.Default,
+    };
+
     public static Color TransferColor(TransferState state) => state switch
     {
         TransferState.Completed => Color.Success,

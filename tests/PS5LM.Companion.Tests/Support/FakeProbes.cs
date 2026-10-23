@@ -26,3 +26,46 @@ internal sealed class FakeSensorProbe : IConsoleSensorProbe
 
     public Task<ConsoleSensors?> ReadAsync(CancellationToken cancellationToken) => Task.FromResult(Sensors);
 }
+
+internal sealed class FakePayloadCatalog : IPayloadCatalog
+{
+    public PayloadCatalogSnapshot Snapshot { get; set; } = PayloadCatalogSnapshot.NotChecked;
+
+    public int Reads { get; private set; }
+
+    public Task<PayloadCatalogSnapshot> ReadAsync(CancellationToken cancellationToken)
+    {
+        Reads++;
+        return Task.FromResult(Snapshot);
+    }
+}
+
+internal sealed class FakePayloadLauncher : IPayloadLauncher
+{
+    public List<string> Launched { get; } = [];
+
+    public PayloadLaunchResult Result { get; set; } = new(true, 200, "OK");
+
+    public TaskCompletionSource? Entered { get; set; }
+
+    public TaskCompletionSource? Release { get; set; }
+
+    public async Task<PayloadLaunchResult> LaunchAsync(string slot, CancellationToken cancellationToken)
+    {
+        Entered?.TrySetResult();
+        if (Release is not null)
+        {
+            await Release.Task.WaitAsync(cancellationToken);
+        }
+
+        Launched.Add(slot);
+        return Result;
+    }
+}
+
+internal sealed class FakeElfldrProbe : IElfldrProbe
+{
+    public bool Listening { get; set; }
+
+    public Task<bool> IsListeningAsync(CancellationToken cancellationToken) => Task.FromResult(Listening);
+}

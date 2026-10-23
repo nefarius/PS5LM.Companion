@@ -73,6 +73,23 @@ public sealed record ConsoleSensors(
     double? FanDuty,
     IReadOnlyList<DriveSpace> Drives);
 
+/// <summary>One PS5LM Plus payload as the dashboard and REST API present it.</summary>
+/// <param name="Id">Stable Payload Manager id, such as <c>etahen</c>.</param>
+/// <param name="Name">Text shown to the user.</param>
+/// <param name="Requirement">Required, recommended or bundled.</param>
+/// <param name="Presence">Installed, missing, bundled, or not known.</param>
+/// <param name="Health">Verified, launch recorded, unknown or unavailable.</param>
+/// <param name="CanLaunch">Whether a Launch action can be offered for the current slot.</param>
+/// <param name="Message">Why the companion reached this conclusion.</param>
+public sealed record DependencyStatus(
+    string Id,
+    string Name,
+    DependencyRequirement Requirement,
+    DependencyPresence Presence,
+    DependencyHealth Health,
+    bool CanLaunch,
+    string Message);
+
 /// <summary>The normalised state the dashboard and REST API present.</summary>
 public sealed record CompanionStatus(
     CompanionLifecycle Lifecycle,
@@ -84,7 +101,10 @@ public sealed record CompanionStatus(
     TelemetrySnapshot? Telemetry,
     ConsoleSensors? Sensors,
     string? Message,
-    DateTimeOffset UpdatedAt)
+    DateTimeOffset UpdatedAt,
+    bool PayloadManagerAvailable,
+    string? PayloadManagerMessage,
+    IReadOnlyList<DependencyStatus> Dependencies)
 {
     public static CompanionStatus Initial { get; } = new(
         CompanionLifecycle.Disconnected,
@@ -96,5 +116,8 @@ public sealed record CompanionStatus(
         null,
         null,
         "Waiting for the first status check.",
-        DateTimeOffset.MinValue);
+        DateTimeOffset.MinValue,
+        false,
+        null,
+        PayloadDependencies.Evaluate(PayloadCatalogSnapshot.NotChecked, false, false, false, PayloadDependencies.DefaultElfldrPort));
 }

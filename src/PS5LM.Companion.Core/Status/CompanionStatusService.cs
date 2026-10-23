@@ -14,6 +14,8 @@ public sealed class CompanionStatusService(
     IPS5FileSystem fileSystem,
     ILlamaServerProbe llama,
     IConsoleSensorProbe sensorProbe,
+    IPayloadCatalog payloads,
+    IElfldrProbe elfldr,
     LoadTracker loadTracker,
     TimeProvider time)
 {
@@ -33,9 +35,13 @@ public sealed class CompanionStatusService(
 
         var llamaTask = llama.ProbeAsync(cancellationToken);
         var sensorTask = sensorProbe.ReadAsync(cancellationToken);
+        var catalogTask = payloads.ReadAsync(cancellationToken);
+        var elfldrTask = elfldr.IsListeningAsync(cancellationToken);
         var ftp = await ReadFtpAsync(now, cancellationToken);
         var probe = await llamaTask;
         var sensors = await sensorTask;
+        var catalog = await catalogTask;
+        var elfldrListening = await elfldrTask;
 
         var telemetry = probe.State == LlamaServerState.Serving ? _telemetry.Update(probe.MetricsText, now) : ResetTelemetry();
         if (probe.State == LlamaServerState.Serving)
@@ -63,7 +69,10 @@ public sealed class CompanionStatusService(
             telemetry,
             sensors,
             Message(lifecycle, ftp),
-            now);
+            now,
+            catalog.Available,
+            catalog.Available ? null : catalog.Message,
+            PayloadDependencies.Evaluate(catalog, ftp.Reachable, sensors is not null, elfldrListening, options.ElfldrPort));
     }
 
     private static CompanionLifecycle DetermineLifecycle(

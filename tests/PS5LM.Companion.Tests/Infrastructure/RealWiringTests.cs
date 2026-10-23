@@ -20,6 +20,8 @@ public sealed class RealWiringTests
                 ["PS5:FtpPort"] = "1",
                 ["PS5:LlamaPort"] = "1",
                 ["PS5:ExporterPort"] = "1",
+                ["PS5:ElfldrPort"] = "1",
+                ["PS5:PayloadManagerUrl"] = "http://127.0.0.1:1/",
                 ["Companion:DataDirectory"] = Path.Combine(Path.GetTempPath(), "ps5lm-tests", Guid.NewGuid().ToString("N")),
             })
             .Build();
@@ -44,6 +46,11 @@ public sealed class RealWiringTests
         Assert.False(status.Capabilities.Ftp);
         Assert.False(status.Capabilities.Telemetry);
         Assert.False(status.Capabilities.Sensors);
+        Assert.False(status.PayloadManagerAvailable);
+        Assert.Equal(6, status.Dependencies.Count);
+        Assert.Equal(DependencyHealth.Unknown, status.Dependencies.Single(dependency => dependency.Id == PayloadDependencies.Elfldr).Health);
+        Assert.Equal(DependencyPresence.Bundled, status.Dependencies.Single(dependency => dependency.Id == PayloadDependencies.Exporter).Presence);
+        Assert.DoesNotContain(status.Dependencies, dependency => dependency.CanLaunch);
     }
 
     [Fact]

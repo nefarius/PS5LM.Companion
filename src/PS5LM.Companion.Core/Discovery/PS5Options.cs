@@ -25,6 +25,15 @@ public sealed class PS5Options
     [Range(1, 65535)]
     public int ExporterPort { get; set; } = 9100;
 
+    /// <summary>elfldr's port. Payload Manager forwards launches here and cannot start elfldr itself.</summary>
+    [Range(1, 65535)]
+    public int ElfldrPort { get; set; } = 9021;
+
+    /// <summary>
+    /// Absolute http(s) URL of PS5 Payload Manager. Empty derives <c>http://{Host}:8084</c>.
+    /// </summary>
+    public string? PayloadManagerUrl { get; set; }
+
     /// <summary>Forces a variant; <see cref="PS5Variant.Unknown"/> detects it from the installed title folders.</summary>
     public PS5Variant Variant { get; set; } = PS5Variant.Unknown;
 
@@ -39,4 +48,27 @@ public sealed class PS5Options
     /// <summary>How long after a load request the lifecycle stays "loading" while port 8081 is still closed.</summary>
     [Range(1, 3600)]
     public int LoadGraceSeconds { get; set; } = 600;
+
+    /// <summary>The Payload Manager base address, derived from <see cref="Host"/> when <see cref="PayloadManagerUrl"/> is empty.</summary>
+    public Uri PayloadManagerBaseAddress()
+    {
+        if (string.IsNullOrWhiteSpace(PayloadManagerUrl))
+        {
+            return new UriBuilder(Uri.UriSchemeHttp, Host, PayloadDependencies.DefaultPayloadManagerPort).Uri;
+        }
+
+        if (!Uri.TryCreate(PayloadManagerUrl.Trim(), UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            throw new InvalidOperationException("PS5:PayloadManagerUrl must be an absolute http or https URL.");
+        }
+
+        var builder = new UriBuilder(uri);
+        if (!builder.Path.EndsWith('/'))
+        {
+            builder.Path += "/";
+        }
+
+        return builder.Uri;
+    }
 }
