@@ -39,7 +39,9 @@ control/v1/
   results/<id>.json        written by the app, deleted by the companion once it has recorded the outcome
 ```
 
-`<id>` is a companion-chosen UUID. Files are written to `<name>.tmp` and renamed, so the reader never sees a
+`<id>` is a companion-chosen UUID. The app requires the file-name id and the JSON `id` to be the same canonical
+lowercase UUID (`8-4-4-4-12` hex) and validates it before it builds `results/<id>.json` or any other path from it;
+anything else is `invalid`, or deleted and counted in `lastError` when no usable id exists. Files are written to `<name>.tmp` and renamed, so the reader never sees a
 partial file; the app ignores `*.tmp`.
 
 **Ordering.** `<seq>` is a zero-padded 12-digit counter that the companion increments per command and also repeats
@@ -48,7 +50,8 @@ processed after all well-formed ones, ordered by modification time and then name
 message `seq mismatch`) a command whose file-name `seq` differs from its JSON `seq`, so renaming a file cannot
 change its place in the order.
 
-The companion persists the next `seq` durably (written before the command file is created) and never lowers it. If
+The companion keeps a durable, monotonic `seq` high-water mark, with or without HMAC, independent of the app's
+bounded id journal; it is advanced and flushed before each command file is created and never lowered. If
 it ever loses that state, it first lists `commands/` and `results/` and continues above the highest `seq` it finds,
 and a new command never overwrites an existing file name.
 
@@ -70,6 +73,13 @@ so the companion sees a rejection rather than silence. A file whose name has no 
   "settings": ["context_size", "gpu_layers", "threads", "temperature"],
   "remoteDownloads": false }
 ```
+
+**Protocol gate and trust.** `capabilities.json` is app-owned metadata, but FTP gives every writer the same rights, and
+the command HMAC does not authenticate this file. The companion therefore adopts v1 only when `protocol` is exactly
+`1` and the file is authenticated: it carries an HMAC `sig` (same secret and canonical rules as commands) over its
+content, or the operator has explicitly confirmed that every FTP writer on this console is trusted (the default
+for an unsigned file is to stay on the legacy files). Unknown `protocol` values or an invalid `sig` mean legacy
+mode, and the companion re-checks the gate on every start and when the file changes.
 
 ### `status.json`
 
@@ -149,6 +159,10 @@ so the riskier commands are gated on the app side instead of trusting the channe
    - The host must be on a fixed allowlist held in the app (default `huggingface.co` and its CDN hosts); the list
      can only be extended in the app, never by a command. Re-check the host on every redirect hop, cap the number
      of redirects, and refuse targets that resolve to loopback, link-local or private address ranges.
+   - A download stays active under its id: the app records it in `processed.json` and writes `results/<id>.json`
+     only at a terminal state: `ok` after the SHA-256 check and rename, `failed` on digest mismatch, transfer error
+     or cancellation. An active download is never started a second time, and a `load` that targets its `.part` or
+     final file is rejected with `busy`. After an app restart a `.part` file is discarded, not resumed.
    - `sha256` is mandatory. The app compares the exact digest of the finished `.part` file and renames it only on a
      match; a missing or mismatching digest deletes the `.part` and yields `failed`.
 3. Settings: reject unknown keys and out-of-range values, apply atomically, and rewrite `settings.json` from the
@@ -190,7 +204,7 @@ rather than a shared one.
 
 - If a valid `capabilities.json` exists (see the protocol gate above), the companion switches load/unload to commands (with results), reads `status.json`
   for the lifecycle while 8081 is closed, and enables a Settings page limited to `capabilities.settings`.
-- If `download_model` is advertised, the Downloads page offers "Download on the console" next to the current
+- If `download_model` is advertised and `remoteDownloads` is `true`, the Downloads page offers "Download on the console" next to the current
   companion-managed transfer.
 - If it does not exist, nothing changes: the legacy files and FTP stay the contract.
 
