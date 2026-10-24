@@ -74,7 +74,10 @@ public sealed class CompanionStatusService(
             loadTracker.Clear();
         }
 
-        var lifecycle = DetermineLifecycle(probe, telemetry, ftp.Reachable || ftp.Stale, loadTracker.IsLoading(TimeSpan.FromSeconds(options.LoadGraceSeconds)));
+        var loadRequested = loadTracker.IsLoading(TimeSpan.FromSeconds(options.LoadGraceSeconds));
+
+        // A slow FTP read only counts as "still there" while a load is under way: the console is busy loading then.
+        var lifecycle = DetermineLifecycle(probe, telemetry, ftp.Reachable || (ftp.Stale && loadRequested), loadRequested);
 
         var capabilities = new ConsoleCapabilities(
             Ftp: ftp.Reachable,

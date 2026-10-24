@@ -80,6 +80,16 @@ public sealed class CompanionStatusServiceTests
         Assert.False(status.Capabilities.Ftp);
     }
 
+    [Fact]
+    public async Task A_slow_ftp_service_without_a_requested_load_is_disconnected()
+    {
+        var service = new CompanionStatusService(_options, new HangingFileSystem(), _llama, _sensors, new FakePayloadCatalog(), new FakeElfldrProbe(), _tracker, _time);
+
+        var status = await service.RefreshAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(15));
+
+        Assert.Equal(CompanionLifecycle.Disconnected, status.Lifecycle);
+    }
+
     private sealed class HangingFileSystem : IPS5FileSystem
     {
         private static async Task<T> HangAsync<T>(CancellationToken token)
