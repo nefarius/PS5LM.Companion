@@ -27,6 +27,19 @@ public sealed class DashboardTests
     }
 
     [Fact]
+    public async Task The_status_page_explains_the_payload_launch_limit()
+    {
+        await using var factory = new CompanionFactory();
+        using var client = factory.CreateClient();
+
+        var html = await client.GetStringAsync("/");
+
+        Assert.Contains("Payloads", html);
+        Assert.Contains("kstuff-lite", html);
+        Assert.Contains("only means Payload Manager sent the file", html);
+    }
+
+    [Fact]
     public async Task The_dashboard_is_behind_the_access_token()
     {
         await using var factory = new CompanionFactory { AccessToken = "secret" };

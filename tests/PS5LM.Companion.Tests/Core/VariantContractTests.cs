@@ -49,7 +49,7 @@ public sealed class VariantContractTests
     private (CompanionStatusService Status, ModelControlService Control) Create(FakeFileSystem fs)
     {
         var tracker = new LoadTracker(_time);
-        var status = new CompanionStatusService(new PS5Options { Host = "ps5" }, fs, _llama, new FakeSensorProbe(), tracker, _time);
+        var status = new CompanionStatusService(new PS5Options { Host = "ps5" }, fs, _llama, new FakeSensorProbe(), new FakePayloadCatalog(), new FakeElfldrProbe(), tracker, _time);
         return (status, new ModelControlService(fs, new ModelCatalog(fs), status, _store, tracker));
     }
 

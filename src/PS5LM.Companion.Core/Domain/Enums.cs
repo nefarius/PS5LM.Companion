@@ -47,3 +47,54 @@ public enum LlamaServerState
     /// <summary>The server serves metrics.</summary>
     Serving = 2,
 }
+
+/// <summary>How important a console payload is for a first run of PS5LM Plus.</summary>
+public enum DependencyRequirement
+{
+    /// <summary>The app does not run without it.</summary>
+    Required = 0,
+
+    /// <summary>The app runs, and installation, telemetry or launching other payloads needs it.</summary>
+    Recommended = 1,
+
+    /// <summary>Shipped inside PS5LM Plus and started by the app.</summary>
+    Bundled = 2,
+}
+
+/// <summary>Whether Payload Manager has the payload, as far as the companion could see.</summary>
+public enum DependencyPresence
+{
+    /// <summary>Payload Manager has not been checked, or it did not answer.</summary>
+    Unknown = 0,
+
+    /// <summary>The payload is absent from Payload Manager's installed list.</summary>
+    NotInstalled = 1,
+
+    /// <summary>An installed slot with this id was found.</summary>
+    Installed = 2,
+
+    /// <summary>The payload is part of PS5LM Plus, not a separate Payload Manager entry.</summary>
+    Bundled = 3,
+}
+
+/// <summary>
+/// Whether a payload is active. A recorded launch is evidence that Payload Manager sent the file,
+/// which is weaker than a service that answers on its own port.
+/// </summary>
+public enum DependencyHealth
+{
+    /// <summary>The companion has not checked yet, or Payload Manager is required for this answer and did not respond.</summary>
+    Unavailable = 0,
+
+    /// <summary>No positive evidence. A failed port check also lands here, with the reason in the message.</summary>
+    Unknown = 1,
+
+    /// <summary>Payload Manager recorded a successful transfer. It cannot tell whether the payload is still active.</summary>
+    LaunchRecorded = 2,
+
+    /// <summary>An external check saw the service answering.</summary>
+    Verified = 3,
+
+    /// <summary>Payload Manager's process list was read, and no process of this payload is running.</summary>
+    NotRunning = 4,
+}

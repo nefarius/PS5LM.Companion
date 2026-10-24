@@ -25,7 +25,7 @@ internal sealed class TransferHarness : IAsyncDisposable
             StateFile = Path.Combine(CacheDirectory, "transfers.json"),
             SpaceMarginBytes = 100,
         };
-        Status = new CompanionStatusService(new PS5Options { Host = "ps5" }, FileSystem, Llama, Sensors, new LoadTracker(time), time);
+        Status = new CompanionStatusService(new PS5Options { Host = "ps5" }, FileSystem, Llama, Sensors, new FakePayloadCatalog(), new FakeElfldrProbe(), new LoadTracker(time), time);
         Store = new CompanionStatusStore();
         Service = new TransferService(Hub, FileSystem, new ModelCatalog(FileSystem), Status, Store, TransferStore, Options, time);
     }

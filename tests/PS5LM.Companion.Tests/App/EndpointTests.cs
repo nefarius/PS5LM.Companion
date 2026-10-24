@@ -5,6 +5,7 @@ using System.Text.Json;
 
 using Microsoft.Extensions.DependencyInjection;
 
+using PS5LM.Companion.Core.Domain;
 using PS5LM.Companion.Core.Status;
 using PS5LM.Companion.Tests.Support;
 
@@ -77,5 +78,47 @@ public sealed class EndpointTests
         Assert.Equal(HttpStatusCode.Unauthorized, rejected.StatusCode);
         Assert.Equal(HttpStatusCode.Redirect, accepted.StatusCode);
         Assert.Contains(accepted.Headers.GetValues("Set-Cookie"), c => c.StartsWith("ps5lm_token=", StringComparison.Ordinal) && c.Contains("httponly", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task Dependencies_are_part_of_the_status_and_have_their_own_route()
+    {
+        await using var factory = new CompanionFactory();
+        await PublishAsync(factory);
+        using var client = factory.CreateClient();
+
+        var status = await client.GetFromJsonAsync<JsonElement>("/api/status");
+        var dependencies = await client.GetFromJsonAsync<JsonElement>("/api/dependencies");
+
+        Assert.False(status.GetProperty("payloadManagerAvailable").GetBoolean());
+        Assert.Equal(6, status.GetProperty("dependencies").GetArrayLength());
+        Assert.Equal("kstuff-lite", dependencies.GetProperty("dependencies")[0].GetProperty("id").GetString());
+        Assert.Equal("Required", dependencies.GetProperty("dependencies")[0].GetProperty("requirement").GetString());
+        Assert.False(dependencies.GetProperty("dependencies")[0].GetProperty("canLaunch").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Launch_requires_the_token_and_sends_the_installed_slot()
+    {
+        await using var factory = new CompanionFactory { AccessToken = "secret" };
+        factory.Payloads.Snapshot = new PayloadCatalogSnapshot(
+            true,
+            true,
+            null,
+            [new InstalledPayload(PayloadDependencies.EtaHen, "repo/etahen@abc", "etaHEN")],
+            new HashSet<string>());
+        factory.Elfldr.Listening = true;
+        using var client = factory.CreateClient();
+
+        using var anonymous = await client.PostAsync("/api/dependencies/etahen/launch", null);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/dependencies/etahen/launch");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "secret");
+        using var accepted = await client.SendAsync(request);
+        var body = await accepted.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, accepted.StatusCode);
+        Assert.Contains("hand-off", body.GetProperty("message").GetString(), StringComparison.Ordinal);
+        Assert.Equal(["repo/etahen@abc"], factory.PayloadLauncher.Launched);
     }
 }

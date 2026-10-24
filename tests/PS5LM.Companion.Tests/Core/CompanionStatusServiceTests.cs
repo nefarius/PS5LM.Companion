@@ -18,7 +18,121 @@ public sealed class CompanionStatusServiceTests
 
     public CompanionStatusServiceTests() => _tracker = new LoadTracker(_time);
 
-    private CompanionStatusService Create(FakeFileSystem fs) => new(_options, fs, _llama, _sensors, _tracker, _time);
+    private CompanionStatusService Create(FakeFileSystem fs) =>
+        new(_options, fs, _llama, _sensors, new FakePayloadCatalog(), new FakeElfldrProbe(), _tracker, _time);
+
+    [Fact]
+    public async Task Overlapping_refreshes_run_one_at_a_time()
+    {
+        var catalog = new BlockingCatalog();
+        var service = new CompanionStatusService(_options, ConsoleFixtures.PS5LMInstalled(), _llama, _sensors, catalog, new FakeElfldrProbe(), _tracker, _time);
+
+        var first = service.RefreshAsync(CancellationToken.None);
+        await catalog.FirstStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var second = service.RefreshAsync(CancellationToken.None);
+        await Task.Delay(100);
+
+        Assert.Equal(1, catalog.Reads);
+        catalog.Release.SetResult();
+        await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(2, catalog.Reads);
+    }
+
+    [Fact]
+    public async Task A_cancelled_refresh_waiting_for_the_gate_does_not_block_later_refreshes()
+    {
+        var catalog = new BlockingCatalog();
+        var service = new CompanionStatusService(_options, ConsoleFixtures.PS5LMInstalled(), _llama, _sensors, catalog, new FakeElfldrProbe(), _tracker, _time);
+        var first = service.RefreshAsync(CancellationToken.None);
+        await catalog.FirstStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        using var cts = new CancellationTokenSource();
+        var waiting = service.RefreshAsync(cts.Token);
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => waiting);
+        catalog.Release.SetResult();
+        await first.WaitAsync(TimeSpan.FromSeconds(5));
+        await service.RefreshAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task A_hanging_ftp_service_does_not_delay_the_llama_status()
+    {
+        _llama.Result = new LlamaProbeResult(LlamaServerState.Serving, null, "m.gguf");
+        var service = new CompanionStatusService(_options, new HangingFileSystem(), _llama, _sensors, new FakePayloadCatalog(), new FakeElfldrProbe(), _tracker, _time);
+
+        var status = await service.RefreshAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(15));
+
+        Assert.Equal(CompanionLifecycle.Ready, status.Lifecycle);
+        Assert.False(status.Capabilities.Ftp);
+        Assert.NotEqual(DependencyHealth.Verified, status.Dependencies.Single(row => row.Id == PayloadDependencies.FtpSrv).Health);
+    }
+
+    [Fact]
+    public async Task A_slow_ftp_service_keeps_a_requested_load_in_the_loading_state()
+    {
+        _tracker.MarkRequested("m.gguf");
+        var service = new CompanionStatusService(_options, new HangingFileSystem(), _llama, _sensors, new FakePayloadCatalog(), new FakeElfldrProbe(), _tracker, _time);
+
+        var status = await service.RefreshAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(15));
+
+        Assert.Equal(CompanionLifecycle.Loading, status.Lifecycle);
+        Assert.False(status.Capabilities.Ftp);
+    }
+
+    [Fact]
+    public async Task A_slow_ftp_service_without_a_requested_load_is_disconnected()
+    {
+        var service = new CompanionStatusService(_options, new HangingFileSystem(), _llama, _sensors, new FakePayloadCatalog(), new FakeElfldrProbe(), _tracker, _time);
+
+        var status = await service.RefreshAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(15));
+
+        Assert.Equal(CompanionLifecycle.Disconnected, status.Lifecycle);
+    }
+
+    private sealed class HangingFileSystem : IPS5FileSystem
+    {
+        private static async Task<T> HangAsync<T>(CancellationToken token)
+        {
+            await Task.Delay(Timeout.Infinite, token);
+            return default!;
+        }
+
+        public Task<bool> DirectoryExistsAsync(string path, CancellationToken cancellationToken) => HangAsync<bool>(cancellationToken);
+
+        public Task<bool> FileExistsAsync(string path, CancellationToken cancellationToken) => HangAsync<bool>(cancellationToken);
+
+        public Task<IReadOnlyList<RemoteEntry>> ListAsync(string path, CancellationToken cancellationToken) => HangAsync<IReadOnlyList<RemoteEntry>>(cancellationToken);
+
+        public Task<string?> ReadTextAsync(string path, int maxBytes, CancellationToken cancellationToken) => HangAsync<string?>(cancellationToken);
+
+        public Task WriteTextAsync(string path, string content, CancellationToken cancellationToken) => HangAsync<bool>(cancellationToken);
+
+        public Task UploadAsync(Stream content, string path, IProgress<long>? progress, CancellationToken cancellationToken) => HangAsync<bool>(cancellationToken);
+
+        public Task MoveAsync(string from, string to, CancellationToken cancellationToken) => HangAsync<bool>(cancellationToken);
+
+        public Task DeleteAsync(string path, CancellationToken cancellationToken) => HangAsync<bool>(cancellationToken);
+    }
+
+    private sealed class BlockingCatalog : IPayloadCatalog
+    {
+        private int _reads;
+
+        public TaskCompletionSource FirstStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public int Reads => Volatile.Read(ref _reads);
+
+        public async Task<PayloadCatalogSnapshot> ReadAsync(CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref _reads);
+            FirstStarted.TrySetResult();
+            await Release.Task.WaitAsync(cancellationToken);
+            return PayloadCatalogSnapshot.NotChecked;
+        }
+    }
 
     [Fact]
     public async Task Before_a_model_is_loaded_the_status_comes_from_ftp_alone()

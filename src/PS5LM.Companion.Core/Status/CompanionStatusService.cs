@@ -14,12 +14,22 @@ public sealed class CompanionStatusService(
     IPS5FileSystem fileSystem,
     ILlamaServerProbe llama,
     IConsoleSensorProbe sensorProbe,
+    IPayloadCatalog payloads,
+    IElfldrProbe elfldr,
     LoadTracker loadTracker,
     TimeProvider time)
 {
     private readonly TelemetryCalculator _telemetry = new();
+    private readonly SemaphoreSlim _refreshGate = new(1, 1);
     private Installation? _installation;
     private DateTimeOffset _installationAt = DateTimeOffset.MinValue;
+    private FtpView? _lastFtp;
+
+    /// <summary>
+    /// FTP is the slowest source, and ftpsrv crawls while the app loads a model. The status is published with the
+    /// last known FTP view after this long, so the lifecycle reflects llama-server and the sensors in time.
+    /// </summary>
+    private static readonly TimeSpan FtpBudget = TimeSpan.FromSeconds(6);
 
     /// <summary>The installation found by the last successful lookup, for services that act on the console.</summary>
     public Installation? LastInstallation => _installation;
@@ -27,15 +37,36 @@ public sealed class CompanionStatusService(
     /// <summary>Forgets the cached installation, e.g. after the user changed the console settings.</summary>
     public void InvalidateInstallation() => _installationAt = DateTimeOffset.MinValue;
 
+    /// <summary>
+    /// Refreshes the status. Calls are serialized, because the monitor, transfers, model control and payload
+    /// launches all refresh, and the telemetry calculator and installation cache are not thread-safe.
+    /// </summary>
     public async Task<CompanionStatus> RefreshAsync(CancellationToken cancellationToken)
+    {
+        await _refreshGate.WaitAsync(cancellationToken);
+        try
+        {
+            return await RefreshCoreAsync(cancellationToken);
+        }
+        finally
+        {
+            _refreshGate.Release();
+        }
+    }
+
+    private async Task<CompanionStatus> RefreshCoreAsync(CancellationToken cancellationToken)
     {
         var now = time.GetUtcNow();
 
         var llamaTask = llama.ProbeAsync(cancellationToken);
         var sensorTask = sensorProbe.ReadAsync(cancellationToken);
-        var ftp = await ReadFtpAsync(now, cancellationToken);
+        var catalogTask = payloads.ReadAsync(cancellationToken);
+        var elfldrTask = elfldr.IsListeningAsync(cancellationToken);
+        var ftp = await ReadFtpWithinBudgetAsync(now, cancellationToken);
         var probe = await llamaTask;
         var sensors = await sensorTask;
+        var catalog = await catalogTask;
+        var elfldrListening = await elfldrTask;
 
         var telemetry = probe.State == LlamaServerState.Serving ? _telemetry.Update(probe.MetricsText, now) : ResetTelemetry();
         if (probe.State == LlamaServerState.Serving)
@@ -43,7 +74,10 @@ public sealed class CompanionStatusService(
             loadTracker.Clear();
         }
 
-        var lifecycle = DetermineLifecycle(probe, telemetry, ftp.Reachable, loadTracker.IsLoading(TimeSpan.FromSeconds(options.LoadGraceSeconds)));
+        var loadRequested = loadTracker.IsLoading(TimeSpan.FromSeconds(options.LoadGraceSeconds));
+
+        // A slow FTP read only counts as "still there" while a load is under way: the console is busy loading then.
+        var lifecycle = DetermineLifecycle(probe, telemetry, ftp.Reachable || (ftp.Stale && loadRequested), loadRequested);
 
         var capabilities = new ConsoleCapabilities(
             Ftp: ftp.Reachable,
@@ -63,7 +97,10 @@ public sealed class CompanionStatusService(
             telemetry,
             sensors,
             Message(lifecycle, ftp),
-            now);
+            now,
+            catalog.Available,
+            catalog.Available ? null : catalog.Message,
+            PayloadDependencies.Evaluate(catalog, ftp.Reachable, sensors is not null, elfldrListening, options.ElfldrPort));
     }
 
     private static CompanionLifecycle DetermineLifecycle(
@@ -104,6 +141,24 @@ public sealed class CompanionStatusService(
         return null;
     }
 
+    private async Task<FtpView> ReadFtpWithinBudgetAsync(DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        budget.CancelAfter(FtpBudget);
+        try
+        {
+            return _lastFtp = await ReadFtpAsync(now, budget.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Keep what was learned earlier, but report FTP as unverified: nothing was read this time.
+            const string slow = "The console's FTP service is slow to answer.";
+            return _lastFtp is { } last
+                ? last with { Reachable = false, Stale = true, Failure = slow }
+                : new FtpView(false, null, false, false, slow, Stale: true);
+        }
+    }
+
     private async Task<FtpView> ReadFtpAsync(DateTimeOffset now, CancellationToken cancellationToken)
     {
         try
@@ -132,5 +187,5 @@ public sealed class CompanionStatusService(
         }
     }
 
-    private sealed record FtpView(bool Reachable, Installation? Installation, bool CommandPending, bool SettingsPresent, string? Failure);
+    private sealed record FtpView(bool Reachable, Installation? Installation, bool CommandPending, bool SettingsPresent, string? Failure, bool Stale = false);
 }

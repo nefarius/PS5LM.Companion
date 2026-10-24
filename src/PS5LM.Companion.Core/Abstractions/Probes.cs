@@ -24,3 +24,27 @@ public interface IConsoleSensorProbe
     /// <summary>Returns <see langword="null"/> when ps5-exporter is not running.</summary>
     Task<ConsoleSensors?> ReadAsync(CancellationToken cancellationToken);
 }
+
+/// <summary>Reads Payload Manager's installed payloads and the launches it has recorded.</summary>
+public interface IPayloadCatalog
+{
+    /// <summary>Never throws because the manager is down: that is <see cref="PayloadCatalogSnapshot.Available"/> false.</summary>
+    Task<PayloadCatalogSnapshot> ReadAsync(CancellationToken cancellationToken);
+}
+
+/// <summary>Sends an installed payload slot to Payload Manager, which forwards the file to elfldr.</summary>
+public interface IPayloadLauncher
+{
+    /// <summary>
+    /// <see cref="PayloadLaunchResult.Accepted"/> means the file was transferred.
+    /// It does not mean an unprobeable payload finished starting.
+    /// </summary>
+    Task<PayloadLaunchResult> LaunchAsync(string slot, CancellationToken cancellationToken);
+}
+
+/// <summary>Checks whether elfldr accepts TCP connections. Payload Manager cannot launch anything without it.</summary>
+public interface IElfldrProbe
+{
+    /// <summary>False when the port is closed, filtered or the check times out. Caller cancellation still propagates.</summary>
+    Task<bool> IsListeningAsync(CancellationToken cancellationToken);
+}

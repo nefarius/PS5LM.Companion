@@ -25,21 +25,21 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
     public void Dispose() => _gate.Dispose();
 
     public Task<bool> DirectoryExistsAsync(string path, CancellationToken cancellationToken) =>
-        RunAsync(client => client.DirectoryExists(path, cancellationToken), cancellationToken);
+        RunAsync(async client => path == "/" || await FindAsync(client, path, cancellationToken) is { Type: FtpObjectType.Directory }, cancellationToken);
 
     public Task<bool> FileExistsAsync(string path, CancellationToken cancellationToken) =>
-        RunAsync(client => client.FileExists(path, cancellationToken), cancellationToken);
+        RunAsync(async client => await FindAsync(client, path, cancellationToken) is { Type: FtpObjectType.File }, cancellationToken);
 
     public Task<IReadOnlyList<RemoteEntry>> ListAsync(string path, CancellationToken cancellationToken) =>
         RunAsync<IReadOnlyList<RemoteEntry>>(
             async client =>
             {
-                if (!await client.DirectoryExists(path, cancellationToken))
+                var items = await TryListAsync(client, path, cancellationToken);
+                if (items is null)
                 {
                     return [];
                 }
 
-                var items = await client.GetListing(path, FtpListOption.Auto, cancellationToken);
                 return items
                     .Where(i => i.Type is FtpObjectType.File or FtpObjectType.Directory)
                     .Select(i => new RemoteEntry(
@@ -56,12 +56,12 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
         RunAsync<string?>(
             async client =>
             {
-                if (!await client.FileExists(path, cancellationToken))
+                if (await FindAsync(client, path, cancellationToken) is not { Type: FtpObjectType.File } file)
                 {
                     return null;
                 }
 
-                if (await client.GetFileSize(path, -1, cancellationToken) is var size and > 0 && size > maxBytes)
+                if (file.Size > maxBytes)
                 {
                     return null;
                 }
@@ -78,7 +78,7 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
             async client =>
             {
                 var bytes = Encoding.UTF8.GetBytes(content);
-                var status = await client.UploadBytes(bytes, path, FtpRemoteExists.Overwrite, true, null, cancellationToken);
+                var status = await client.UploadBytes(bytes, path, FtpRemoteExists.NoCheck, true, null, cancellationToken);
                 EnsureUploaded(status, path);
                 return true;
             },
@@ -89,7 +89,7 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
             async client =>
             {
                 var relay = progress is null ? null : new InlineProgress<FtpProgress>(p => progress.Report(p.TransferredBytes));
-                var status = await client.UploadStream(content, path, FtpRemoteExists.Overwrite, true, relay, cancellationToken);
+                var status = await client.UploadStream(content, path, FtpRemoteExists.NoCheck, true, relay, cancellationToken);
                 EnsureUploaded(status, path);
 
                 // Chunk reports arrive synchronously (InlineProgress), so this final report cannot be overtaken.
@@ -106,9 +106,40 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
         RunAsync(
             async client =>
             {
-                if (!await client.MoveFile(from, to, FtpRemoteExists.Overwrite, cancellationToken))
+                // Keep an existing destination under a backup name until the rename succeeds, so a failed or
+                // cancelled move never leaves the console without the old file.
+                string? backup = null;
+                if (await FindAsync(client, to, cancellationToken) is { Type: FtpObjectType.File })
                 {
-                    throw new IOException($"Could not rename {from} to {to} on the console.");
+                    backup = $"{to}.{Guid.NewGuid():N}.bak";
+                    await client.Rename(to, backup, cancellationToken);
+                }
+
+                try
+                {
+                    await client.Rename(from, to, cancellationToken);
+                }
+                catch
+                {
+                    if (backup is not null)
+                    {
+                        await client.Rename(backup, to, CancellationToken.None);
+                    }
+
+                    throw;
+                }
+
+                if (backup is not null)
+                {
+                    // The move already succeeded. A leftover backup is harmless clutter and must not fail it.
+                    try
+                    {
+                        await client.DeleteFile(backup, CancellationToken.None);
+                    }
+                    catch (Exception ex) when (ex is FtpException or SocketException or TimeoutException or IOException)
+                    {
+                        logger.LogWarning(ex, "Moved {To} on the console, but could not delete the backup {Backup}", to, backup);
+                    }
                 }
 
                 return true;
@@ -119,7 +150,7 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
         RunAsync(
             async client =>
             {
-                if (await client.FileExists(path, cancellationToken))
+                if (await FindAsync(client, path, cancellationToken) is { Type: FtpObjectType.File })
                 {
                     await client.DeleteFile(path, cancellationToken);
                 }
@@ -127,6 +158,40 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
                 return true;
             },
             cancellationToken);
+
+    // ftpsrv answers MLSD only. It has no NLST, and it does not advertise SIZE or MDTM, so FluentFTP's own
+    // FileExists/DirectoryExists fail with 502. It also ignores the path argument of MLSD and lists the working
+    // folder, so listings change into the folder first and send no path. Existence is read from the parent's listing.
+    // Uploads use NoCheck for the same reason: FluentFTP's other modes look the file up with NLST first. STOR replaces
+    // an existing file, so nothing is lost.
+    private static async Task<FtpListItem?> FindAsync(AsyncFtpClient client, string path, CancellationToken cancellationToken)
+    {
+        var trimmed = path.TrimEnd('/');
+        var split = trimmed.LastIndexOf('/');
+        if (split < 0 || trimmed.Length == 0)
+        {
+            return null;
+        }
+
+        var parent = split == 0 ? "/" : trimmed[..split];
+        var name = trimmed[(split + 1)..];
+        var items = await TryListAsync(client, parent, cancellationToken);
+        return items?.FirstOrDefault(item => string.Equals(item.Name, name, StringComparison.Ordinal));
+    }
+
+    /// <summary>A missing folder is a normal answer (550), not a failure of the console.</summary>
+    private static async Task<FtpListItem[]?> TryListAsync(AsyncFtpClient client, string path, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await client.SetWorkingDirectory(path, cancellationToken);
+            return await client.GetListing(path, FtpListOption.Auto | FtpListOption.NoPath, cancellationToken);
+        }
+        catch (FtpCommandException ex) when (ex.CompletionCode is "550" or "450")
+        {
+            return null;
+        }
+    }
 
     private static void EnsureUploaded(FtpStatus status, string path)
     {
@@ -158,7 +223,16 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
         catch (Exception ex) when (ex is FtpException or SocketException or TimeoutException or IOException
                                        && ex is not ConsoleUnreachableException)
         {
-            logger.LogDebug(ex, "FTP operation against {Host}:{Port} failed", options.Host, options.FtpPort);
+            if (ex is FtpException)
+            {
+                // The console answered and refused the command. That is a bug or an unsupported server, so it is logged.
+                logger.LogWarning(ex, "FTP command against {Host}:{Port} failed", options.Host, options.FtpPort);
+            }
+            else
+            {
+                logger.LogDebug(ex, "FTP operation against {Host}:{Port} failed", options.Host, options.FtpPort);
+            }
+
             throw new ConsoleUnreachableException($"FTP to {options.Host}:{options.FtpPort} failed: {ex.Message}", ex);
         }
         finally
