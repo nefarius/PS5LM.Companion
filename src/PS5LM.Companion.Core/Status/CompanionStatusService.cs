@@ -74,7 +74,7 @@ public sealed class CompanionStatusService(
             loadTracker.Clear();
         }
 
-        var lifecycle = DetermineLifecycle(probe, telemetry, ftp.Reachable, loadTracker.IsLoading(TimeSpan.FromSeconds(options.LoadGraceSeconds)));
+        var lifecycle = DetermineLifecycle(probe, telemetry, ftp.Reachable || ftp.Stale, loadTracker.IsLoading(TimeSpan.FromSeconds(options.LoadGraceSeconds)));
 
         var capabilities = new ConsoleCapabilities(
             Ftp: ftp.Reachable,
@@ -148,7 +148,11 @@ public sealed class CompanionStatusService(
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return _lastFtp ?? new FtpView(false, null, false, false, "The console's FTP service is slow to answer.");
+            // Keep what was learned earlier, but report FTP as unverified: nothing was read this time.
+            const string slow = "The console's FTP service is slow to answer.";
+            return _lastFtp is { } last
+                ? last with { Reachable = false, Stale = true, Failure = slow }
+                : new FtpView(false, null, false, false, slow, Stale: true);
         }
     }
 
@@ -180,5 +184,5 @@ public sealed class CompanionStatusService(
         }
     }
 
-    private sealed record FtpView(bool Reachable, Installation? Installation, bool CommandPending, bool SettingsPresent, string? Failure);
+    private sealed record FtpView(bool Reachable, Installation? Installation, bool CommandPending, bool SettingsPresent, string? Failure, bool Stale = false);
 }

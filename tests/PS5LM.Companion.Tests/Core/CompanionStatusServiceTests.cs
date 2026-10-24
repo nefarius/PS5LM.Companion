@@ -65,6 +65,19 @@ public sealed class CompanionStatusServiceTests
 
         Assert.Equal(CompanionLifecycle.Ready, status.Lifecycle);
         Assert.False(status.Capabilities.Ftp);
+        Assert.NotEqual(DependencyHealth.Verified, status.Dependencies.Single(row => row.Id == PayloadDependencies.FtpSrv).Health);
+    }
+
+    [Fact]
+    public async Task A_slow_ftp_service_keeps_a_requested_load_in_the_loading_state()
+    {
+        _tracker.MarkRequested("m.gguf");
+        var service = new CompanionStatusService(_options, new HangingFileSystem(), _llama, _sensors, new FakePayloadCatalog(), new FakeElfldrProbe(), _tracker, _time);
+
+        var status = await service.RefreshAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(15));
+
+        Assert.Equal(CompanionLifecycle.Loading, status.Lifecycle);
+        Assert.False(status.Capabilities.Ftp);
     }
 
     private sealed class HangingFileSystem : IPS5FileSystem
