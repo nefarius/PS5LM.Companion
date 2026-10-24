@@ -151,13 +151,35 @@ public sealed class InferenceRouterTests
         var held = (await router.AcquireAsync("chat", CancellationToken.None)).Lease!;
         using var cts = new CancellationTokenSource();
 
-        var waiting = router.AcquireAsync("chat", cts.Token);
+        var first = router.AcquireAsync("chat", CancellationToken.None);
+        var middle = router.AcquireAsync("chat", cts.Token);
+        var last = router.AcquireAsync("chat", CancellationToken.None);
+        await Task.Delay(50);
         await cts.CancelAsync();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => waiting);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => middle);
         held.Release();
 
-        var again = await router.AcquireAsync("chat", CancellationToken.None);
-        Assert.NotNull(again.Lease);
+        var firstLease = (await first.WaitAsync(TimeSpan.FromSeconds(5))).Lease!;
+        Assert.False(last.IsCompleted); // FIFO: the last waiter waits for the first one's slot
+        firstLease.Release();
+        var lastLease = (await last.WaitAsync(TimeSpan.FromSeconds(5))).Lease!;
+        lastLease.Release();
+
+        Assert.NotNull((await router.AcquireAsync("chat", CancellationToken.None)).Lease); // no slot leaked to the cancelled waiter
+    }
+
+    [Fact]
+    public async Task Waiters_notice_a_replica_that_stops_serving_without_a_release()
+    {
+        var (router, registry) = Create(["a"]);
+        Serve(registry, "a");
+        var held = (await router.AcquireAsync("chat", CancellationToken.None)).Lease!;
+
+        var waiting = router.AcquireAsync("chat", CancellationToken.None);
+        Serve(registry, "a", lifecycle: CompanionLifecycle.Loading);
+
+        Assert.Equal(AdmissionFailure.NoReplica, (await waiting.WaitAsync(TimeSpan.FromSeconds(5))).Failure);
+        held.Release();
     }
 
     [Fact]

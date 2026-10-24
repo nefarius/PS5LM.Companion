@@ -122,7 +122,21 @@ public sealed class InferenceRouter
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
         try
         {
-            return await waiter.Completion.Task.WaitAsync(linked.Token);
+            while (true)
+            {
+                try
+                {
+                    return await waiter.Completion.Task.WaitAsync(TimeSpan.FromSeconds(1), linked.Token);
+                }
+                catch (TimeoutException)
+                {
+                    // Replicas can change state without a lease being released: look again.
+                    lock (_gate)
+                    {
+                        Dispatch();
+                    }
+                }
+            }
         }
         catch (OperationCanceledException)
         {

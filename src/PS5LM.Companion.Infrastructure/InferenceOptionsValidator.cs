@@ -58,7 +58,7 @@ public sealed partial class InferenceOptionsValidator(IOptions<ConsolesOptions> 
             }
 
             var seen = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var id in pool.Consoles.Select(c => (c ?? string.Empty).Trim().ToLowerInvariant()))
+            foreach (var id in pool.Consoles.Select(c => (c ?? string.Empty).ToLowerInvariant()))
             {
                 if (!known.Contains(id))
                 {
