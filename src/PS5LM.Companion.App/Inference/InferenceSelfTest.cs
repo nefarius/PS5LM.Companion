@@ -180,7 +180,7 @@ public sealed class InferenceSelfTest(InferenceRouter router, InferenceUpstream 
         }
 
         var (promptTokens, completionTokens) = Usage(document.RootElement);
-        var answered = text.Length > 0 || completionTokens > 0;
+        var answered = text.Length > 0;
         return new ConsoleCheck(
             consoleId,
             answered ? CheckOutcome.Passed : CheckOutcome.Failed,

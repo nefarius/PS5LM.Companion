@@ -552,6 +552,25 @@ public sealed class InferenceGatewayTests
     }
 
     [Fact]
+    public async Task Completion_tokens_without_any_text_still_fail_the_check()
+    {
+        await using var cluster = await Cluster.StartAsync(["a"]);
+        cluster.Upstreams["a"].Handler = (context, _) => context.Response.WriteAsJsonAsync(new
+        {
+            choices = new[] { new { message = new { role = "assistant", content = "" } } },
+            usage = new { prompt_tokens = 12, completion_tokens = 5 },
+        });
+        using var client = cluster.Factory.CreateClient();
+
+        var run = await (await client.PostAsync("/api/inference/pools/chat/test", null)).Content.ReadFromJsonAsync<JsonElement>();
+
+        var console = run.GetProperty("consoles")[0];
+        Assert.False(run.GetProperty("passed").GetBoolean());
+        Assert.Equal("Failed", console.GetProperty("outcome").GetString());
+        Assert.Equal(5, console.GetProperty("completionTokens").GetInt32());
+    }
+
+    [Fact]
     public async Task The_self_test_runs_one_at_a_time_and_keeps_the_last_result()
     {
         await using var cluster = await Cluster.StartAsync(["a"]);
