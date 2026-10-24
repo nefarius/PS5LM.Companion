@@ -15,6 +15,7 @@ works before any model exists. It needs no changes to either app.
 - Lifecycle-aware status: disconnected, app available without a model, loading, ready, generating.
 - Lists models on the console; loads and unloads a model through the apps' command files.
 - Downloads GGUF models from Hugging Face on the companion and uploads them to the console.
+- Optional inference gateway: one OpenAI/Anthropic-compatible endpoint that load-balances consoles running the same model.
 - Live telemetry from llama-server (port 8081) and ps5-exporter (port 9100) when they are available.
 - Shows whether the PS5LM Plus payloads are installed, reads Payload Manager's process list to see whether kstuff-lite, etaHEN (or onionHEN) and ShadowMountPlus are running, records its launches, and checks ftpsrv, elfldr and ps5-exporter directly. Launches an installed payload through [PS5 Payload Manager](https://github.com/itsPLK/ps5-payload-manager).
 
@@ -53,6 +54,7 @@ download cache, so do not rename it casually.
 | `Companion:AllowAnonymous` | false | Allow a network listener without a token (trusted networks only) |
 | `Companion:DataDirectory` | `data` | Download cache and transfer list (`/data` in the Docker image; mount a volume) |
 | `HuggingFace:Token` | none | Access token, only for gated or private repositories |
+| `Inference:Pools:{alias}:Model` / `Consoles:{n}` | none | Opt-in [inference gateway](#inference-gateway): the model and the consoles that serve it |
 
 The companion refuses to start on a non-loopback address without `Companion:AccessToken`, unless
 `Companion:AllowAnonymous` is set. The check covers `urls`/`ASPNETCORE_URLS`, `HTTP_PORTS`, `HTTPS_PORTS` and
@@ -100,6 +102,53 @@ port 8081 is closed.
 Each console has its own transfer queue and runs one transfer at a time; different consoles transfer in parallel. A transfer: download to the cache (resumes after a dropped connection or restart), verify size and
 SHA-256, upload as `name.gguf.part`, then rename. The apps never see a half-copied model.
 
+## Inference gateway
+
+Opt-in. The companion can serve the OpenAI, Anthropic and System One APIs on its own port and spread requests over
+consoles that run the same model, so clients get one base URL (`http://<companion>:8080/v1`). It is off until you
+configure a pool. Forwarding uses [YARP](https://github.com/dotnet/yarp) and streams request and response bodies.
+
+Each public alias (the `model` clients send) names a loaded model and the consoles allowed to serve it:
+
+```sh
+-e Inference__Pools__qwen__Model=Qwen3-8B-Q4_K_M.gguf \
+-e Inference__Pools__qwen__Consoles__0=living-room \
+-e Inference__Pools__qwen__Consoles__1=den
+```
+
+PS5LM answers with whatever model is loaded and ignores the `model` field, so the gateway checks instead. A console is a
+candidate for an alias only while its lifecycle is `Ready` or `Generating` and the model it reports as loaded matches
+`Model`: a bare file name matches that file in any folder, a full path (as in `GET /v1/models` on the console) matches
+exactly. A console that is loading, unloaded or has another model is never sent that alias's requests.
+
+| Route | Behaviour |
+|---|---|
+| `POST /v1/chat/completions`, `/v1/completions`, `/v1/responses`, `/v1/messages`, `/v1/systemone` | Forwarded to one console; JSON and server-sent events are streamed |
+| `POST /v1/chat/completions/input_tokens`, `/v1/responses/input_tokens`, `/v1/messages/count_tokens` | Forwarded the same way |
+| `GET /v1/models` | The configured aliases with `replicas` and `ready` counts; not forwarded |
+| `GET /api/inference/pools` | Per alias and console: lifecycle, loaded model, active requests, and why a console is excluded |
+
+Not forwarded: `/props`, `/slots`, `/lora-adapters`, `/metrics`, `/models/*`, the web UI, `/v1/embeddings` and
+`/v1/chat/completions/control` (control needs the console that runs the stream). `GET /health` stays the process
+check; use `/api/inference/pools` to see whether any console can answer.
+
+Behaviour:
+
+- The gateway reads the top-level `model` of the JSON body to pick the pool, then forwards the original body. A request
+  without `model` uses the only pool; with several pools it gets `400`. An unknown alias gets `404`.
+- Among ready consoles with a free slot it picks the least busy one, idle before generating, then the least recently used.
+  `Inference:MaxConcurrentPerConsole` (default 1, PS5LM starts llama-server with one slot) bounds requests per console.
+- When every console is busy a request waits, up to `Inference:MaxQueuedRequests` (16) at once and
+  `Inference:QueueTimeoutSeconds` (30); beyond that it gets `429`, and when no console serves the alias or the wait ends, `503`
+  with `Retry-After`.
+- A request is never retried on another console: once forwarding starts, a failure returns `502` and the client decides.
+  Closing the client connection cancels the request on the console and frees its slot.
+- `Inference:UpstreamTimeoutSeconds` (900) cancels a request that is silent in both directions; prompt evaluation on a
+  console can take minutes. `Inference:MaxRequestBodyMegabytes` (32) caps what is read to find the model.
+- The companion's access token is accepted as `Authorization: Bearer` or `x-api-key` and is removed before forwarding.
+  Errors under `/v1` are JSON in the OpenAI shape (`/v1/messages`: the Anthropic shape). Responses carry `X-PS5LM-Console`.
+- Pool settings are read at startup, and each alias needs consoles loaded with the same model; this does not load models.
+
 ## Upgrading from a single-console setup
 
 This is a breaking change. Replace `PS5__Host` (and the other `PS5__*` keys) with `PS5__Consoles__<id>__Host` and the
@@ -129,4 +178,5 @@ Sony Interactive Entertainment.
 ## Credits
 
 [cobanov/PS5LM](https://github.com/cobanov/PS5LM), [abhi245y/PS5LM-Plus](https://github.com/abhi245y/PS5LM-Plus),
+[YARP](https://github.com/dotnet/yarp) (inference gateway forwarding),
 [ps5-payload-dev](https://github.com/ps5-payload-dev) (ftpsrv, elfldr), [ps5-exporter](https://github.com/Marice/ps5-exporter).

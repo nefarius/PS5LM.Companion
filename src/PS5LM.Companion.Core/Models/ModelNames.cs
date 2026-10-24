@@ -38,6 +38,28 @@ public static partial class ModelNames
                || (!normalized.Contains('/', StringComparison.Ordinal) && normalized.Equals(fileName, StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>
+    /// Whether the model id llama-server reports is the one an operator configured. A configured path must match
+    /// exactly; a bare file name matches that file in any folder, because replicas mount their drives differently.
+    /// </summary>
+    public static bool MatchesConfigured(string? loadedId, string configured)
+    {
+        if (string.IsNullOrEmpty(loadedId) || string.IsNullOrWhiteSpace(configured))
+        {
+            return false;
+        }
+
+        var loaded = loadedId.Replace('\\', '/');
+        var wanted = configured.Trim().Replace('\\', '/');
+        if (wanted.Contains('/', StringComparison.Ordinal))
+        {
+            return loaded.Equals(wanted, StringComparison.OrdinalIgnoreCase);
+        }
+
+        var slash = loaded.LastIndexOf('/');
+        return loaded[(slash + 1)..].Equals(wanted, StringComparison.OrdinalIgnoreCase);
+    }
+
     [GeneratedRegex(@"^[A-Za-z0-9][A-Za-z0-9._\-+()\[\] ]*$")]
     private static partial Regex FileNamePattern();
 

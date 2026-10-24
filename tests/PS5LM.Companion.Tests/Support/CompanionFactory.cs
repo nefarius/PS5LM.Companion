@@ -41,6 +41,12 @@ internal sealed class CompanionFactory : WebApplicationFactory<PS5LM.Companion.A
 
     public string? AccessToken { get; init; }
 
+    /// <summary>Per-console llama-server ports, for the inference gateway tests that forward to a real listener.</summary>
+    public IReadOnlyDictionary<string, int> LlamaPorts { get; init; } = new Dictionary<string, int>();
+
+    /// <summary>Extra configuration, such as <c>Inference:Pools:chat:Model</c>.</summary>
+    public IReadOnlyDictionary<string, string> Settings { get; init; } = new Dictionary<string, string>();
+
     public IConsoleRegistry Registry => Services.GetRequiredService<IConsoleRegistry>();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -49,6 +55,16 @@ internal sealed class CompanionFactory : WebApplicationFactory<PS5LM.Companion.A
         {
             builder.UseSetting($"PS5:Consoles:{id}:Host", "127.0.0.1");
             builder.UseSetting($"PS5:Consoles:{id}:PollIntervalSeconds", "300");
+        }
+
+        foreach (var (id, port) in LlamaPorts)
+        {
+            builder.UseSetting($"PS5:Consoles:{id}:LlamaPort", port.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        foreach (var (key, value) in Settings)
+        {
+            builder.UseSetting(key, value);
         }
 
         builder.UseSetting("PS5:DefaultConsoleId", ConsoleIds[0]);
