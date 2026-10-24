@@ -154,6 +154,7 @@ Behaviour:
   `GET /api/inference/pools/{alias}/results` returns the latest of each since the companion started. Runs wait behind
   live requests for the console's slot, run one at a time per alias (`409` otherwise), and are not kept across restarts.
   They test each console directly; they do not send traffic through the load balancer.
+- In one measured setup, slow first replies came from prompt processing on the console, not the gateway; see [docs/app-arguments.md](docs/app-arguments.md).
 - Pool settings are read at startup, and each alias needs consoles loaded with the same model; this does not load models.
 
 ## Upgrading from a single-console setup
