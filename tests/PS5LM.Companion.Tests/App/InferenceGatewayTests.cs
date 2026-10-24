@@ -540,6 +540,27 @@ public sealed class InferenceGatewayTests
     }
 
     [Fact]
+    public async Task A_benchmark_stream_cut_off_before_done_fails_even_with_partial_text_and_timings()
+    {
+        await using var cluster = await Cluster.StartAsync(["a"]);
+        cluster.Upstreams["a"].Handler = async (context, _) =>
+        {
+            context.Response.ContentType = "text/event-stream";
+            await context.Response.WriteAsync("data: {\"choices\":[{\"delta\":{\"content\":\"The\"}}]}\n\n");
+            await context.Response.WriteAsync("data: {\"choices\":[],\"usage\":{\"prompt_tokens\":30,\"completion_tokens\":1},\"timings\":{\"predicted_per_second\":7.25}}\n\n");
+        };
+        using var client = cluster.Factory.CreateClient();
+
+        var run = await (await client.PostAsync("/api/inference/pools/chat/benchmark", null)).Content.ReadFromJsonAsync<JsonElement>();
+
+        var console = run.GetProperty("consoles")[0];
+        Assert.False(run.GetProperty("passed").GetBoolean());
+        Assert.Equal("Failed", console.GetProperty("outcome").GetString());
+        Assert.Contains("[DONE]", console.GetProperty("message").GetString(), StringComparison.Ordinal);
+        Assert.Equal(JsonValueKind.Null, console.GetProperty("generationTokensPerSecond").ValueKind);
+    }
+
+    [Fact]
     public async Task A_console_with_no_text_in_its_answer_fails_the_check()
     {
         await using var cluster = await Cluster.StartAsync(["a"]);

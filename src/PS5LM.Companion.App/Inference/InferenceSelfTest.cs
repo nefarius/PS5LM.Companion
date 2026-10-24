@@ -202,6 +202,7 @@ public sealed class InferenceSelfTest(InferenceRouter router, InferenceUpstream 
         double? firstToken = null;
         int? promptTokens = null, completionTokens = null;
         double? promptRate = null, generationRate = null;
+        var done = false;
 
         while (await reader.ReadLineAsync(cancellationToken) is { } line)
         {
@@ -213,6 +214,7 @@ public sealed class InferenceSelfTest(InferenceRouter router, InferenceUpstream 
             var data = line["data:".Length..].Trim();
             if (data == "[DONE]")
             {
+                done = true;
                 break;
             }
 
@@ -242,6 +244,13 @@ public sealed class InferenceSelfTest(InferenceRouter router, InferenceUpstream 
         }
 
         var total = clock.Elapsed.TotalMilliseconds;
+        if (!done)
+        {
+            // The connection ended mid-answer: partial numbers would pass off a cut-off generation as a result.
+            return Failure(consoleId, CheckOutcome.Failed, "The stream ended before the console finished ([DONE] missing).")
+                with { Reply = reply.Length == 0 ? null : reply.ToString(), FirstByteMs = firstByte, TimeToFirstTokenMs = firstToken, TotalMs = total };
+        }
+
         if (firstToken is null)
         {
             return Failure(consoleId, CheckOutcome.Failed, "The console streamed no text.") with { FirstByteMs = firstByte, TotalMs = total };
