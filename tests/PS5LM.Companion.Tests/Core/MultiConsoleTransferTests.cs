@@ -98,6 +98,7 @@ public sealed class MultiConsoleTransferTests
 
         Assert.Equal(TransferState.Completed, (await harness.WaitUntilFinishedAsync(den.Id)).State);
         Assert.True(harness.Connectors["den"].FileSystem.Files.ContainsKey(Final));
+        Assert.DoesNotContain(harness.Service.Snapshot("den"), t => t.Id == legacy.Id);
         var legacyNow = harness.Service.Snapshot().Single(t => t.Id == legacy.Id);
         var orphanNow = harness.Service.Snapshot().Single(t => t.Id == orphan.Id);
         Assert.Equal(TransferState.Failed, legacyNow.State);

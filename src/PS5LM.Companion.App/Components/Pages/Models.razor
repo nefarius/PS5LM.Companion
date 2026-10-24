@@ -96,24 +96,38 @@
 
     private async Task ReloadAsync()
     {
+        var console = Target;
         _loading = true;
         _error = null;
         try
         {
-            var installation = Target.Status.LastInstallation;
-            _models = installation?.StateRoot is null
+            var installation = console.Status.LastInstallation;
+            var models = installation?.StateRoot is null
                 ? []
-                : await Target.Models.ListAsync(installation, null, CancellationToken.None);
+                : await console.Models.ListAsync(installation, null, CancellationToken.None);
+            if (!ReferenceEquals(console, Target))
+            {
+                // The selection moved on while this was loading; the newer reload owns the page state.
+                return;
+            }
+
+            _models = models;
             _error = installation?.StateRoot is null ? installation?.Message ?? "The console is not reachable." : null;
         }
         catch (Exception ex) when (ex is Core.Abstractions.ConsoleUnreachableException)
         {
-            _error = ex.Message;
-            _models = [];
+            if (ReferenceEquals(console, Target))
+            {
+                _error = ex.Message;
+                _models = [];
+            }
         }
         finally
         {
-            _loading = false;
+            if (ReferenceEquals(console, Target))
+            {
+                _loading = false;
+            }
         }
     }
 

@@ -24,7 +24,7 @@
         {
             <MudAlert Severity="Severity.Warning" Class="mt-2">
                 Payload Manager is not reachable@(string.IsNullOrWhiteSpace(Status.PayloadManagerMessage) ? "." : $": {Status.PayloadManagerMessage}")
-                The companion cannot see which payloads are installed or launch them. It uses port 8084 on the console unless PS5:PayloadManagerUrl is set.
+                The companion cannot see which payloads are installed or launch them. It uses port 8084 on the console unless PS5:Consoles:@(Target.Id):PayloadManagerUrl is set.
             </MudAlert>
         }
         else if (MissingRequired.Count > 0)

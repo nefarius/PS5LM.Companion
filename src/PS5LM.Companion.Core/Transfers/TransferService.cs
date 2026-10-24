@@ -36,6 +36,9 @@ public sealed class TransferService
     }
 
     private readonly Lock _gate = new();
+
+    // Keeps snapshots and saves in order across consoles so an older snapshot never overwrites a newer file.
+    private readonly SemaphoreSlim _persistGate = new(1, 1);
     private readonly Dictionary<Guid, Transfer> _transfers = [];
     private readonly Dictionary<Guid, CancellationTokenSource> _running = [];
     private readonly HashSet<Guid> _userCancelled = [];
@@ -50,7 +53,7 @@ public sealed class TransferService
         lock (_gate)
         {
             return _transfers.Values
-                .Where(t => consoleId is null || t.ConsoleId.Equals(consoleId, StringComparison.Ordinal))
+                .Where(t => consoleId is null || string.Equals(t.ConsoleId, consoleId, StringComparison.Ordinal))
                 .OrderByDescending(t => t.CreatedAt)
                 .ToList();
         }
@@ -433,19 +436,27 @@ public sealed class TransferService
 
     private async Task PersistAsync(CancellationToken token)
     {
-        List<Transfer> snapshot;
-        lock (_gate)
+        await _persistGate.WaitAsync(token);
+        try
         {
-            var finished = _transfers.Values.Where(t => !t.IsActive).OrderByDescending(t => t.UpdatedAt).Skip(_options.HistoryLimit).Select(t => t.Id).ToList();
-            foreach (var id in finished)
+            List<Transfer> snapshot;
+            lock (_gate)
             {
-                _transfers.Remove(id);
+                var finished = _transfers.Values.Where(t => !t.IsActive).OrderByDescending(t => t.UpdatedAt).Skip(_options.HistoryLimit).Select(t => t.Id).ToList();
+                foreach (var id in finished)
+                {
+                    _transfers.Remove(id);
+                }
+
+                snapshot = _transfers.Values.ToList();
             }
 
-            snapshot = _transfers.Values.ToList();
+            await _store.SaveAsync(snapshot, token);
         }
-
-        await _store.SaveAsync(snapshot, token);
+        finally
+        {
+            _persistGate.Release();
+        }
     }
 
     private static void TryDelete(string path)
