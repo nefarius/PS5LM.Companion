@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Components;
 
+using PS5LM.Companion.App.Consoles;
+using PS5LM.Companion.Core.Consoles;
 using PS5LM.Companion.Core.Domain;
 using PS5LM.Companion.Core.Status;
 using PS5LM.Companion.Core.Transfers;
@@ -7,8 +9,8 @@ using PS5LM.Companion.Core.Transfers;
 namespace PS5LM.Companion.App.Components;
 
 /// <summary>
-/// A component that re-renders when the console status or a transfer changes. Updates are coalesced because
-/// transfer progress is reported many times a second.
+/// A component that re-renders when the selected console's status, the selection, or a transfer changes.
+/// Updates are coalesced because transfer progress is reported many times a second.
 /// </summary>
 public abstract class LiveComponent : ComponentBase, IDisposable
 {
@@ -17,18 +19,41 @@ public abstract class LiveComponent : ComponentBase, IDisposable
     private int _scheduled;
     private bool _disposed;
 
+    private CompanionStatusStore? _subscribed;
+
     [Inject]
-    protected CompanionStatusStore StatusStore { get; set; } = default!;
+    protected ActiveConsole Active { get; set; } = default!;
 
     [Inject]
     protected TransferService Transfers { get; set; } = default!;
 
-    protected CompanionStatus Status => StatusStore.Current;
+    /// <summary>The console this page currently shows.</summary>
+    protected ConsoleRuntime Target => Active.Runtime;
+
+    protected CompanionStatus Status => Target.Store.Current;
 
     protected override void OnInitialized()
     {
-        StatusStore.Changed += OnStatusChanged;
+        SubscribeToTarget();
+        Active.Changed += OnSelectionChanged;
         Transfers.Changed += OnChanged;
+    }
+
+    private void SubscribeToTarget()
+    {
+        if (_subscribed is not null)
+        {
+            _subscribed.Changed -= OnStatusChanged;
+        }
+
+        _subscribed = Target.Store;
+        _subscribed.Changed += OnStatusChanged;
+    }
+
+    private void OnSelectionChanged()
+    {
+        SubscribeToTarget();
+        OnChanged();
     }
 
     /// <summary>Called on the renderer's thread before a live re-render, e.g. to reload data a change made stale.</summary>
@@ -72,7 +97,12 @@ public abstract class LiveComponent : ComponentBase, IDisposable
     public void Dispose()
     {
         _disposed = true;
-        StatusStore.Changed -= OnStatusChanged;
+        if (_subscribed is not null)
+        {
+            _subscribed.Changed -= OnStatusChanged;
+        }
+
+        Active.Changed -= OnSelectionChanged;
         Transfers.Changed -= OnChanged;
         GC.SuppressFinalize(this);
     }

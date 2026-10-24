@@ -1,23 +1,25 @@
-using PS5LM.Companion.Core.Discovery;
-using PS5LM.Companion.Core.Status;
+using PS5LM.Companion.Core.Consoles;
 
 namespace PS5LM.Companion.App.Monitoring;
 
-/// <summary>Refreshes the console status on a timer and publishes it to the store.</summary>
-public sealed partial class StatusMonitor(
-    CompanionStatusService service,
-    CompanionStatusStore store,
-    PS5Options options,
-    ILogger<StatusMonitor> logger) : BackgroundService
+/// <summary>
+/// Refreshes every console's status on its own timer. Each console has its own loop, so a slow or unreachable
+/// console never delays another one.
+/// </summary>
+public sealed partial class StatusMonitor(IConsoleRegistry consoles, ILogger<StatusMonitor> logger) : BackgroundService
 {
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
+        Task.WhenAll(consoles.All.Select(console => MonitorAsync(console, stoppingToken)));
+
+    private async Task MonitorAsync(ConsoleRuntime console, CancellationToken stoppingToken)
     {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(options.PollIntervalSeconds));
+        using var scope = logger.BeginScope("Console {ConsoleId}", console.Id);
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(console.Options.PollIntervalSeconds));
         do
         {
             try
             {
-                store.Publish(await service.RefreshAsync(stoppingToken));
+                console.Store.Publish(await console.Status.RefreshAsync(stoppingToken));
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -25,7 +27,7 @@ public sealed partial class StatusMonitor(
             }
             catch (Exception ex)
             {
-                LogRefreshFailed(ex);
+                LogRefreshFailed(ex, console.Id);
             }
         }
         while (await WaitAsync(timer, stoppingToken));
@@ -43,6 +45,6 @@ public sealed partial class StatusMonitor(
         }
     }
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Refreshing the console status failed")]
-    private partial void LogRefreshFailed(Exception exception);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Refreshing the status of console {ConsoleId} failed")]
+    private partial void LogRefreshFailed(Exception exception, string consoleId);
 }

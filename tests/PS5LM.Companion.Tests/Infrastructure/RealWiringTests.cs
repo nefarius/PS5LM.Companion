@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
+using PS5LM.Companion.Core.Consoles;
 using PS5LM.Companion.Core.Domain;
 using PS5LM.Companion.Core.Status;
 using PS5LM.Companion.Core.Transfers;
@@ -16,12 +17,12 @@ public sealed class RealWiringTests
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["PS5:Host"] = "127.0.0.1",
-                ["PS5:FtpPort"] = "1",
-                ["PS5:LlamaPort"] = "1",
-                ["PS5:ExporterPort"] = "1",
-                ["PS5:ElfldrPort"] = "1",
-                ["PS5:PayloadManagerUrl"] = "http://127.0.0.1:1/",
+                ["PS5:Consoles:ps5:Host"] = "127.0.0.1",
+                ["PS5:Consoles:ps5:FtpPort"] = "1",
+                ["PS5:Consoles:ps5:LlamaPort"] = "1",
+                ["PS5:Consoles:ps5:ExporterPort"] = "1",
+                ["PS5:Consoles:ps5:ElfldrPort"] = "1",
+                ["PS5:Consoles:ps5:PayloadManagerUrl"] = "http://127.0.0.1:1/",
                 ["Companion:DataDirectory"] = Path.Combine(Path.GetTempPath(), "ps5lm-tests", Guid.NewGuid().ToString("N")),
             })
             .Build();
@@ -29,7 +30,6 @@ public sealed class RealWiringTests
         return new ServiceCollection()
             .AddLogging()
             .AddSingleton<IConfiguration>(configuration)
-            .AddSingleton<CompanionStatusStore>()
             .AddPS5Connectivity(configuration)
             .AddModelManagement(configuration)
             .BuildServiceProvider(validateScopes: true);
@@ -40,7 +40,7 @@ public sealed class RealWiringTests
     {
         await using var provider = Build();
 
-        var status = await provider.GetRequiredService<CompanionStatusService>().RefreshAsync(CancellationToken.None);
+        var status = await provider.GetRequiredService<IConsoleRegistry>().Default.Status.RefreshAsync(CancellationToken.None);
 
         Assert.Equal(CompanionLifecycle.Disconnected, status.Lifecycle);
         Assert.False(status.Capabilities.Ftp);

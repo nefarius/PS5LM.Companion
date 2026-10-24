@@ -71,9 +71,21 @@ internal sealed class FakeFileSystem : IPS5FileSystem
             return true;
         });
 
+    /// <summary>Signalled when an upload starts; lets a test observe that it is running.</summary>
+    public TaskCompletionSource? UploadStarted { get; set; }
+
+    /// <summary>Holds every upload until released.</summary>
+    public TaskCompletionSource? UploadGate { get; set; }
+
     public async Task UploadAsync(Stream content, string path, IProgress<long>? progress, CancellationToken cancellationToken)
     {
         ThrowIfUnreachable();
+        UploadStarted?.TrySetResult();
+        if (UploadGate is not null)
+        {
+            await UploadGate.Task.WaitAsync(cancellationToken);
+        }
+
         using var buffer = new MemoryStream();
         var chunk = new byte[1024];
         int read;

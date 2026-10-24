@@ -1,13 +1,12 @@
 @page "/"
 @inherits LiveComponent
-@inject DependencyLaunchService Launcher
 @inject ISnackbar Snackbar
 
 <PageTitle>Status</PageTitle>
 
 <MudGrid>
     <MudItem xs="12">
-        <MudText Typo="Typo.h4" HtmlTag="h1" Class="mb-2">Status</MudText>
+        <MudText Typo="Typo.h4" HtmlTag="h1" Class="mb-2">Status<MudText Typo="Typo.subtitle1" Color="Color.Secondary" Inline="true" Class="ml-3">@Target.Name (@Target.Host)</MudText></MudText>
         @if (Status.Message is { Length: > 0 })
         {
             <MudAlert Severity="@(Status.Lifecycle == CompanionLifecycle.Disconnected ? Severity.Error : Severity.Info)" Class="mb-2">
@@ -197,7 +196,7 @@
         _launching = true;
         try
         {
-            var result = await Launcher.LaunchAsync(dependency.Id, CancellationToken.None);
+            var result = await Target.Dependencies.LaunchAsync(dependency.Id, CancellationToken.None);
             Snackbar.Add(
                 result.Message ?? result.Outcome.ToString(),
                 result.Succeeded ? Severity.Success : Severity.Error);

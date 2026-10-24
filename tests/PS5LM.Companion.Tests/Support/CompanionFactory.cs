@@ -4,26 +4,34 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
-using PS5LM.Companion.Core.Abstractions;
-using PS5LM.Companion.Core.Status;
+using PS5LM.Companion.Core.Consoles;
 using PS5LM.Companion.Core.Transfers;
 
 namespace PS5LM.Companion.Tests.Support;
 
-/// <summary>The real app wired to an in-memory console, so tests exercise routing, auth and serialisation.</summary>
+/// <summary>The real app wired to in-memory consoles, so tests exercise routing, auth and serialisation.</summary>
 internal sealed class CompanionFactory : WebApplicationFactory<PS5LM.Companion.App.Program>
 {
-    public FakeFileSystem FileSystem { get; } = ConsoleFixtures.PS5LMInstalled();
+    public const string PrimaryId = "ps5";
 
-    public FakeLlamaProbe Llama { get; } = new();
+    public FakeConnectorFactory Connectors { get; } = new();
 
-    public FakeSensorProbe Sensors { get; } = new();
+    /// <summary>The configured console ids; the first is the default.</summary>
+    public IReadOnlyList<string> ConsoleIds { get; init; } = [PrimaryId];
 
-    public FakePayloadCatalog Payloads { get; } = new();
+    public FakeConsole Primary => Connectors[ConsoleIds[0]];
 
-    public FakePayloadLauncher PayloadLauncher { get; } = new();
+    public FakeFileSystem FileSystem => Primary.FileSystem;
 
-    public FakeElfldrProbe Elfldr { get; } = new();
+    public FakeLlamaProbe Llama => Primary.Llama;
+
+    public FakeSensorProbe Sensors => Primary.Sensors;
+
+    public FakePayloadCatalog Payloads => Primary.Payloads;
+
+    public FakePayloadLauncher PayloadLauncher => Primary.Launcher;
+
+    public FakeElfldrProbe Elfldr => Primary.Elfldr;
 
     public FakeHub Hub { get; } = new();
 
@@ -33,10 +41,17 @@ internal sealed class CompanionFactory : WebApplicationFactory<PS5LM.Companion.A
 
     public string? AccessToken { get; init; }
 
+    public IConsoleRegistry Registry => Services.GetRequiredService<IConsoleRegistry>();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        builder.UseSetting("PS5:Host", "127.0.0.1");
-        builder.UseSetting("PS5:PollIntervalSeconds", "300");
+        foreach (var id in ConsoleIds)
+        {
+            builder.UseSetting($"PS5:Consoles:{id}:Host", "127.0.0.1");
+            builder.UseSetting($"PS5:Consoles:{id}:PollIntervalSeconds", "300");
+        }
+
+        builder.UseSetting("PS5:DefaultConsoleId", ConsoleIds[0]);
         builder.UseSetting("Companion:DataDirectory", DataDirectory);
         if (AccessToken is not null)
         {
@@ -45,20 +60,8 @@ internal sealed class CompanionFactory : WebApplicationFactory<PS5LM.Companion.A
 
         builder.ConfigureTestServices(services =>
         {
-            services.RemoveAll<IPS5FileSystem>();
-            services.RemoveAll<ILlamaServerProbe>();
-            services.RemoveAll<IConsoleSensorProbe>();
-            services.AddSingleton<IPS5FileSystem>(FileSystem);
-            services.AddSingleton<ILlamaServerProbe>(Llama);
-            services.AddSingleton<IConsoleSensorProbe>(Sensors);
-            services.RemoveAll<IPayloadCatalog>();
-            services.RemoveAll<IPayloadLauncher>();
-            services.RemoveAll<IElfldrProbe>();
-            services.RemoveAll<DependencyLaunchService>();
-            services.AddSingleton<IPayloadCatalog>(Payloads);
-            services.AddSingleton<IPayloadLauncher>(PayloadLauncher);
-            services.AddSingleton<IElfldrProbe>(Elfldr);
-            services.AddSingleton<DependencyLaunchService>();
+            services.RemoveAll<IConsoleConnectorFactory>();
+            services.AddSingleton<IConsoleConnectorFactory>(Connectors);
             services.RemoveAll<IModelHub>();
             services.RemoveAll<ITransferStore>();
             services.AddSingleton<IModelHub>(Hub);

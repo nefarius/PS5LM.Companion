@@ -1,8 +1,5 @@
 @page "/models"
 @inherits LiveComponent
-@inject ModelCatalog Catalog
-@inject ModelControlService Control
-@inject CompanionStatusService StatusService
 @inject ISnackbar Snackbar
 
 <PageTitle>Models</PageTitle>
@@ -91,9 +88,9 @@
         }
     }
 
-    private string? InstallationKey() => StatusService.LastInstallation?.StateRoot?.FtpPath;
+    private string? InstallationKey() => Target.Status.LastInstallation?.StateRoot is { } root ? $"{Target.Id}:{root.FtpPath}" : null;
 
-    private int CompletedCount() => Transfers.Snapshot().Count(t => t.State == TransferState.Completed);
+    private int CompletedCount() => Transfers.Snapshot(Target.Id).Count(t => t.State == TransferState.Completed);
 
     private bool IsLoaded(ModelFile model) => !model.IsProjector && ModelNames.IsSameModel(Status.LoadedModel, model.FileName, model.AppPath);
 
@@ -103,10 +100,10 @@
         _error = null;
         try
         {
-            var installation = StatusService.LastInstallation;
+            var installation = Target.Status.LastInstallation;
             _models = installation?.StateRoot is null
                 ? []
-                : await Catalog.ListAsync(installation, null, CancellationToken.None);
+                : await Target.Models.ListAsync(installation, null, CancellationToken.None);
             _error = installation?.StateRoot is null ? installation?.Message ?? "The console is not reachable." : null;
         }
         catch (Exception ex) when (ex is Core.Abstractions.ConsoleUnreachableException)
@@ -121,9 +118,9 @@
     }
 
     private Task LoadAsync(ModelFile model) =>
-        ActAsync(() => Control.LoadAsync(model.AppPath, CancellationToken.None), $"Loading {model.FileName}");
+        ActAsync(() => Target.Control.LoadAsync(model.AppPath, CancellationToken.None), $"Loading {model.FileName}");
 
-    private Task UnloadAsync() => ActAsync(() => Control.UnloadAsync(CancellationToken.None), "Unloading the model");
+    private Task UnloadAsync() => ActAsync(() => Target.Control.UnloadAsync(CancellationToken.None), "Unloading the model");
 
     /// <summary>One command at a time per page: a second click while one is running is ignored.</summary>
     private async Task ActAsync(Func<Task<OperationResult>> command, string started)

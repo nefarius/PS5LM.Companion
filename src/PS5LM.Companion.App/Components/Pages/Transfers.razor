@@ -1,13 +1,11 @@
 @page "/transfers"
 @inherits LiveComponent
 @inject IModelHub Hub
-@inject ModelCatalog Catalog
-@inject CompanionStatusService StatusService
 @inject ISnackbar Snackbar
 
 <PageTitle>Downloads</PageTitle>
 
-<MudText Typo="Typo.h4" HtmlTag="h1" Class="mb-2">Downloads</MudText>
+<MudText Typo="Typo.h4" HtmlTag="h1" Class="mb-2">Downloads<MudText Typo="Typo.subtitle1" Color="Color.Secondary" Inline="true" Class="ml-3">to @Target.Name</MudText></MudText>
 
 <MudPaper Class="pa-4 mb-4" Elevation="1">
     <MudText Typo="Typo.h6" Class="mb-2">Find a model on Hugging Face</MudText>
@@ -66,7 +64,7 @@
 </MudPaper>
 
 <MudPaper Elevation="1">
-    <MudTable Items="Transfers.Snapshot()" Dense="true" Hover="true" T="Transfer">
+    <MudTable Items="Transfers.Snapshot(Target.Id)" Dense="true" Hover="true" T="Transfer">
         <ToolBarContent><MudText Typo="Typo.h6">Transfers</MudText></ToolBarContent>
         <HeaderContent>
             <MudTh>File</MudTh>
@@ -133,9 +131,22 @@
 
     private async Task RefreshTargetsAsync()
     {
-        var installation = StatusService.LastInstallation;
-        var key = installation?.StateRoot?.FtpPath;
-        if (installation is not { StateRoot: not null } || key == _targetsFor || _loadingTargets)
+        var installation = Target.Status.LastInstallation;
+        var key = installation?.StateRoot is { } root ? $"{Target.Id}:{root.FtpPath}" : null;
+        if (installation is not { StateRoot: not null })
+        {
+            if (_targetsFor is not null)
+            {
+                // Another console was selected and this one has no usable state folder yet.
+                _targets = [];
+                _targetsFor = null;
+                _target = null;
+            }
+
+            return;
+        }
+
+        if (key == _targetsFor || _loadingTargets)
         {
             return;
         }
@@ -143,7 +154,7 @@
         _loadingTargets = true;
         try
         {
-            var targets = (await Catalog.UploadTargetsAsync(installation, CancellationToken.None)).Select(t => t.Name).ToList();
+            var targets = (await Target.Models.UploadTargetsAsync(installation, CancellationToken.None)).Select(t => t.Name).ToList();
             _targets = targets;
             _targetsFor = key;
             if (_target is null || !targets.Contains(_target))
@@ -228,7 +239,7 @@
         OperationResult result;
         try
         {
-            (result, _) = await Transfers.EnqueueAsync(new TransferRequest(repo, file.Name, _target), CancellationToken.None);
+            (result, _) = await Transfers.EnqueueAsync(new TransferRequest(Target.Id, repo, file.Name, _target), CancellationToken.None);
         }
         catch (Exception ex) when (ex is Core.Abstractions.ConsoleUnreachableException or HubUnavailableException)
         {

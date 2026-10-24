@@ -1,8 +1,7 @@
 using Microsoft.Extensions.Time.Testing;
 
+using PS5LM.Companion.Core.Consoles;
 using PS5LM.Companion.Core.Discovery;
-using PS5LM.Companion.Core.Domain;
-using PS5LM.Companion.Core.Models;
 using PS5LM.Companion.Core.Status;
 using PS5LM.Companion.Core.Transfers;
 
@@ -14,29 +13,47 @@ internal sealed class TransferHarness : IAsyncDisposable
     private readonly CancellationTokenSource _stop = new();
     private Task? _worker;
 
-    public TransferHarness(FakeFileSystem? fileSystem = null)
+    public TransferHarness(FakeFileSystem? fileSystem = null, params string[] extraConsoles)
     {
-        FileSystem = fileSystem ?? ConsoleFixtures.PS5LMInstalled();
+        Connectors = new FakeConnectorFactory();
+        Primary = fileSystem is null ? Connectors[PrimaryId] : Connectors.Replace(PrimaryId, new FakeConsole(fileSystem));
         CacheDirectory = Path.Combine(Path.GetTempPath(), "ps5lm-tests", Guid.NewGuid().ToString("N"));
-        var time = new FakeTimeProvider(new DateTimeOffset(2026, 10, 23, 12, 0, 0, TimeSpan.Zero));
+        Time = new FakeTimeProvider(new DateTimeOffset(2026, 10, 23, 12, 0, 0, TimeSpan.Zero));
         Options = new TransferOptions
         {
             CacheDirectory = CacheDirectory,
             StateFile = Path.Combine(CacheDirectory, "transfers.json"),
             SpaceMarginBytes = 100,
         };
-        Status = new CompanionStatusService(new PS5Options { Host = "ps5" }, FileSystem, Llama, Sensors, new FakePayloadCatalog(), new FakeElfldrProbe(), new LoadTracker(time), time);
-        Store = new CompanionStatusStore();
-        Service = new TransferService(Hub, FileSystem, new ModelCatalog(FileSystem), Status, Store, TransferStore, Options, time);
+        var consoles = new ConsolesOptions { DefaultConsoleId = PrimaryId };
+        foreach (var id in extraConsoles.Prepend(PrimaryId))
+        {
+            consoles.Consoles[id] = new PS5Options { Host = id };
+        }
+
+        Registry = new ConsoleRegistry(consoles, Connectors, Time);
+        Service = new TransferService(Hub, Registry, TransferStore, Options, Time);
     }
 
-    public FakeFileSystem FileSystem { get; }
+    public const string PrimaryId = "ps5";
+
+    public FakeConnectorFactory Connectors { get; }
+
+    public FakeConsole Primary { get; }
+
+    public FakeTimeProvider Time { get; }
+
+    public IConsoleRegistry Registry { get; }
+
+    public ConsoleRuntime Runtime => Registry.Default;
+
+    public FakeFileSystem FileSystem => Primary.FileSystem;
 
     public FakeHub Hub { get; } = new();
 
-    public FakeLlamaProbe Llama { get; } = new();
+    public FakeLlamaProbe Llama => Primary.Llama;
 
-    public FakeSensorProbe Sensors { get; } = new();
+    public FakeSensorProbe Sensors => Primary.Sensors;
 
     public MemoryTransferStore TransferStore { get; } = new();
 
@@ -44,14 +61,23 @@ internal sealed class TransferHarness : IAsyncDisposable
 
     public string CacheDirectory { get; }
 
-    public CompanionStatusService Status { get; }
+    public CompanionStatusService Status => Runtime.Status;
 
-    public CompanionStatusStore Store { get; }
+    public CompanionStatusStore Store => Runtime.Store;
 
     public TransferService Service { get; }
 
+    public TransferRequest Request(string repo, string file, string? targetRoot = null, string? consoleId = null) =>
+        new(consoleId ?? PrimaryId, repo, file, targetRoot);
+
     /// <summary>Detects the console and publishes the status, as the status monitor does.</summary>
-    public async Task PrimeAsync() => Store.Publish(await Status.RefreshAsync(CancellationToken.None));
+    public async Task PrimeAsync()
+    {
+        foreach (var console in Registry.All)
+        {
+            console.Store.Publish(await console.Status.RefreshAsync(CancellationToken.None));
+        }
+    }
 
     public void StartWorker() => _worker = Service.RunAsync(_stop.Token);
 
@@ -70,7 +96,7 @@ internal sealed class TransferHarness : IAsyncDisposable
         }
     }
 
-    public string CachedFile(string repo, string name) => Path.Combine(CacheDirectory, repo, name);
+    public string CachedFile(string repo, string name, string consoleId = PrimaryId) => Path.Combine(CacheDirectory, consoleId, repo, name);
 
     public async ValueTask DisposeAsync()
     {
@@ -87,6 +113,7 @@ internal sealed class TransferHarness : IAsyncDisposable
             }
         }
 
+        (Registry as IDisposable)?.Dispose();
         _stop.Dispose();
         if (Directory.Exists(CacheDirectory))
         {
