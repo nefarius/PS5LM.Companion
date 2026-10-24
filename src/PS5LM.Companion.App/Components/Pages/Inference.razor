@@ -1,0 +1,187 @@
+@page "/inference"
+@implements IDisposable
+@using PS5LM.Companion.App.Inference
+@using PS5LM.Companion.Core.Inference
+@inject InferenceRouter Router
+@inject InferenceSelfTest SelfTest
+@inject ISnackbar Snackbar
+
+<PageTitle>Inference gateway</PageTitle>
+
+<MudText Typo="Typo.h4" HtmlTag="h1" Class="mb-2">Inference gateway</MudText>
+
+@if (!Router.Enabled)
+{
+    <MudAlert Severity="Severity.Info">
+        The gateway is off. Configure <code>Inference:Pools:{alias}:Model</code> and <code>Inference:Pools:{alias}:Consoles:0</code> to serve a model from several consoles.
+    </MudAlert>
+}
+else
+{
+    <MudText Class="mb-3" Color="Color.Secondary">
+        Test sends a tiny request to every ready console of a pool. Benchmark streams a fixed prompt and measures speed.
+        Both wait behind live requests and use a console's slot while they run.
+    </MudText>
+
+    @foreach (var pool in _pools)
+    {
+        var running = _running.Contains(pool.Alias);
+        <MudPaper Elevation="1" Class="pa-4 mb-4">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+                <MudText Typo="Typo.h6" HtmlTag="h2">@pool.Alias</MudText>
+                <MudText Color="Color.Secondary" Class="ml-2">@pool.Model</MudText>
+                <MudChip T="string" Size="Size.Small" Color="@(pool.EligibleReplicas > 0 ? Color.Success : Color.Warning)" Class="ml-2">
+                    @pool.EligibleReplicas of @pool.Replicas.Count ready
+                </MudChip>
+                <MudSpacer />
+                <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.CheckCircle" Disabled="@(running || pool.EligibleReplicas == 0)"
+                           OnClick="@(() => RunAsync(pool.Alias, SelfTestKind.Check))">Test</MudButton>
+                <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Speed" Class="ml-2" Disabled="@(running || pool.EligibleReplicas == 0)"
+                           OnClick="@(() => RunAsync(pool.Alias, SelfTestKind.Benchmark))">Benchmark</MudButton>
+            </MudStack>
+
+            @if (running)
+            {
+                <MudProgressLinear Indeterminate="true" Class="mb-2" />
+            }
+
+            <MudTable Items="pool.Replicas" Dense="true" Hover="true" T="ReplicaSnapshot">
+                <HeaderContent>
+                    <MudTh>Console</MudTh>
+                    <MudTh>Lifecycle</MudTh>
+                    <MudTh>Loaded model</MudTh>
+                    <MudTh>Active</MudTh>
+                    <MudTh>Serving this alias</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Console">@context.ConsoleId</MudTd>
+                    <MudTd DataLabel="Lifecycle">@context.Lifecycle</MudTd>
+                    <MudTd DataLabel="Loaded model">@(context.LoadedModel ?? "None")</MudTd>
+                    <MudTd DataLabel="Active">@context.ActiveRequests</MudTd>
+                    <MudTd DataLabel="Serving this alias">
+                        <MudChip T="string" Size="Size.Small" Color="@(context.Eligible ? Color.Success : Color.Default)">@(context.Eligible ? "Yes" : "No")</MudChip>
+                        @if (!context.Eligible)
+                        {
+                            <MudText Typo="Typo.caption" Inline="true" Class="ml-2">@context.Reason</MudText>
+                        }
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+
+            @foreach (var kind in new[] { SelfTestKind.Check, SelfTestKind.Benchmark })
+            {
+                if (SelfTest.Last(pool.Alias, kind) is { } run)
+                {
+                    <MudText Typo="Typo.subtitle1" Class="mt-4 mb-1">
+                        @(kind == SelfTestKind.Check ? "Last test" : "Last benchmark")
+                        <MudChip T="string" Size="Size.Small" Color="@(run.Passed ? Color.Success : Color.Error)" Class="ml-2">@(run.Passed ? "Passed" : "Failed")</MudChip>
+                        <MudText Typo="Typo.caption" Inline="true" Class="ml-2">@run.StartedAt.LocalDateTime.ToString("g") (@Seconds(run.DurationMs))</MudText>
+                    </MudText>
+                    <MudTable Items="run.Consoles" Dense="true" T="ConsoleCheck">
+                        <HeaderContent>
+                            <MudTh>Console</MudTh>
+                            <MudTh>Result</MudTh>
+                            <MudTh>First byte</MudTh>
+                            @if (kind == SelfTestKind.Benchmark)
+                            {
+                                <MudTh>First token</MudTh>
+                                <MudTh>Prompt tok/s</MudTh>
+                                <MudTh>Generation tok/s</MudTh>
+                            }
+                            <MudTh>Total</MudTh>
+                            <MudTh>Tokens</MudTh>
+                            <MudTh>Detail</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Console">@context.ConsoleId</MudTd>
+                            <MudTd DataLabel="Result">
+                                <MudChip T="string" Size="Size.Small" Color="@OutcomeColor(context.Outcome)">@context.Outcome</MudChip>
+                            </MudTd>
+                            <MudTd DataLabel="First byte">@Seconds(context.FirstByteMs)</MudTd>
+                            @if (kind == SelfTestKind.Benchmark)
+                            {
+                                <MudTd DataLabel="First token">@Seconds(context.TimeToFirstTokenMs)</MudTd>
+                                <MudTd DataLabel="Prompt tok/s">@Rate(context.PromptTokensPerSecond)</MudTd>
+                                <MudTd DataLabel="Generation tok/s">@Rate(context.GenerationTokensPerSecond)</MudTd>
+                            }
+                            <MudTd DataLabel="Total">@Seconds(context.TotalMs)</MudTd>
+                            <MudTd DataLabel="Tokens">@(context.CompletionTokens is { } n ? $"{context.PromptTokens?.ToString() ?? "?"} in / {n} out" : "-")</MudTd>
+                            <MudTd DataLabel="Detail">@(context.Message ?? (string.IsNullOrWhiteSpace(context.Reply) ? "" : $"\"{context.Reply.Trim()}\""))</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+            }
+        </MudPaper>
+    }
+}
+
+@code {
+    private IReadOnlyList<PoolSnapshot> _pools = [];
+    private readonly HashSet<string> _running = new(StringComparer.OrdinalIgnoreCase);
+    private Timer? _timer;
+
+    protected override void OnInitialized()
+    {
+        _pools = Router.Snapshot();
+        _timer = new Timer(_ => _ = Refresh(), null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+    }
+
+    private async Task Refresh()
+    {
+        try
+        {
+            await InvokeAsync(() =>
+            {
+                _pools = Router.Snapshot();
+                StateHasChanged();
+            });
+        }
+        catch (ObjectDisposedException)
+        {
+            // The circuit ended.
+        }
+    }
+
+    private async Task RunAsync(string alias, SelfTestKind kind)
+    {
+        if (!_running.Add(alias))
+        {
+            return;
+        }
+
+        try
+        {
+            var (start, run) = await SelfTest.RunAsync(alias, kind, CancellationToken.None);
+            switch (start)
+            {
+                case SelfTestStart.AlreadyRunning:
+                    Snackbar.Add($"A test of '{alias}' is already running.", Severity.Warning);
+                    break;
+                case SelfTestStart.UnknownAlias:
+                    Snackbar.Add($"'{alias}' is not served by this gateway.", Severity.Error);
+                    break;
+                default:
+                    Snackbar.Add(run!.Passed ? $"{kind} of '{alias}' passed." : $"{kind} of '{alias}' failed.", run.Passed ? Severity.Success : Severity.Error);
+                    break;
+            }
+        }
+        finally
+        {
+            _running.Remove(alias);
+            _pools = Router.Snapshot();
+        }
+    }
+
+    private static Color OutcomeColor(CheckOutcome outcome) => outcome switch
+    {
+        CheckOutcome.Passed => Color.Success,
+        CheckOutcome.Failed => Color.Error,
+        _ => Color.Default,
+    };
+
+    private static string Seconds(double? milliseconds) => milliseconds is { } ms ? $"{ms / 1000:0.00} s" : "-";
+
+    private static string Rate(double? value) => value is { } v ? v.ToString("0.0") : "-";
+
+    public void Dispose() => _timer?.Dispose();
+}

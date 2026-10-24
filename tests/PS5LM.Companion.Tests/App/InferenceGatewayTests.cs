@@ -464,6 +464,152 @@ public sealed class InferenceGatewayTests
         Assert.Equal(HttpStatusCode.OK, health.StatusCode);
     }
 
+    private static Task Completion(HttpContext context, string _) =>
+        context.Response.WriteAsJsonAsync(new
+        {
+            choices = new[] { new { message = new { role = "assistant", content = "ok" } } },
+            usage = new { prompt_tokens = 12, completion_tokens = 1 },
+        });
+
+    private static async Task Stream(HttpContext context, string _)
+    {
+        context.Response.ContentType = "text/event-stream";
+        foreach (var piece in new[] { "The", " sky", " is", " blue" })
+        {
+            await context.Response.WriteAsync($"data: {{\"choices\":[{{\"delta\":{{\"content\":\"{piece}\"}}}}]}}\n\n");
+            await context.Response.Body.FlushAsync();
+            await Task.Delay(20);
+        }
+
+        await context.Response.WriteAsync("data: {\"choices\":[],\"usage\":{\"prompt_tokens\":30,\"completion_tokens\":4},\"timings\":{\"prompt_per_second\":55.5,\"predicted_per_second\":7.25}}\n\n");
+        await context.Response.WriteAsync("data: [DONE]\n\n");
+    }
+
+    [Fact]
+    public async Task The_self_test_checks_every_ready_console_and_skips_the_others()
+    {
+        await using var cluster = await Cluster.StartAsync(["a", "b", "c"], loaded: id => id == "c" ? "/data/PS5LM/models/llama.gguf" : LoadedPath);
+        cluster.Upstreams["a"].Handler = Completion;
+        cluster.Upstreams["b"].Handler = async (context, _) =>
+        {
+            context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+            await context.Response.WriteAsync("boom");
+        };
+        using var client = cluster.Factory.CreateClient();
+
+        using var response = await client.PostAsync("/api/inference/pools/chat/test", null);
+        var run = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.False(run.GetProperty("passed").GetBoolean()); // b failed
+        var consoles = run.GetProperty("consoles").EnumerateArray().ToDictionary(c => c.GetProperty("consoleId").GetString()!);
+        Assert.Equal("Passed", consoles["a"].GetProperty("outcome").GetString());
+        Assert.Equal("ok", consoles["a"].GetProperty("reply").GetString());
+        Assert.Equal(12, consoles["a"].GetProperty("promptTokens").GetInt32());
+        Assert.Equal("Failed", consoles["b"].GetProperty("outcome").GetString());
+        Assert.Contains("HTTP 500", consoles["b"].GetProperty("message").GetString(), StringComparison.Ordinal);
+        Assert.Equal("Skipped", consoles["c"].GetProperty("outcome").GetString());
+        Assert.Empty(cluster.Upstreams["c"].Requests);
+
+        var sent = JsonDocument.Parse(cluster.Upstreams["a"].Requests.Single().Body).RootElement;
+        Assert.Equal("/v1/chat/completions", cluster.Upstreams["a"].Requests.Single().Path);
+        Assert.False(sent.GetProperty("stream").GetBoolean());
+        Assert.Equal("0", sent.GetProperty("temperature").GetRawText()); // an integer: old builds stop on 0.0
+        Assert.Equal(8, sent.GetProperty("max_tokens").GetInt32());
+    }
+
+    [Fact]
+    public async Task The_benchmark_measures_first_token_and_speed_from_the_stream()
+    {
+        await using var cluster = await Cluster.StartAsync(["a"]);
+        cluster.Upstreams["a"].Handler = Stream;
+        using var client = cluster.Factory.CreateClient();
+
+        using var response = await client.PostAsync("/api/inference/pools/chat/benchmark", null);
+        var run = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.True(run.GetProperty("passed").GetBoolean());
+        Assert.Equal("Benchmark", run.GetProperty("kind").GetString());
+        var console = run.GetProperty("consoles")[0];
+        Assert.Equal("The sky is blue", console.GetProperty("reply").GetString());
+        Assert.Equal(55.5, console.GetProperty("promptTokensPerSecond").GetDouble());
+        Assert.Equal(7.25, console.GetProperty("generationTokensPerSecond").GetDouble());
+        Assert.Equal(4, console.GetProperty("completionTokens").GetInt32());
+        Assert.InRange(console.GetProperty("timeToFirstTokenMs").GetDouble(), 0, console.GetProperty("totalMs").GetDouble());
+        Assert.True(JsonDocument.Parse(cluster.Upstreams["a"].Requests.Single().Body).RootElement.GetProperty("stream").GetBoolean());
+    }
+
+    [Fact]
+    public async Task A_console_with_no_text_in_its_answer_fails_the_check()
+    {
+        await using var cluster = await Cluster.StartAsync(["a"]);
+        using var client = cluster.Factory.CreateClient(); // the default fake answers JSON without choices
+
+        var run = await (await client.PostAsync("/api/inference/pools/chat/test", null)).Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.False(run.GetProperty("passed").GetBoolean());
+        Assert.Equal("Failed", run.GetProperty("consoles")[0].GetProperty("outcome").GetString());
+    }
+
+    [Fact]
+    public async Task The_self_test_runs_one_at_a_time_and_keeps_the_last_result()
+    {
+        await using var cluster = await Cluster.StartAsync(["a"]);
+        var release = new TaskCompletionSource();
+        cluster.Upstreams["a"].Handler = async (context, body) =>
+        {
+            await release.Task;
+            await Completion(context, body);
+        };
+        using var client = cluster.Factory.CreateClient();
+
+        var first = client.PostAsync("/api/inference/pools/chat/test", null);
+        await WaitUntilAsync(() => Total(cluster) == 1);
+        using var second = await client.PostAsync("/api/inference/pools/chat/benchmark", null);
+        release.SetResult();
+        using var firstResponse = await first;
+        var results = await client.GetFromJsonAsync<JsonElement>("/api/inference/pools/chat/results");
+
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, firstResponse.StatusCode);
+        Assert.True(results.GetProperty("check").GetProperty("passed").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, results.GetProperty("benchmark").ValueKind);
+    }
+
+    [Fact]
+    public async Task The_self_test_endpoints_reject_unknown_aliases_and_need_the_token()
+    {
+        await using var cluster = await Cluster.StartAsync(["a"], token: "s3cret");
+        using var client = cluster.Factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new("Bearer", "s3cret");
+        using var anonymous = cluster.Factory.CreateClient();
+
+        using var ghostTest = await client.PostAsync("/api/inference/pools/ghost/test", null);
+        using var ghostResults = await client.GetAsync("/api/inference/pools/ghost/results");
+        using var noToken = await anonymous.PostAsync("/api/inference/pools/chat/test", null);
+
+        Assert.Equal(HttpStatusCode.NotFound, ghostTest.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, ghostResults.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, noToken.StatusCode);
+        Assert.Equal(0, Total(cluster));
+    }
+
+    [Fact]
+    public async Task The_inference_page_renders_with_and_without_pools()
+    {
+        await using var on = await Cluster.StartAsync(["a"]);
+        await using var off = await Cluster.StartAsync(["a"], pools: false);
+        using var onClient = on.Factory.CreateClient();
+        using var offClient = off.Factory.CreateClient();
+
+        var enabled = await onClient.GetStringAsync("/inference");
+        var disabled = await offClient.GetStringAsync("/inference");
+
+        Assert.Contains("Benchmark", enabled, StringComparison.Ordinal);
+        Assert.Contains("qwen.gguf", enabled, StringComparison.Ordinal);
+        Assert.Contains("The gateway is off", disabled, StringComparison.Ordinal);
+    }
+
     private static Task WaitUntilAsync(Func<bool> condition) => WaitUntilAsync(() => Task.FromResult(condition()));
 
     private static async Task WaitUntilAsync(Func<Task<bool>> condition)
