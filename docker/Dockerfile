@@ -18,8 +18,8 @@ ARG MINVERVERSIONOVERRIDE
 LABEL org.opencontainers.image.version=$MINVERVERSIONOVERRIDE
 WORKDIR /app
 COPY --from=build /app/publish .
-ENV ASPNETCORE_URLS=http://0.0.0.0:8080 \
-    Companion__DataDirectory=/data
+# The aspnet base image already sets HTTP_PORTS=8080; ASPNETCORE_URLS would override it with a warning.
+ENV Companion__DataDirectory=/data
 EXPOSE 8080
 VOLUME ["/data"]
 

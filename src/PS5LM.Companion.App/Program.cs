@@ -2,6 +2,8 @@ using System.Text.Json.Serialization;
 
 using FastEndpoints;
 
+using Microsoft.AspNetCore.DataProtection;
+
 using MudBlazor.Services;
 
 using PS5LM.Companion.App.Consoles;
@@ -47,6 +49,11 @@ public sealed class Program
 
             // IResult-based endpoints use the minimal-API serializer, not FastEndpoints': keep enums readable in both.
             builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+
+            // Keep the antiforgery/cookie keys in the data volume so a container restart does not invalidate open pages.
+            builder.Services.AddDataProtection()
+                .SetApplicationName("PS5LM.Companion")
+                .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(companion.DataDirectory, "keys")));
             builder.Services.AddHealthChecks();
             builder.Services.AddFastEndpoints();
             builder.Services.AddRazorComponents().AddInteractiveServerComponents();
