@@ -2,10 +2,10 @@
 @inherits LiveComponent
 @inject ISnackbar Snackbar
 
-<PageTitle>Models</PageTitle>
+<PageTitle>Models - @Target.Name</PageTitle>
 
 <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
-    <MudText Typo="Typo.h4" HtmlTag="h1">Models</MudText>
+    <MudText Typo="Typo.h4" HtmlTag="h1">Models<MudText Typo="Typo.subtitle1" Color="Color.Secondary" Inline="true" Class="ml-3">on @Target.Name (@Target.Host)</MudText></MudText>
     <MudSpacer />
     <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh" OnClick="ReloadAsync" Disabled="_loading">Refresh</MudButton>
     <MudButton Variant="Variant.Outlined" Color="Color.Warning" StartIcon="@Icons.Material.Filled.Eject"
