@@ -22,8 +22,10 @@ Generation throughput was the same with and without the gateway: 20.7 tokens/s b
 
 ## How to see what the app launched
 
-The app writes its arguments to `/data/PS5LM/app.log` (`ps5lm-app: arg ...`, one per line) and llama.cpp's own timing
-to `/data/PS5LM/llama.log`. Both can be read over FTP (port 2121). In `llama.log`, `slot print_timing ... prompt eval time`
+The app writes its arguments to `app.log` in its state root (`ps5lm-app: arg ...`, one per line) and llama.cpp's own timing
+to `llama.log` there. The state root is `/data/PS5LM` (PS5LM, and PS5LM Plus with `/data` available) or, on a
+sandboxed PS5LM Plus, `/mnt/sandbox/PPSA99581_000/download0/PS5LM` over FTP (`/download0/PS5LM` as the app sees it); see
+[real-console-verification.md](real-console-verification.md). Both files can be read over FTP (port 2121). In `llama.log`, `slot print_timing ... prompt eval time`
 gives tokens and tokens/s for each request, and `cache_n` in a response's `timings` shows how much of the prompt was reused.
 
 ## What the app passes today
@@ -52,7 +54,7 @@ The ones that matter for latency:
 
 ## How to override today
 
-`/data/PS5LM/app-args.txt`, one argument per line, replaces the planner's arguments completely (upstream
+`app-args.txt` in the same state root (for example `/data/PS5LM/app-args.txt`), one argument per line, replaces the planner's arguments completely (upstream
 `ps5/app/main.cpp`). The file must therefore hold the **full** list from `app.log`, with only the intended values changed
 (the app still appends `--log-file`, `--metrics` and `--tools` when they are missing, so the example omits them),
 and it is read when the app starts. Delete the file and relaunch the app to return to the planner.
