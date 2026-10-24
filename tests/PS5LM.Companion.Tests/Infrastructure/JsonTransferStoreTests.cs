@@ -20,7 +20,7 @@ public sealed class JsonTransferStoreTests : IDisposable
     }
 
     private static Transfer Sample() => new(
-        Guid.NewGuid(), "a/b", "m.gguf", "abc", 10, "Internal storage", TransferState.Uploading, 10, 4, null,
+        Guid.NewGuid(), "ps5", "a/b", "m.gguf", "abc", 10, "Internal storage", TransferState.Uploading, 10, 4, null,
         new DateTimeOffset(2026, 10, 23, 0, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 10, 23, 1, 0, 0, TimeSpan.Zero));
 
     [Fact]

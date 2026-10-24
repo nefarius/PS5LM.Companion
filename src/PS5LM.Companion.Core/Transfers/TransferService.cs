@@ -2,63 +2,90 @@ using System.Security.Cryptography;
 using System.Threading.Channels;
 
 using PS5LM.Companion.Core.Abstractions;
-using PS5LM.Companion.Core.Discovery;
+using PS5LM.Companion.Core.Consoles;
 using PS5LM.Companion.Core.Domain;
 using PS5LM.Companion.Core.Models;
-using PS5LM.Companion.Core.Status;
 
 namespace PS5LM.Companion.Core.Transfers;
 
 /// <summary>
 /// Moves models from the hub to the console. The companion does the download (resumable, hash-checked) and
 /// pushes the file over FTP under a <c>.part</c> name that the apps ignore, renaming it only when complete, so a
-/// half-copied model is never offered to the app.
+/// half-copied model is never offered to the app. Each console has its own queue and worker, so transfers to
+/// different consoles run in parallel while each console's ftpsrv only ever sees one at a time.
 /// </summary>
-public sealed class TransferService(
-    IModelHub hub,
-    IPS5FileSystem fileSystem,
-    ModelCatalog catalog,
-    CompanionStatusService statusService,
-    CompanionStatusStore statusStore,
-    ITransferStore store,
-    TransferOptions options,
-    TimeProvider time)
+public sealed class TransferService
 {
     private const string PartSuffix = ".part";
 
+    private readonly IModelHub _hub;
+    private readonly IConsoleRegistry _consoles;
+    private readonly ITransferStore _store;
+    private readonly TransferOptions _options;
+    private readonly TimeProvider _time;
+    private readonly Dictionary<string, Channel<Guid>> _queues;
+
+    public TransferService(IModelHub hub, IConsoleRegistry consoles, ITransferStore store, TransferOptions options, TimeProvider time)
+    {
+        _hub = hub;
+        _consoles = consoles;
+        _store = store;
+        _options = options;
+        _time = time;
+        _queues = consoles.All.ToDictionary(c => c.Id, _ => Channel.CreateUnbounded<Guid>(), StringComparer.Ordinal);
+    }
+
     private readonly Lock _gate = new();
+
+    // Keeps snapshots and saves in order across consoles so an older snapshot never overwrites a newer file.
+    private readonly SemaphoreSlim _persistGate = new(1, 1);
     private readonly Dictionary<Guid, Transfer> _transfers = [];
     private readonly Dictionary<Guid, CancellationTokenSource> _running = [];
     private readonly HashSet<Guid> _userCancelled = [];
-    private readonly Channel<Guid> _queue = Channel.CreateUnbounded<Guid>();
-
     public event Action? Changed;
 
     /// <summary>Raised when the transfer list could not be saved; the worker carries on.</summary>
     public event Action<Exception>? PersistenceFailed;
 
-    public IReadOnlyList<Transfer> Snapshot()
+    /// <summary>All transfers, newest first, optionally only those of one console.</summary>
+    public IReadOnlyList<Transfer> Snapshot(string? consoleId = null)
     {
         lock (_gate)
         {
-            return _transfers.Values.OrderByDescending(t => t.CreatedAt).ToList();
+            return _transfers.Values
+                .Where(t => consoleId is null || string.Equals(t.ConsoleId, consoleId, StringComparison.Ordinal))
+                .OrderByDescending(t => t.CreatedAt)
+                .ToList();
         }
     }
 
     /// <summary>Restores persisted transfers; unfinished ones are queued again and resume from the cache.</summary>
     public async Task InitializeAsync(CancellationToken cancellationToken)
     {
-        foreach (var transfer in await store.LoadAsync(cancellationToken))
+        foreach (var transfer in await _store.LoadAsync(cancellationToken))
         {
-            var restored = transfer.IsActive ? transfer with { State = TransferState.Queued } : transfer;
+            var restored = transfer;
+            if (transfer.IsActive)
+            {
+                restored = string.IsNullOrEmpty(transfer.ConsoleId) || _consoles.Find(transfer.ConsoleId) is null
+                    ? transfer with
+                    {
+                        State = TransferState.Failed,
+                        Error = string.IsNullOrEmpty(transfer.ConsoleId)
+                            ? "This transfer was saved without a console id and cannot be resumed. Queue it again."
+                            : $"The console '{transfer.ConsoleId}' is no longer configured, so this transfer cannot be resumed.",
+                    }
+                    : transfer with { State = TransferState.Queued };
+            }
+
             lock (_gate)
             {
                 _transfers[restored.Id] = restored;
             }
 
-            if (restored.IsActive)
+            if (restored.State == TransferState.Queued)
             {
-                _queue.Writer.TryWrite(restored.Id);
+                _queues[restored.ConsoleId].Writer.TryWrite(restored.Id);
             }
         }
     }
@@ -70,13 +97,19 @@ public sealed class TransferService(
             return (new OperationResult(OperationOutcome.Invalid, "A valid repository id and .gguf file name are required."), null);
         }
 
-        var installation = statusService.LastInstallation;
+        var runtime = _consoles.Find(request.ConsoleId);
+        if (runtime is null)
+        {
+            return (new OperationResult(OperationOutcome.NotFound, "That console is not configured."), null);
+        }
+
+        var installation = runtime.Status.LastInstallation;
         if (installation?.StateRoot is null)
         {
             return (new OperationResult(OperationOutcome.Unavailable, installation?.Message ?? "The console is not reachable."), null);
         }
 
-        var targets = await catalog.UploadTargetsAsync(installation, cancellationToken);
+        var targets = await runtime.Models.UploadTargetsAsync(installation, cancellationToken);
         var target = request.TargetRoot is null
             ? targets.FirstOrDefault()
             : targets.FirstOrDefault(t => t.Name.Equals(request.TargetRoot, StringComparison.OrdinalIgnoreCase));
@@ -85,27 +118,27 @@ public sealed class TransferService(
             return (new OperationResult(OperationOutcome.Invalid, "That storage location is not available for uploads."), null);
         }
 
-        var file = (await hub.ListFilesAsync(request.Repo, cancellationToken))
+        var file = (await _hub.ListFilesAsync(request.Repo, cancellationToken))
             .FirstOrDefault(f => f.Name.Equals(request.FileName, StringComparison.Ordinal));
         if (file is null)
         {
             return (new OperationResult(OperationOutcome.NotFound, "That file is not in the repository."), null);
         }
 
-        var existing = await fileSystem.FileExistsAsync($"{target.FtpPath}/{file.Name}", cancellationToken);
+        var existing = await runtime.FileSystem.FileExistsAsync($"{target.FtpPath}/{file.Name}", cancellationToken);
         if (existing)
         {
             return (new OperationResult(OperationOutcome.Conflict, "A model with that name is already on the console."), null);
         }
 
-        var now = time.GetUtcNow();
+        var now = _time.GetUtcNow();
         var transfer = new Transfer(
-            Guid.NewGuid(), request.Repo, file.Name, file.Sha256, file.SizeBytes, target.Name,
+            Guid.NewGuid(), runtime.Id, request.Repo, file.Name, file.Sha256, file.SizeBytes, target.Name,
             TransferState.Queued, 0, 0, null, now, now);
 
         lock (_gate)
         {
-            if (_transfers.Values.Any(t => t.IsActive && t.Repo == transfer.Repo && t.FileName == transfer.FileName && t.TargetRoot == transfer.TargetRoot))
+            if (_transfers.Values.Any(t => t.IsActive && t.ConsoleId == transfer.ConsoleId && t.Repo == transfer.Repo && t.FileName == transfer.FileName && t.TargetRoot == transfer.TargetRoot))
             {
                 return (new OperationResult(OperationOutcome.Conflict, "That file is already being transferred."), null);
             }
@@ -128,7 +161,7 @@ public sealed class TransferService(
             throw;
         }
 
-        _queue.Writer.TryWrite(transfer.Id);
+        _queues[runtime.Id].Writer.TryWrite(transfer.Id);
         Changed?.Invoke();
         return (new OperationResult(OperationOutcome.Accepted), transfer);
     }
@@ -172,10 +205,16 @@ public sealed class TransferService(
         return new OperationResult(OperationOutcome.Accepted);
     }
 
-    /// <summary>The worker loop: one transfer at a time, because the console's link and ftpsrv are the bottleneck.</summary>
-    public async Task RunAsync(CancellationToken stoppingToken)
+    /// <summary>
+    /// The worker: one loop per console, each running one transfer at a time because that console's link and
+    /// ftpsrv are the bottleneck. A stuck console never delays another.
+    /// </summary>
+    public Task RunAsync(CancellationToken stoppingToken) =>
+        Task.WhenAll(_consoles.All.Select(console => RunConsoleAsync(console, stoppingToken)));
+
+    private async Task RunConsoleAsync(ConsoleRuntime console, CancellationToken stoppingToken)
     {
-        await foreach (var id in _queue.Reader.ReadAllAsync(stoppingToken))
+        await foreach (var id in _queues[console.Id].Reader.ReadAllAsync(stoppingToken))
         {
             Transfer? transfer;
             lock (_gate)
@@ -196,7 +235,7 @@ public sealed class TransferService(
 
             try
             {
-                await ProcessAsync(transfer, cts.Token);
+                await ProcessAsync(transfer, console, cts.Token);
             }
             finally
             {
@@ -208,18 +247,18 @@ public sealed class TransferService(
         }
     }
 
-    private async Task ProcessAsync(Transfer transfer, CancellationToken token)
+    private async Task ProcessAsync(Transfer transfer, ConsoleRuntime console, CancellationToken token)
     {
         var cachePath = CachePath(transfer);
         try
         {
-            var target = await ResolveTargetAsync(transfer, token);
-            await EnsureSpaceAsync(transfer, target, token);
+            var target = await ResolveTargetAsync(transfer, console, token);
+            await EnsureSpaceAsync(transfer, console, target, token);
 
             Update(transfer.Id, t => t with { State = TransferState.Downloading, Error = null });
             await PersistAsync(token);
             Directory.CreateDirectory(Path.GetDirectoryName(cachePath)!);
-            await hub.DownloadAsync(
+            await _hub.DownloadAsync(
                 transfer.Repo,
                 transfer.FileName,
                 cachePath,
@@ -231,7 +270,7 @@ public sealed class TransferService(
 
             Update(transfer.Id, t => t with { State = TransferState.Uploading, UploadedBytes = 0 });
             await PersistAsync(token);
-            await UploadAsync(transfer, target, cachePath, token);
+            await UploadAsync(transfer, console, target, cachePath, token);
 
             File.Delete(cachePath);
             Update(transfer.Id, t => t with { State = TransferState.Completed, UploadedBytes = t.SizeBytes });
@@ -286,28 +325,28 @@ public sealed class TransferService(
         public void Report(long value) => report(value);
     }
 
-    private async Task<StorageRoot> ResolveTargetAsync(Transfer transfer, CancellationToken token)
+    private static async Task<StorageRoot> ResolveTargetAsync(Transfer transfer, ConsoleRuntime console, CancellationToken token)
     {
         // A restored transfer can run before the status monitor's first discovery has finished.
-        if (statusService.LastInstallation is null)
+        if (console.Status.LastInstallation is null)
         {
-            await statusService.RefreshAsync(token);
+            await console.Status.RefreshAsync(token);
         }
 
-        var installation = statusService.LastInstallation
+        var installation = console.Status.LastInstallation
                            ?? throw new InvalidOperationException("The console's installation is not known.");
-        var targets = await catalog.UploadTargetsAsync(installation, token);
+        var targets = await console.Models.UploadTargetsAsync(installation, token);
         return targets.FirstOrDefault(t => t.Name.Equals(transfer.TargetRoot, StringComparison.OrdinalIgnoreCase))
                ?? throw new InvalidOperationException($"The upload target '{transfer.TargetRoot}' is no longer available.");
     }
 
-    private Task EnsureSpaceAsync(Transfer transfer, StorageRoot target, CancellationToken token)
+    private Task EnsureSpaceAsync(Transfer transfer, ConsoleRuntime console, StorageRoot target, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
-        var free = DriveSpaceLocator.FreeBytes(statusStore.Current.Sensors, target);
+        var free = DriveSpaceLocator.FreeBytes(console.Store.Current.Sensors, target);
 
         // Without ps5-exporter the free space is unknown: let the upload try rather than refuse.
-        if (free is { } bytes && bytes < transfer.SizeBytes + options.SpaceMarginBytes)
+        if (free is { } bytes && bytes < transfer.SizeBytes + _options.SpaceMarginBytes)
         {
             throw new IOException(
                 $"Not enough space on {target.Name}: {transfer.SizeBytes / 1048576} MiB needed plus margin, {bytes / 1048576} MiB free.");
@@ -339,26 +378,26 @@ public sealed class TransferService(
         }
     }
 
-    private async Task UploadAsync(Transfer transfer, StorageRoot target, string cachePath, CancellationToken token)
+    private async Task UploadAsync(Transfer transfer, ConsoleRuntime console, StorageRoot target, string cachePath, CancellationToken token)
     {
         var final = $"{target.FtpPath}/{transfer.FileName}";
         var part = final + PartSuffix;
         try
         {
             await using var stream = File.OpenRead(cachePath);
-            await fileSystem.UploadAsync(
+            await console.FileSystem.UploadAsync(
                 stream,
                 part,
                 new InlineProgress(bytes => Update(transfer.Id, t => t.State == TransferState.Uploading ? t with { UploadedBytes = bytes } : t)),
                 token);
-            await fileSystem.MoveAsync(part, final, token);
+            await console.FileSystem.MoveAsync(part, final, token);
         }
         catch
         {
             // Never leave a partial model behind on the console. The cache keeps the verified download for a retry.
             try
             {
-                await fileSystem.DeleteAsync(part, CancellationToken.None);
+                await console.FileSystem.DeleteAsync(part, CancellationToken.None);
             }
             catch (ConsoleUnreachableException)
             {
@@ -369,8 +408,9 @@ public sealed class TransferService(
         }
     }
 
+    // Partial downloads are namespaced by console so two consoles can fetch the same file at the same time.
     private string CachePath(Transfer transfer) =>
-        Path.Combine(options.CacheDirectory, transfer.Repo, transfer.FileName);
+        Path.Combine(_options.CacheDirectory, transfer.ConsoleId, transfer.Repo, transfer.FileName);
 
     private void Update(Guid id, Func<Transfer, Transfer> change)
     {
@@ -388,7 +428,7 @@ public sealed class TransferService(
                 return;
             }
 
-            _transfers[id] = next with { UpdatedAt = time.GetUtcNow() };
+            _transfers[id] = next with { UpdatedAt = _time.GetUtcNow() };
         }
 
         Changed?.Invoke();
@@ -396,19 +436,27 @@ public sealed class TransferService(
 
     private async Task PersistAsync(CancellationToken token)
     {
-        List<Transfer> snapshot;
-        lock (_gate)
+        await _persistGate.WaitAsync(token);
+        try
         {
-            var finished = _transfers.Values.Where(t => !t.IsActive).OrderByDescending(t => t.UpdatedAt).Skip(options.HistoryLimit).Select(t => t.Id).ToList();
-            foreach (var id in finished)
+            List<Transfer> snapshot;
+            lock (_gate)
             {
-                _transfers.Remove(id);
+                var finished = _transfers.Values.Where(t => !t.IsActive).OrderByDescending(t => t.UpdatedAt).Skip(_options.HistoryLimit).Select(t => t.Id).ToList();
+                foreach (var id in finished)
+                {
+                    _transfers.Remove(id);
+                }
+
+                snapshot = _transfers.Values.ToList();
             }
 
-            snapshot = _transfers.Values.ToList();
+            await _store.SaveAsync(snapshot, token);
         }
-
-        await store.SaveAsync(snapshot, token);
+        finally
+        {
+            _persistGate.Release();
+        }
     }
 
     private static void TryDelete(string path)

@@ -2,11 +2,13 @@ using System.Text.Json.Serialization;
 
 using FastEndpoints;
 
+using Microsoft.AspNetCore.DataProtection;
+
 using MudBlazor.Services;
 
+using PS5LM.Companion.App.Consoles;
 using PS5LM.Companion.App.Monitoring;
 using PS5LM.Companion.App.Security;
-using PS5LM.Companion.Core.Status;
 using PS5LM.Companion.Infrastructure;
 
 using Serilog;
@@ -47,13 +49,18 @@ public sealed class Program
 
             // IResult-based endpoints use the minimal-API serializer, not FastEndpoints': keep enums readable in both.
             builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+
+            // Keep the antiforgery/cookie keys in the data volume so a container restart does not invalidate open pages.
+            builder.Services.AddDataProtection()
+                .SetApplicationName("PS5LM.Companion")
+                .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(companion.DataDirectory, "keys")));
             builder.Services.AddHealthChecks();
             builder.Services.AddFastEndpoints();
             builder.Services.AddRazorComponents().AddInteractiveServerComponents();
             builder.Services.AddMudServices();
             builder.Services.AddPS5Connectivity(builder.Configuration);
             builder.Services.AddModelManagement(builder.Configuration);
-            builder.Services.AddSingleton<CompanionStatusStore>();
+            builder.Services.AddScoped<ActiveConsole>();
             // Open Blazor circuits and SignalR sockets never end on their own, so the default 30 s grace period
             // is always spent in full. Nothing here needs more than a few seconds to stop.
             builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = TimeSpan.FromSeconds(3));

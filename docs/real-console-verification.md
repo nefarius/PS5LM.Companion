@@ -15,7 +15,7 @@ console before a release, for each of PS5LM and PS5LM Plus, and note the app and
 
 ## Checklist
 
-Start the companion with `PS5__Host=<console>` and open the dashboard.
+Start the companion with `PS5__Consoles__<id>__Host=<console>` and open the dashboard.
 
 1. **No model, app not started**: status shows the console and variant after the app has run once; Models lists the
    files on the console.
@@ -32,6 +32,18 @@ Start the companion with `PS5__Host=<console>` and open the dashboard.
    space is refused before downloading. Without it, uploads are attempted.
 8. **Plus sandbox**: on a sandboxed PS5LM Plus, loading a model from `/app0/models` works and uploads land in the
    sandbox folder.
-9. **Both installed**: with both apps present and `PS5:Variant` unset, the dashboard explains how to choose.
+9. **Both installed**: with both apps present and `PS5:Consoles:{id}:Variant` unset, the dashboard explains how to choose.
+
+## Two consoles
+
+Configure two consoles (`PS5__Consoles__a__Host`, `PS5__Consoles__b__Host`) and repeat the relevant steps:
+
+10. **Selector**: the top bar offers both consoles; switching changes the heading, status, models and downloads
+    without a reload, and the other console keeps updating (power one off: only its chip turns disconnected).
+11. **Isolation**: load a model on console A; console B's status and model list do not change.
+12. **Parallel downloads**: queue a file to both consoles. Both transfers progress at the same time; a second file
+    to the same console waits until the first finishes.
+13. **Unreachable console**: with console B off, transfers and commands for A still work and B's calls return `503`.
+14. **Restart**: restart the companion mid-transfer on both consoles; each resumes on its own console.
 
 Record any difference (especially in ftpsrv listings, rename behaviour and command-file timing) as a test fixture.

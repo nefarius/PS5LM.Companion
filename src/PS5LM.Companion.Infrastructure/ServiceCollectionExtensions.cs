@@ -3,12 +3,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 using PS5LM.Companion.Core.Abstractions;
-using PS5LM.Companion.Core.Discovery;
-using PS5LM.Companion.Core.Models;
-using PS5LM.Companion.Core.Status;
+using PS5LM.Companion.Core.Consoles;
 using PS5LM.Companion.Core.Transfers;
-using PS5LM.Companion.Infrastructure.Ftp;
-using PS5LM.Companion.Infrastructure.Http;
 using PS5LM.Companion.Infrastructure.Hub;
 using PS5LM.Companion.Infrastructure.Persistence;
 
@@ -22,51 +18,34 @@ public static class ServiceCollectionExtensions
 {
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(3);
 
-    /// <summary>Registers FTP access, the llama-server and ps5-exporter probes, and the status service.</summary>
+    /// <summary>Registers the configured consoles and the clients each one needs.</summary>
     public static IServiceCollection AddPS5Connectivity(this IServiceCollection services, IConfiguration configuration)
     {
         services
-            .AddOptions<PS5Options>()
-            .Bind(configuration.GetSection(PS5Options.SectionName))
-            .ValidateDataAnnotations()
-            .Validate(static options => string.IsNullOrWhiteSpace(options.PayloadManagerUrl) || IsHttpUrl(options.PayloadManagerUrl),
-                "PS5:PayloadManagerUrl must be an absolute http or https URL.")
+            .AddOptions<ConsolesOptions>()
+            .Bind(configuration.GetSection(ConsolesOptions.SectionName))
             .ValidateOnStart();
-        services.AddSingleton(sp => sp.GetRequiredService<IOptions<PS5Options>>().Value);
+        services.AddSingleton<IValidateOptions<ConsolesOptions>, ConsolesOptionsValidator>();
         services.AddSingleton(TimeProvider.System);
 
-        services.AddSingleton<IPS5FileSystem, FtpFileSystem>();
-
+        // One pipeline per probe kind; ConsoleConnectorFactory sets the base address for each console.
         services
-            .AddRefitGeneratedClient<ILlamaServerApi>()
-            .ConfigureHttpClient((sp, client) => client.BaseAddress = BaseAddress(sp, o => o.LlamaPort))
+            .AddHttpClient(ConsoleConnectorFactory.LlamaClient)
             .AddResilienceHandler("llama-probe", builder => builder.AddTimeout(ProbeTimeout));
         services
-            .AddRefitGeneratedClient<IPS5ExporterApi>()
-            .ConfigureHttpClient((sp, client) => client.BaseAddress = BaseAddress(sp, o => o.ExporterPort))
+            .AddHttpClient(ConsoleConnectorFactory.ExporterClient)
             .AddResilienceHandler("exporter-probe", builder => builder.AddTimeout(ProbeTimeout));
-
         services
-            .AddRefitGeneratedClient<IPayloadManagerApi>()
-            .ConfigureHttpClient((sp, client) => client.BaseAddress = sp.GetRequiredService<PS5Options>().PayloadManagerBaseAddress())
+            .AddHttpClient(ConsoleConnectorFactory.PayloadManagerClient)
             .AddResilienceHandler("payload-manager", builder => builder.AddTimeout(ProbeTimeout));
 
-        services.AddSingleton<ILlamaServerProbe, LlamaServerProbe>();
-        services.AddSingleton<IConsoleSensorProbe, ExporterSensorProbe>();
-        services.AddSingleton<PayloadManagerClient>();
-        services.AddSingleton<IPayloadCatalog>(sp => sp.GetRequiredService<PayloadManagerClient>());
-        services.AddSingleton<IPayloadLauncher>(sp => sp.GetRequiredService<PayloadManagerClient>());
-        services.AddSingleton<IElfldrProbe, TcpElfldrProbe>();
-
-        services.AddSingleton<LoadTracker>();
-        services.AddSingleton<CompanionStatusService>();
-        services.AddSingleton<DependencyLaunchService>();
+        services.AddSingleton<IConsoleConnectorFactory, ConsoleConnectorFactory>();
+        services.AddSingleton<IConsoleRegistry>(sp => new ConsoleRegistry(
+            sp.GetRequiredService<IOptions<ConsolesOptions>>().Value,
+            sp.GetRequiredService<IConsoleConnectorFactory>(),
+            sp.GetRequiredService<TimeProvider>()));
         return services;
     }
-
-    private static bool IsHttpUrl(string value) =>
-        Uri.TryCreate(value.Trim(), UriKind.Absolute, out var uri)
-        && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 
     /// <summary>Registers model listing, load/unload, the Hugging Face hub and the transfer pipeline.</summary>
     public static IServiceCollection AddModelManagement(
@@ -103,15 +82,7 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<IModelHub, HuggingFaceHub>();
         services.AddSingleton<ITransferStore, JsonTransferStore>();
-        services.AddSingleton<ModelCatalog>();
-        services.AddSingleton<ModelControlService>();
         services.AddSingleton<TransferService>();
         return services;
-    }
-
-    private static Uri BaseAddress(IServiceProvider sp, Func<PS5Options, int> port)
-    {
-        var options = sp.GetRequiredService<PS5Options>();
-        return new UriBuilder(Uri.UriSchemeHttp, options.Host, port(options)).Uri;
     }
 }

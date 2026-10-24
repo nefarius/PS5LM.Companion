@@ -3,20 +3,22 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 
-using Microsoft.Extensions.DependencyInjection;
-
 using PS5LM.Companion.Core.Domain;
-using PS5LM.Companion.Core.Status;
 using PS5LM.Companion.Tests.Support;
 
 namespace PS5LM.Companion.Tests.App;
 
 public sealed class EndpointTests
 {
+    private const string Base = "/api/consoles/ps5";
+    private const string StatusUrl = Base + "/status";
+
     private static async Task PublishAsync(CompanionFactory factory)
     {
-        var status = await factory.Services.GetRequiredService<CompanionStatusService>().RefreshAsync(CancellationToken.None);
-        factory.Services.GetRequiredService<CompanionStatusStore>().Publish(status);
+        foreach (var console in factory.Registry.All)
+        {
+            console.Store.Publish(await console.Status.RefreshAsync(CancellationToken.None));
+        }
     }
 
     [Fact]
@@ -37,7 +39,7 @@ public sealed class EndpointTests
         await PublishAsync(factory);
         using var client = factory.CreateClient();
 
-        var json = await client.GetFromJsonAsync<JsonElement>("/api/status");
+        var json = (await client.GetFromJsonAsync<JsonElement>(StatusUrl)).GetProperty("status");
 
         Assert.Equal("AppAvailableNoModel", json.GetProperty("lifecycle").GetString());
         Assert.Equal("PS5LM", json.GetProperty("variant").GetString());
@@ -50,11 +52,11 @@ public sealed class EndpointTests
         await using var factory = new CompanionFactory { AccessToken = "secret" };
         using var client = factory.CreateClient();
 
-        using var anonymous = await client.GetAsync("/api/status");
-        using var wrong = new HttpRequestMessage(HttpMethod.Get, "/api/status");
+        using var anonymous = await client.GetAsync(StatusUrl);
+        using var wrong = new HttpRequestMessage(HttpMethod.Get, StatusUrl);
         wrong.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "nope");
         using var wrongResponse = await client.SendAsync(wrong);
-        using var right = new HttpRequestMessage(HttpMethod.Get, "/api/status");
+        using var right = new HttpRequestMessage(HttpMethod.Get, StatusUrl);
         right.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "secret");
         using var rightResponse = await client.SendAsync(right);
 
@@ -87,8 +89,8 @@ public sealed class EndpointTests
         await PublishAsync(factory);
         using var client = factory.CreateClient();
 
-        var status = await client.GetFromJsonAsync<JsonElement>("/api/status");
-        var dependencies = await client.GetFromJsonAsync<JsonElement>("/api/dependencies");
+        var status = (await client.GetFromJsonAsync<JsonElement>(StatusUrl)).GetProperty("status");
+        var dependencies = await client.GetFromJsonAsync<JsonElement>($"{Base}/dependencies");
 
         Assert.False(status.GetProperty("payloadManagerAvailable").GetBoolean());
         Assert.Equal(6, status.GetProperty("dependencies").GetArrayLength());
@@ -110,8 +112,8 @@ public sealed class EndpointTests
         factory.Elfldr.Listening = true;
         using var client = factory.CreateClient();
 
-        using var anonymous = await client.PostAsync("/api/dependencies/etahen/launch", null);
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/dependencies/etahen/launch");
+        using var anonymous = await client.PostAsync($"{Base}/dependencies/etahen/launch", null);
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{Base}/dependencies/etahen/launch");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "secret");
         using var accepted = await client.SendAsync(request);
         var body = await accepted.Content.ReadFromJsonAsync<JsonElement>();

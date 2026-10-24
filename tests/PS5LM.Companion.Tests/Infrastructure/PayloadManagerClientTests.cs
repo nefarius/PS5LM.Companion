@@ -128,26 +128,6 @@ public sealed class PayloadManagerClientTests
         Assert.Contains("Failed to launch payload", result.Message, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void A_payload_manager_url_must_be_absolute_http()
-    {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["PS5:Host"] = "ps5",
-                ["PS5:PayloadManagerUrl"] = "ftp://ps5/mgr",
-            })
-            .Build();
-        using var provider = new ServiceCollection()
-            .AddLogging()
-            .AddSingleton<IConfiguration>(configuration)
-            .AddPS5Connectivity(configuration)
-            .BuildServiceProvider(validateScopes: true);
-
-        var exception = Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<PS5Options>());
-        Assert.Contains("PayloadManagerUrl", exception.Message, StringComparison.Ordinal);
-    }
-
     private static PayloadManagerClient Client(HttpMessageHandler handler) =>
         Client(new HttpClient(handler) { BaseAddress = new Uri("http://pld.test") });
 

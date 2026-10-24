@@ -4,10 +4,12 @@ using PS5LM.Companion.Core.Domain;
 
 namespace PS5LM.Companion.Core.Discovery;
 
-/// <summary>How to reach the console. Bound from the <c>PS5</c> configuration section.</summary>
+/// <summary>How to reach one console. Bound from <c>PS5:Consoles:{id}</c>.</summary>
 public sealed class PS5Options
 {
-    public const string SectionName = "PS5";
+    /// <summary>Text shown in the dashboard and API. Empty uses the console id.</summary>
+    [MaxLength(60)]
+    public string? DisplayName { get; set; }
 
     /// <summary>The console's IP address or host name.</summary>
     [Required]
@@ -60,7 +62,7 @@ public sealed class PS5Options
         if (!Uri.TryCreate(PayloadManagerUrl.Trim(), UriKind.Absolute, out var uri)
             || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
         {
-            throw new InvalidOperationException("PS5:PayloadManagerUrl must be an absolute http or https URL.");
+            throw new InvalidOperationException("PayloadManagerUrl must be an absolute http or https URL.");
         }
 
         var builder = new UriBuilder(uri);

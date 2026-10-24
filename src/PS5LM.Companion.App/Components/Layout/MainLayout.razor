@@ -1,4 +1,5 @@
 @inherits LayoutComponentBase
+@inject ActiveConsole Active
 
 <MudThemeProvider @bind-IsDarkMode="_dark" />
 <MudPopoverProvider />
@@ -10,6 +11,21 @@
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" aria-label="Toggle navigation menu" OnClick="@(() => _drawerOpen = !_drawerOpen)" />
         <MudText Typo="Typo.h6" Class="ml-2">PS5LM Companion</MudText>
         <MudSpacer />
+        @if (Active.All.Count > 1)
+        {
+            <MudSelect T="string" Value="@Active.Runtime.Id" ValueChanged="@(id => Active.Select(id))"
+                       Label="Console" Dense="true" Margin="Margin.Dense" Variant="Variant.Outlined"
+                       Class="mr-3" Style="max-width:16rem" aria-label="Console">
+                @foreach (var console in Active.All)
+                {
+                    <MudSelectItem T="string" Value="@console.Id">@console.Name</MudSelectItem>
+                }
+            </MudSelect>
+        }
+        else
+        {
+            <MudText Typo="Typo.body2" Class="mr-3">@Active.Runtime.Name</MudText>
+        }
         <StatusChip />
         <MudIconButton Icon="@(_dark ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
                        Color="Color.Inherit" aria-label="@(_dark ? "Switch to light theme" : "Switch to dark theme")"

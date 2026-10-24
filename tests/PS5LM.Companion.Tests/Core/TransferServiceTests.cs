@@ -11,7 +11,7 @@ public sealed class TransferServiceTests
     private const string File = "tiny-Q4.gguf";
     private const string Final = "/data/PS5LM/models/tiny-Q4.gguf";
 
-    private static TransferRequest Request(string repo = Repo, string file = File, string? target = null) => new(repo, file, target);
+    private static TransferRequest Request(string repo = Repo, string file = File, string? target = null) => new("ps5", repo, file, target);
 
     private static async Task<(TransferHarness Harness, Transfer Transfer)> EnqueuedAsync(Action<TransferHarness>? arrange = null)
     {

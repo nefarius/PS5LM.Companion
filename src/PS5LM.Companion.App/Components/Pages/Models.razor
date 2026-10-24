@@ -1,14 +1,11 @@
 @page "/models"
 @inherits LiveComponent
-@inject ModelCatalog Catalog
-@inject ModelControlService Control
-@inject CompanionStatusService StatusService
 @inject ISnackbar Snackbar
 
-<PageTitle>Models</PageTitle>
+<PageTitle>Models - @Target.Name</PageTitle>
 
 <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
-    <MudText Typo="Typo.h4" HtmlTag="h1">Models</MudText>
+    <MudText Typo="Typo.h4" HtmlTag="h1">Models<MudText Typo="Typo.subtitle1" Color="Color.Secondary" Inline="true" Class="ml-3">on @Target.Name (@Target.Host)</MudText></MudText>
     <MudSpacer />
     <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh" OnClick="ReloadAsync" Disabled="_loading">Refresh</MudButton>
     <MudButton Variant="Variant.Outlined" Color="Color.Warning" StartIcon="@Icons.Material.Filled.Eject"
@@ -91,39 +88,53 @@
         }
     }
 
-    private string? InstallationKey() => StatusService.LastInstallation?.StateRoot?.FtpPath;
+    private string? InstallationKey() => Target.Status.LastInstallation?.StateRoot is { } root ? $"{Target.Id}:{root.FtpPath}" : null;
 
-    private int CompletedCount() => Transfers.Snapshot().Count(t => t.State == TransferState.Completed);
+    private int CompletedCount() => Transfers.Snapshot(Target.Id).Count(t => t.State == TransferState.Completed);
 
     private bool IsLoaded(ModelFile model) => !model.IsProjector && ModelNames.IsSameModel(Status.LoadedModel, model.FileName, model.AppPath);
 
     private async Task ReloadAsync()
     {
+        var console = Target;
         _loading = true;
         _error = null;
         try
         {
-            var installation = StatusService.LastInstallation;
-            _models = installation?.StateRoot is null
+            var installation = console.Status.LastInstallation;
+            var models = installation?.StateRoot is null
                 ? []
-                : await Catalog.ListAsync(installation, null, CancellationToken.None);
+                : await console.Models.ListAsync(installation, null, CancellationToken.None);
+            if (!ReferenceEquals(console, Target))
+            {
+                // The selection moved on while this was loading; the newer reload owns the page state.
+                return;
+            }
+
+            _models = models;
             _error = installation?.StateRoot is null ? installation?.Message ?? "The console is not reachable." : null;
         }
         catch (Exception ex) when (ex is Core.Abstractions.ConsoleUnreachableException)
         {
-            _error = ex.Message;
-            _models = [];
+            if (ReferenceEquals(console, Target))
+            {
+                _error = ex.Message;
+                _models = [];
+            }
         }
         finally
         {
-            _loading = false;
+            if (ReferenceEquals(console, Target))
+            {
+                _loading = false;
+            }
         }
     }
 
     private Task LoadAsync(ModelFile model) =>
-        ActAsync(() => Control.LoadAsync(model.AppPath, CancellationToken.None), $"Loading {model.FileName}");
+        ActAsync(() => Target.Control.LoadAsync(model.AppPath, CancellationToken.None), $"Loading {model.FileName}");
 
-    private Task UnloadAsync() => ActAsync(() => Control.UnloadAsync(CancellationToken.None), "Unloading the model");
+    private Task UnloadAsync() => ActAsync(() => Target.Control.UnloadAsync(CancellationToken.None), "Unloading the model");
 
     /// <summary>One command at a time per page: a second click while one is running is ignored.</summary>
     private async Task ActAsync(Func<Task<OperationResult>> command, string started)

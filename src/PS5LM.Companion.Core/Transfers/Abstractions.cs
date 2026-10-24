@@ -17,11 +17,12 @@ public sealed record HubFile(string Name, long SizeBytes, string? Sha256);
 
 public sealed record HubRepo(string Id, long Downloads);
 
-public sealed record TransferRequest(string Repo, string FileName, string? TargetRoot);
+public sealed record TransferRequest(string ConsoleId, string Repo, string FileName, string? TargetRoot);
 
-/// <summary>One model transfer: hub → companion cache → console.</summary>
+/// <summary>One model transfer: hub → companion cache → the console named by <c>ConsoleId</c>.</summary>
 public sealed record Transfer(
     Guid Id,
+    string ConsoleId,
     string Repo,
     string FileName,
     string? Sha256,

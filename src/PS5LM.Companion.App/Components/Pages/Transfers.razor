@@ -1,13 +1,11 @@
 @page "/transfers"
 @inherits LiveComponent
 @inject IModelHub Hub
-@inject ModelCatalog Catalog
-@inject CompanionStatusService StatusService
 @inject ISnackbar Snackbar
 
 <PageTitle>Downloads</PageTitle>
 
-<MudText Typo="Typo.h4" HtmlTag="h1" Class="mb-2">Downloads</MudText>
+<MudText Typo="Typo.h4" HtmlTag="h1" Class="mb-2">Downloads<MudText Typo="Typo.subtitle1" Color="Color.Secondary" Inline="true" Class="ml-3">to @Target.Name (@Target.Host)</MudText></MudText>
 
 <MudPaper Class="pa-4 mb-4" Elevation="1">
     <MudText Typo="Typo.h6" Class="mb-2">Find a model on Hugging Face</MudText>
@@ -66,7 +64,7 @@
 </MudPaper>
 
 <MudPaper Elevation="1">
-    <MudTable Items="Transfers.Snapshot()" Dense="true" Hover="true" T="Transfer">
+    <MudTable Items="Transfers.Snapshot(Target.Id)" Dense="true" Hover="true" T="Transfer">
         <ToolBarContent><MudText Typo="Typo.h6">Transfers</MudText></ToolBarContent>
         <HeaderContent>
             <MudTh>File</MudTh>
@@ -124,41 +122,87 @@
     private IReadOnlyList<HubFile>? _files;
 
     private string? _targetsFor;
-    private bool _loadingTargets;
+    private string? _loadingKey;
 
     protected override Task OnInitializedAsync() => RefreshTargetsAsync();
 
     // The console (or its state folder) can appear after this page opened.
     protected override Task OnLiveChangeAsync() => RefreshTargetsAsync();
 
+    private string? CurrentTargetsKey() =>
+        Target.Status.LastInstallation?.StateRoot is { } root ? $"{Target.Id}:{root.FtpPath}" : null;
+
     private async Task RefreshTargetsAsync()
     {
-        var installation = StatusService.LastInstallation;
-        var key = installation?.StateRoot?.FtpPath;
-        if (installation is not { StateRoot: not null } || key == _targetsFor || _loadingTargets)
+        var console = Target;
+        var installation = console.Status.LastInstallation;
+        var key = CurrentTargetsKey();
+        if (key is null || installation is null)
+        {
+            // This console has no usable state folder (yet): drop anything loaded for another one.
+            ClearTargets();
+            return;
+        }
+
+        if (key == _targetsFor)
         {
             return;
         }
 
-        _loadingTargets = true;
+        if (_targetsFor is not null)
+        {
+            // Never offer another console's targets while this one's are loading.
+            ClearTargets();
+        }
+
+        if (_loadingKey == key)
+        {
+            return;
+        }
+
+        _loadingKey = key;
+        var stale = false;
         try
         {
-            var targets = (await Catalog.UploadTargetsAsync(installation, CancellationToken.None)).Select(t => t.Name).ToList();
-            _targets = targets;
-            _targetsFor = key;
-            if (_target is null || !targets.Contains(_target))
+            var targets = (await console.Models.UploadTargetsAsync(installation, CancellationToken.None)).Select(t => t.Name).ToList();
+            if (CurrentTargetsKey() != key)
             {
-                _target = targets.FirstOrDefault();
+                stale = true;
+            }
+            else
+            {
+                _targets = targets;
+                _targetsFor = key;
+                if (_target is null || !targets.Contains(_target))
+                {
+                    _target = targets.FirstOrDefault();
+                }
             }
         }
         catch (Core.Abstractions.ConsoleUnreachableException)
         {
             // The status page already says the console is unreachable.
+            stale = CurrentTargetsKey() != key;
         }
         finally
         {
-            _loadingTargets = false;
+            if (_loadingKey == key)
+            {
+                _loadingKey = null;
+            }
         }
+
+        if (stale)
+        {
+            await RefreshTargetsAsync();
+        }
+    }
+
+    private void ClearTargets()
+    {
+        _targets = [];
+        _targetsFor = null;
+        _target = null;
     }
 
     private async Task OnSearchKey(KeyboardEventArgs args)
@@ -228,7 +272,7 @@
         OperationResult result;
         try
         {
-            (result, _) = await Transfers.EnqueueAsync(new TransferRequest(repo, file.Name, _target), CancellationToken.None);
+            (result, _) = await Transfers.EnqueueAsync(new TransferRequest(Target.Id, repo, file.Name, _target), CancellationToken.None);
         }
         catch (Exception ex) when (ex is Core.Abstractions.ConsoleUnreachableException or HubUnavailableException)
         {

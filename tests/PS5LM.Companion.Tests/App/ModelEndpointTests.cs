@@ -2,9 +2,6 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 
-using Microsoft.Extensions.DependencyInjection;
-
-using PS5LM.Companion.Core.Status;
 using PS5LM.Companion.Tests.Support;
 
 namespace PS5LM.Companion.Tests.App;
@@ -15,8 +12,11 @@ public sealed class ModelEndpointTests
     {
         var factory = new CompanionFactory { AccessToken = token };
         arrange?.Invoke(factory);
-        var status = await factory.Services.GetRequiredService<CompanionStatusService>().RefreshAsync(CancellationToken.None);
-        factory.Services.GetRequiredService<CompanionStatusStore>().Publish(status);
+        foreach (var console in factory.Registry.All)
+        {
+            console.Store.Publish(await console.Status.RefreshAsync(CancellationToken.None));
+        }
+
         return factory;
     }
 
@@ -26,7 +26,7 @@ public sealed class ModelEndpointTests
         await using var factory = await StartedAsync(f => f.FileSystem.AddFile("/data/PS5LM/models/a.gguf", new byte[3]));
         using var client = factory.CreateClient();
 
-        var json = await client.GetFromJsonAsync<JsonElement>("/api/models");
+        var json = await client.GetFromJsonAsync<JsonElement>("/api/consoles/ps5/models");
 
         var model = json.GetProperty("models").EnumerateArray().Single();
         Assert.Equal("a.gguf", model.GetProperty("fileName").GetString());
@@ -40,7 +40,7 @@ public sealed class ModelEndpointTests
         await using var factory = await StartedAsync(f => f.FileSystem.AddFile("/data/PS5LM/models/a.gguf", new byte[3]));
         using var client = factory.CreateClient();
 
-        using var response = await client.PostAsJsonAsync("/api/models/load", new { path = "/data/PS5LM/models/a.gguf" });
+        using var response = await client.PostAsJsonAsync("/api/consoles/ps5/models/load", new { path = "/data/PS5LM/models/a.gguf" });
 
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         Assert.Equal("/data/PS5LM/models/a.gguf\n", factory.FileSystem.Text("/data/PS5LM/load"));
@@ -52,7 +52,7 @@ public sealed class ModelEndpointTests
         await using var factory = await StartedAsync();
         using var client = factory.CreateClient();
 
-        using var response = await client.PostAsJsonAsync("/api/models/load", new { path = "/etc/passwd" });
+        using var response = await client.PostAsJsonAsync("/api/consoles/ps5/models/load", new { path = "/etc/passwd" });
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.Null(factory.FileSystem.Text("/data/PS5LM/load"));
@@ -64,8 +64,8 @@ public sealed class ModelEndpointTests
         await using var factory = await StartedAsync(f => f.FileSystem.AddFile("/data/PS5LM/models/a.gguf", new byte[3]));
         using var client = factory.CreateClient();
 
-        using var unload = await client.PostAsync("/api/models/unload", null);
-        using var load = await client.PostAsJsonAsync("/api/models/load", new { path = "/data/PS5LM/models/a.gguf" });
+        using var unload = await client.PostAsync("/api/consoles/ps5/models/unload", null);
+        using var load = await client.PostAsJsonAsync("/api/consoles/ps5/models/load", new { path = "/data/PS5LM/models/a.gguf" });
 
         Assert.Equal(HttpStatusCode.Accepted, unload.StatusCode);
         Assert.Equal("-\n", factory.FileSystem.Text("/data/PS5LM/unload"));
@@ -79,7 +79,7 @@ public sealed class ModelEndpointTests
         factory.FileSystem.Unreachable = true;
         using var client = factory.CreateClient();
 
-        using var response = await client.PostAsync("/api/models/unload", null);
+        using var response = await client.PostAsync("/api/consoles/ps5/models/unload", null);
 
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
     }
@@ -108,11 +108,11 @@ public sealed class ModelEndpointTests
         await using var factory = await StartedAsync();
         using var client = factory.CreateClient();
 
-        using var created = await client.PostAsJsonAsync("/api/transfers", new { repo = "acme/tiny-GGUF", fileName = "tiny-Q4.gguf" });
+        using var created = await client.PostAsJsonAsync("/api/consoles/ps5/transfers", new { repo = "acme/tiny-GGUF", fileName = "tiny-Q4.gguf" });
         var transfer = await created.Content.ReadFromJsonAsync<JsonElement>();
-        var list = await client.GetFromJsonAsync<JsonElement>("/api/transfers");
-        using var cancelled = await client.DeleteAsync($"/api/transfers/{transfer.GetProperty("id").GetString()}");
-        using var invalid = await client.PostAsJsonAsync("/api/transfers", new { repo = "bad", fileName = "x.gguf" });
+        var list = await client.GetFromJsonAsync<JsonElement>("/api/consoles/ps5/transfers");
+        using var cancelled = await client.DeleteAsync($"/api/consoles/ps5/transfers/{transfer.GetProperty("id").GetString()}");
+        using var invalid = await client.PostAsJsonAsync("/api/consoles/ps5/transfers", new { repo = "bad", fileName = "x.gguf" });
 
         Assert.Equal(HttpStatusCode.Accepted, created.StatusCode);
         Assert.Equal("Queued", transfer.GetProperty("state").GetString());
@@ -128,7 +128,7 @@ public sealed class ModelEndpointTests
         await using var factory = await StartedAsync(token: "secret");
         using var client = factory.CreateClient();
 
-        using var anonymous = await client.PostAsync("/api/models/unload", null);
+        using var anonymous = await client.PostAsync("/api/consoles/ps5/models/unload", null);
 
         Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
         Assert.Null(factory.FileSystem.Text("/data/PS5LM/unload"));
