@@ -17,8 +17,8 @@ Coding agents send a large fixed prompt (system prompt plus tool descriptions) w
 | Later turns (prefix cached, about 1,600 new tokens) | about 16 s |
 | Short chat prompt (about 60 tokens) | about 1 s |
 
-The inference gateway adds no measurable cost: with the same request, generation was 20.7 tokens/s both directly
-and through the gateway. The Inference page and `POST /api/inference/pools/{alias}/benchmark` show these numbers per console.
+Generation throughput was the same with and without the gateway: 20.7 tokens/s both directly and through it
+(only throughput was compared). The Inference page and `POST /api/inference/pools/{alias}/benchmark` show these numbers per console.
 
 ## How to see what the app launched
 
@@ -53,7 +53,8 @@ The ones that matter for latency:
 ## How to override today
 
 `/data/PS5LM/app-args.txt`, one argument per line, replaces the planner's arguments completely (upstream
-`ps5/app/main.cpp`). The file must therefore hold the **full** list from `app.log`, with only the intended values changed,
+`ps5/app/main.cpp`). The file must therefore hold the **full** list from `app.log`, with only the intended values changed
+(the app still appends `--log-file`, `--metrics` and `--tools` when they are missing, so the example omits them),
 and it is read when the app starts. Delete the file and relaunch the app to return to the planner.
 
 Example: the planner's arguments for the model above with a larger micro-batch.
