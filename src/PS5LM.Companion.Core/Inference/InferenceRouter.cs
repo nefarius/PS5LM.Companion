@@ -87,7 +87,8 @@ public sealed class InferenceRouter
     /// <summary>The only alias when exactly one pool exists; used when a request names no model.</summary>
     public string? SoleAlias => _options.Pools.Count == 1 ? _options.Pools.Keys.Single() : null;
 
-    public async Task<InferenceAdmission> AcquireAsync(string alias, CancellationToken cancellationToken)
+    /// <param name="onlyConsole">Restricts the choice to one console of the pool, for tests that must reach a specific replica.</param>
+    public async Task<InferenceAdmission> AcquireAsync(string alias, CancellationToken cancellationToken, string? onlyConsole = null)
     {
         if (!_options.Pools.TryGetValue(alias, out var pool))
         {
@@ -98,7 +99,7 @@ public sealed class InferenceRouter
         LinkedListNode<Waiter> node;
         lock (_gate)
         {
-            var eligible = Eligible(pool);
+            var eligible = Eligible(pool, onlyConsole);
             if (eligible.Count == 0)
             {
                 return InferenceAdmission.Fail(AdmissionFailure.NoReplica, $"No console is serving '{alias}' right now.");
@@ -114,7 +115,7 @@ public sealed class InferenceRouter
                 return InferenceAdmission.Fail(AdmissionFailure.QueueFull, $"Every console serving '{alias}' is busy and the queue is full.");
             }
 
-            waiter = new Waiter(alias, pool);
+            waiter = new Waiter(alias, pool, onlyConsole);
             node = _waiters.AddLast(waiter);
         }
 
@@ -211,8 +212,9 @@ public sealed class InferenceRouter
             : $"Loaded model is '{status.LoadedModel ?? "unknown"}', not '{pool.Model}'.";
     }
 
-    private List<ConsoleRuntime> Eligible(InferencePoolOptions pool) =>
+    private List<ConsoleRuntime> Eligible(InferencePoolOptions pool, string? onlyConsole = null) =>
         pool.Consoles
+            .Where(id => onlyConsole is null || id.Equals(onlyConsole, StringComparison.OrdinalIgnoreCase))
             .Select(id => _registry.Find(id))
             .Where(c => c is not null && EligibilityReason(c.Store.Current, pool) is null)
             .Select(c => c!)
@@ -241,7 +243,7 @@ public sealed class InferenceRouter
         {
             var next = node.Next;
             var waiter = node.Value;
-            var eligible = Eligible(waiter.Pool);
+            var eligible = Eligible(waiter.Pool, waiter.OnlyConsole);
             if (eligible.Count == 0)
             {
                 _waiters.Remove(node);
@@ -257,8 +259,10 @@ public sealed class InferenceRouter
         }
     }
 
-    private sealed class Waiter(string alias, InferencePoolOptions pool)
+    private sealed class Waiter(string alias, InferencePoolOptions pool, string? onlyConsole)
     {
+        public string? OnlyConsole { get; } = onlyConsole;
+
         public string Alias { get; } = alias;
 
         public InferencePoolOptions Pool { get; } = pool;

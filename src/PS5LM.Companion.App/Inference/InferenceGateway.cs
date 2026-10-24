@@ -11,7 +11,7 @@ using Yarp.ReverseProxy.Forwarder;
 namespace PS5LM.Companion.App.Inference;
 
 /// <summary>The upstream connection pool shared by every forwarded request. Retries and redirects are off on purpose.</summary>
-internal sealed class InferenceUpstream : IDisposable
+public sealed class InferenceUpstream : IDisposable
 {
     public InferenceUpstream()
     {

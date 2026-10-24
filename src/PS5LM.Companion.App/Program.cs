@@ -64,6 +64,7 @@ public sealed class Program
             builder.Services.AddInferenceRouting(builder.Configuration);
             builder.Services.AddHttpForwarder();
             builder.Services.AddSingleton<InferenceUpstream>();
+            builder.Services.AddSingleton<InferenceSelfTest>();
             builder.Services.AddScoped<ActiveConsole>();
             // Open Blazor circuits and SignalR sockets never end on their own, so the default 30 s grace period
             // is always spent in full. Nothing here needs more than a few seconds to stop.

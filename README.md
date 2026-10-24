@@ -147,6 +147,13 @@ Behaviour:
   console can take minutes. `Inference:MaxRequestBodyMegabytes` (32) caps what is read to find the model.
 - The companion's access token is accepted as `Authorization: Bearer` or `x-api-key` and is removed before forwarding.
   Errors under `/v1` are JSON in the OpenAI shape (`/v1/messages`: the Anthropic shape). Responses carry `X-PS5LM-Console`.
+- **Self-test:** the **Inference** dashboard page and `POST /api/inference/pools/{alias}/test` send a tiny non-streaming request
+  (`max_tokens` 8) to every ready console of the pool and report pass, fail or skipped with timings.
+  `POST /api/inference/pools/{alias}/benchmark` streams a fixed prompt (`max_tokens` 64) and reports first-byte and
+  first-token time, prompt and generation tokens per second (the console's own `timings` when it sends them) and token counts.
+  `GET /api/inference/pools/{alias}/results` returns the latest of each since the companion started. Runs wait behind
+  live requests for the console's slot, run one at a time per alias (`409` otherwise), and are not kept across restarts.
+  They test each console directly; they do not send traffic through the load balancer.
 - Pool settings are read at startup, and each alias needs consoles loaded with the same model; this does not load models.
 
 ## Upgrading from a single-console setup

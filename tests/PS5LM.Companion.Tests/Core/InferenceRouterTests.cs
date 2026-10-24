@@ -78,6 +78,20 @@ public sealed class InferenceRouterTests
     }
 
     [Fact]
+    public async Task A_targeted_request_reaches_only_that_console_or_none()
+    {
+        var (router, registry) = Create(["a", "b"]);
+        Serve(registry, "a");
+        Serve(registry, "b", lifecycle: CompanionLifecycle.Loading);
+
+        var b = await router.AcquireAsync("chat", CancellationToken.None, "b");
+        var a = await router.AcquireAsync("chat", CancellationToken.None, "A");
+
+        Assert.Equal(AdmissionFailure.NoReplica, b.Failure);
+        Assert.Equal("a", a.Lease!.Console.Id);
+    }
+
+    [Fact]
     public async Task An_idle_console_is_preferred_over_a_generating_one()
     {
         var (router, registry) = Create(["a", "b"]);
