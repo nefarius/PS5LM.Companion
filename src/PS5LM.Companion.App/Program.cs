@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.DataProtection;
 using MudBlazor.Services;
 
 using PS5LM.Companion.App.Consoles;
+using PS5LM.Companion.App.Inference;
 using PS5LM.Companion.App.Monitoring;
 using PS5LM.Companion.App.Security;
 using PS5LM.Companion.Infrastructure;
@@ -60,6 +61,9 @@ public sealed class Program
             builder.Services.AddMudServices();
             builder.Services.AddPS5Connectivity(builder.Configuration);
             builder.Services.AddModelManagement(builder.Configuration);
+            builder.Services.AddInferenceRouting(builder.Configuration);
+            builder.Services.AddHttpForwarder();
+            builder.Services.AddSingleton<InferenceUpstream>();
             builder.Services.AddScoped<ActiveConsole>();
             // Open Blazor circuits and SignalR sockets never end on their own, so the default 30 s grace period
             // is always spent in full. Nothing here needs more than a few seconds to stop.
@@ -80,6 +84,8 @@ public sealed class Program
                 config.Endpoints.RoutePrefix = "api";
                 config.Serializer.Options.Converters.Add(new JsonStringEnumConverter());
             });
+
+            app.MapInferenceGateway();
 
             app.MapRazorComponents<Components.App>().AddInteractiveServerRenderMode();
 

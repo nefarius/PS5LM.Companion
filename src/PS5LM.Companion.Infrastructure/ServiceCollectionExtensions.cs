@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 
 using PS5LM.Companion.Core.Abstractions;
 using PS5LM.Companion.Core.Consoles;
+using PS5LM.Companion.Core.Inference;
 using PS5LM.Companion.Core.Transfers;
 using PS5LM.Companion.Infrastructure.Hub;
 using PS5LM.Companion.Infrastructure.Persistence;
@@ -44,6 +45,20 @@ public static class ServiceCollectionExtensions
             sp.GetRequiredService<IOptions<ConsolesOptions>>().Value,
             sp.GetRequiredService<IConsoleConnectorFactory>(),
             sp.GetRequiredService<TimeProvider>()));
+        return services;
+    }
+
+    /// <summary>Registers the model-aware inference router. It is inert unless <c>Inference:Pools</c> is configured.</summary>
+    public static IServiceCollection AddInferenceRouting(this IServiceCollection services, IConfiguration configuration)
+    {
+        services
+            .AddOptions<InferenceOptions>()
+            .Bind(configuration.GetSection(InferenceOptions.SectionName))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<InferenceOptions>, InferenceOptionsValidator>();
+        services.AddSingleton(sp => new InferenceRouter(
+            sp.GetRequiredService<IConsoleRegistry>(),
+            sp.GetRequiredService<IOptions<InferenceOptions>>().Value));
         return services;
     }
 

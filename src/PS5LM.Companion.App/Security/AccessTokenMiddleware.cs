@@ -33,6 +33,14 @@ internal sealed class AccessTokenMiddleware(RequestDelegate next, IOptions<Compa
             return;
         }
 
+        if (context.Request.Path.StartsWithSegments("/v1", StringComparison.Ordinal))
+        {
+            // The inference gateway is called by SDKs, which parse the body and never follow a login redirect.
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            await context.Response.WriteAsJsonAsync(new { error = new { message = "Invalid or missing access token.", type = "authentication_error", code = "invalid_api_key" } });
+            return;
+        }
+
         context.Response.Redirect(LoginPath);
     }
 
@@ -54,6 +62,12 @@ internal sealed class AccessTokenMiddleware(RequestDelegate next, IOptions<Compa
         var header = request.Headers.Authorization.ToString();
         if (header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
             && Matches(header["Bearer ".Length..].Trim(), expected))
+        {
+            return true;
+        }
+
+        // Anthropic SDKs send the key this way.
+        if (request.Headers.TryGetValue("x-api-key", out var apiKey) && Matches(apiKey.ToString().Trim(), expected))
         {
             return true;
         }
