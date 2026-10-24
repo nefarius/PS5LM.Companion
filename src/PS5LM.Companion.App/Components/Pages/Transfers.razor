@@ -122,54 +122,87 @@
     private IReadOnlyList<HubFile>? _files;
 
     private string? _targetsFor;
-    private bool _loadingTargets;
+    private string? _loadingKey;
 
     protected override Task OnInitializedAsync() => RefreshTargetsAsync();
 
     // The console (or its state folder) can appear after this page opened.
     protected override Task OnLiveChangeAsync() => RefreshTargetsAsync();
 
+    private string? CurrentTargetsKey() =>
+        Target.Status.LastInstallation?.StateRoot is { } root ? $"{Target.Id}:{root.FtpPath}" : null;
+
     private async Task RefreshTargetsAsync()
     {
-        var installation = Target.Status.LastInstallation;
-        var key = installation?.StateRoot is { } root ? $"{Target.Id}:{root.FtpPath}" : null;
-        if (installation is not { StateRoot: not null })
+        var console = Target;
+        var installation = console.Status.LastInstallation;
+        var key = CurrentTargetsKey();
+        if (key is null || installation is null)
         {
-            if (_targetsFor is not null)
-            {
-                // Another console was selected and this one has no usable state folder yet.
-                _targets = [];
-                _targetsFor = null;
-                _target = null;
-            }
-
+            // This console has no usable state folder (yet): drop anything loaded for another one.
+            ClearTargets();
             return;
         }
 
-        if (key == _targetsFor || _loadingTargets)
+        if (key == _targetsFor)
         {
             return;
         }
 
-        _loadingTargets = true;
+        if (_targetsFor is not null)
+        {
+            // Never offer another console's targets while this one's are loading.
+            ClearTargets();
+        }
+
+        if (_loadingKey == key)
+        {
+            return;
+        }
+
+        _loadingKey = key;
+        var stale = false;
         try
         {
-            var targets = (await Target.Models.UploadTargetsAsync(installation, CancellationToken.None)).Select(t => t.Name).ToList();
-            _targets = targets;
-            _targetsFor = key;
-            if (_target is null || !targets.Contains(_target))
+            var targets = (await console.Models.UploadTargetsAsync(installation, CancellationToken.None)).Select(t => t.Name).ToList();
+            if (CurrentTargetsKey() != key)
             {
-                _target = targets.FirstOrDefault();
+                stale = true;
+            }
+            else
+            {
+                _targets = targets;
+                _targetsFor = key;
+                if (_target is null || !targets.Contains(_target))
+                {
+                    _target = targets.FirstOrDefault();
+                }
             }
         }
         catch (Core.Abstractions.ConsoleUnreachableException)
         {
             // The status page already says the console is unreachable.
+            stale = CurrentTargetsKey() != key;
         }
         finally
         {
-            _loadingTargets = false;
+            if (_loadingKey == key)
+            {
+                _loadingKey = null;
+            }
         }
+
+        if (stale)
+        {
+            await RefreshTargetsAsync();
+        }
+    }
+
+    private void ClearTargets()
+    {
+        _targets = [];
+        _targetsFor = null;
+        _target = null;
     }
 
     private async Task OnSearchKey(KeyboardEventArgs args)
