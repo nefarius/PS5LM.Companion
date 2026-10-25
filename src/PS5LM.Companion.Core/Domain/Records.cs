@@ -35,7 +35,8 @@ public sealed record StorageRoot(string Name, string FtpPath, string AppPath, bo
 /// <param name="SizeBytes">Size in bytes.</param>
 /// <param name="Location">The storage root's display name (e.g. "Internal storage", "USB 0").</param>
 /// <param name="Loaded">Whether llama-server reports this model as the loaded one.</param>
-public sealed record ModelFile(string FileName, string FtpPath, string AppPath, long SizeBytes, string Location, bool Loaded)
+/// <param name="Writable">Whether the storage root accepts deletion. The PS5LM Plus app folder is listed and read-only.</param>
+public sealed record ModelFile(string FileName, string FtpPath, string AppPath, long SizeBytes, string Location, bool Loaded, bool Writable)
 {
     /// <summary>Vision projector files (<c>mmproj-*.gguf</c>) sit beside a model and are not loadable on their own.</summary>
     public bool IsProjector => FileName.StartsWith("mmproj", StringComparison.OrdinalIgnoreCase);

@@ -83,3 +83,26 @@ public sealed class UnloadModelEndpoint(IConsoleRegistry registry) : EndpointWit
         await Send.ResultAsync(await ApiResults.GuardAsync(async () => ApiResults.From(await console.Control.UnloadAsync(ct))));
     }
 }
+
+public sealed record DeleteModelRequest(string Path);
+
+public sealed class DeleteModelEndpoint(IConsoleRegistry registry, ModelDeletionService deletion) : Endpoint<DeleteModelRequest>
+{
+    public override void Configure()
+    {
+        Delete("/consoles/{consoleId}/models");
+        AllowAnonymous();
+        Description(b => b.WithTags("Models"));
+    }
+
+    public override async Task HandleAsync(DeleteModelRequest req, CancellationToken ct)
+    {
+        if (ConsoleRoutes.Find(registry, Route<string>("consoleId"), out var notFound) is not { } console)
+        {
+            await Send.ResultAsync(notFound!);
+            return;
+        }
+
+        await Send.ResultAsync(await ApiResults.GuardAsync(async () => ApiResults.From(await deletion.DeleteAsync(console, req.Path, ct))));
+    }
+}

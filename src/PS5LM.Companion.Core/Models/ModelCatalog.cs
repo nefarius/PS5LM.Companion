@@ -77,7 +77,8 @@ public sealed class ModelCatalog(IPS5FileSystem fileSystem)
                     appPath,
                     entry.Size,
                     root.Name,
-                    ModelNames.IsSameModel(loadedModelId, entry.Name, appPath)));
+                    ModelNames.IsSameModel(loadedModelId, entry.Name, appPath),
+                    root.Writable));
             }
         }
 

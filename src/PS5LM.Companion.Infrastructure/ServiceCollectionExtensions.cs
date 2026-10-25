@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using PS5LM.Companion.Core.Abstractions;
 using PS5LM.Companion.Core.Consoles;
 using PS5LM.Companion.Core.Inference;
+using PS5LM.Companion.Core.Models;
 using PS5LM.Companion.Core.Transfers;
 using PS5LM.Companion.Infrastructure.Hub;
 using PS5LM.Companion.Infrastructure.Persistence;
@@ -98,6 +99,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IModelHub, HuggingFaceHub>();
         services.AddSingleton<ITransferStore, JsonTransferStore>();
         services.AddSingleton<TransferService>();
+        services.AddSingleton<ModelDeletionService>();
         return services;
     }
 }
