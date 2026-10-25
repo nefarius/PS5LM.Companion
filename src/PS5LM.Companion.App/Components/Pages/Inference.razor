@@ -167,7 +167,17 @@ else
             return;
         }
 
-        var result = Pools.Remove(pool.Alias);
+        PoolEditResult result;
+        try
+        {
+            result = Pools.Remove(pool.Alias);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Snackbar.Add("Could not remove the pool. The pool file could not be saved.", Severity.Error);
+            return;
+        }
+
         Snackbar.Add(result.Succeeded ? $"{pool.Alias} was removed." : result.Message ?? "Could not remove the pool.", result.Succeeded ? Severity.Success : Severity.Error);
         await Refresh();
     }

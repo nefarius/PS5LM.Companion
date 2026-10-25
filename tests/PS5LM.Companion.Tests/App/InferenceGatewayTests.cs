@@ -439,18 +439,26 @@ public sealed class InferenceGatewayTests
     }
 
     [Fact]
-    public async Task Without_pools_the_gateway_does_not_exist_and_the_api_reports_it_off()
+    public async Task A_pool_added_after_startup_is_served_without_a_restart()
     {
         await using var cluster = await Cluster.StartAsync(["a"], pools: false);
         using var client = cluster.Factory.CreateClient();
 
-        using var chat = await client.PostAsync("/v1/chat/completions", Json("""{"model":"chat"}"""));
+        using var before = await client.PostAsync("/v1/chat/completions", Json("""{"model":"chat"}"""));
         var pools = await client.GetFromJsonAsync<JsonElement>("/api/inference/pools");
 
-        Assert.True(chat.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed);
+        Assert.Equal(HttpStatusCode.NotFound, before.StatusCode);
+        Assert.Equal("model_not_found", (await before.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetProperty("type").GetString());
         Assert.Equal(0, Total(cluster));
         Assert.False(pools.GetProperty("enabled").GetBoolean());
         Assert.Empty(pools.GetProperty("pools").EnumerateArray());
+
+        using var created = await client.PostAsJsonAsync("/api/inference/pools", new { alias = "chat", model = "qwen.gguf", consoles = new[] { "a" } });
+        using var after = await client.PostAsync("/v1/chat/completions", Json("""{"model":"chat"}"""));
+
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, after.StatusCode);
+        Assert.Equal(1, Total(cluster));
     }
 
     [Fact]

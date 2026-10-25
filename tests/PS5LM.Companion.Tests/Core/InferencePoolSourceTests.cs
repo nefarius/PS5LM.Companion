@@ -31,6 +31,16 @@ public sealed class InferencePoolSourceTests
     }
 
     [Fact]
+    public void A_missing_alias_or_console_is_rejected()
+    {
+        var pools = Source(new MemoryPoolStore(), [], configured: false);
+
+        Assert.Equal(PoolEditStatus.Invalid, pools.Add(null!, "qwen.gguf", ["a"]).Status);
+        Assert.Equal(PoolEditStatus.Invalid, pools.Add("chat", "qwen.gguf", [null!]).Status);
+        Assert.Null(pools.Find("chat"));
+    }
+
+    [Fact]
     public async Task Removing_a_pool_fails_its_waiters_and_a_granted_lease_still_releases()
     {
         var registry = Registry();

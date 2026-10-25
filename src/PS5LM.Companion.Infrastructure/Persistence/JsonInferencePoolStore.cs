@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 
 using Microsoft.Extensions.Logging;
@@ -34,6 +35,7 @@ public sealed partial class JsonInferencePoolStore(string path, ILogger<JsonInfe
             catch (JsonException ex)
             {
                 LogUnreadable(ex, path);
+                PreserveUnreadable();
                 return [];
             }
         }
@@ -66,6 +68,18 @@ public sealed partial class JsonInferencePoolStore(string path, ILogger<JsonInfe
             File.WriteAllText(temp, JsonSerializer.Serialize(pools, Json));
             File.Move(temp, path, overwrite: true);
         }
+    }
+
+    /// <summary>Moves a corrupt file aside. A failure here escapes so an empty list is not saved over it.</summary>
+    private void PreserveUnreadable()
+    {
+        if (!File.Exists(path))
+        {
+            return;
+        }
+
+        var stamp = DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmssfff", CultureInfo.InvariantCulture);
+        File.Move(path, $"{path}.{stamp}.unreadable");
     }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not read {Path}; no stored inference pools were loaded")]

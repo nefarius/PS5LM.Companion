@@ -72,12 +72,6 @@ internal static class InferenceGateway
 
     public static void MapInferenceGateway(this WebApplication app)
     {
-        var router = app.Services.GetRequiredService<InferenceRouter>();
-        if (!router.Enabled)
-        {
-            return;
-        }
-
         var group = app.MapGroup("/v1");
         group.MapGet("/models", ListModels);
         foreach (var path in ForwardedPaths)

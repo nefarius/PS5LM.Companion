@@ -139,8 +139,8 @@ SHA-256, upload as `name.gguf.part`, then rename. The apps never see a half-copi
 ## Inference gateway
 
 Opt-in. The companion can serve the OpenAI, Anthropic and System One APIs on its own port and spread requests over
-consoles that run the same model, so clients get one base URL (`http://<companion>:8080/v1`). It is off until you
-configure a pool. Forwarding uses [YARP](https://github.com/dotnet/yarp) and streams request and response bodies.
+consoles that run the same model, so clients get one base URL (`http://<companion>:8080/v1`). It is off until a
+pool exists. A pool added in the dashboard starts serving without a restart. Forwarding uses [YARP](https://github.com/dotnet/yarp) and streams request and response bodies.
 
 Each public alias (the `model` clients send) names a loaded model and the consoles allowed to serve it:
 

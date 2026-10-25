@@ -72,8 +72,15 @@ public static partial class InferencePoolRules
         else
         {
             var seen = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var id in consoles.Select(console => console.Trim().ToLowerInvariant()))
+            foreach (var console in consoles)
             {
+                if (string.IsNullOrWhiteSpace(console))
+                {
+                    failures.Add("A console id is missing.");
+                    continue;
+                }
+
+                var id = console.Trim().ToLowerInvariant();
                 if (!consoleExists(id))
                 {
                     failures.Add($"The console '{id}' is not configured.");

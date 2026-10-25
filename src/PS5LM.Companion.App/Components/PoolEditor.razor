@@ -35,6 +35,7 @@
 @code {
     private readonly List<string> _errors = [];
     private readonly List<string> _suggestions = [];
+    private int _suggestGeneration;
     private bool _adding = true;
     private string _alias = string.Empty;
     private string _model = string.Empty;
@@ -78,6 +79,7 @@
 
     private async Task SuggestAsync()
     {
+        var generation = ++_suggestGeneration;
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var id in _selected)
         {
@@ -109,6 +111,11 @@
             }
         }
 
+        if (generation != _suggestGeneration)
+        {
+            return;
+        }
+
         _suggestions.Clear();
         _suggestions.AddRange(names.Order(StringComparer.OrdinalIgnoreCase));
     }
@@ -116,9 +123,18 @@
     private void Save()
     {
         _errors.Clear();
-        var result = _adding
-            ? Pools.Add(_alias, _model, _selected.ToList())
-            : Pools.Update(_alias, _model, _selected.ToList());
+        PoolEditResult result;
+        try
+        {
+            result = _adding
+                ? Pools.Add(_alias, _model, _selected.ToList())
+                : Pools.Update(_alias, _model, _selected.ToList());
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _errors.Add("Could not save the pool. The pool file could not be written.");
+            return;
+        }
         if (!result.Succeeded)
         {
             _errors.Add(result.Message ?? "Could not save the pool.");

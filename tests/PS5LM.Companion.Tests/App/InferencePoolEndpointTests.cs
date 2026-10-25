@@ -33,4 +33,16 @@ public sealed class InferencePoolEndpointTests
         Assert.Equal(HttpStatusCode.NoContent, removed.StatusCode);
         Assert.Contains("\"alias\": \"extra\"", stored, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task An_explicit_null_alias_or_console_is_a_bad_request()
+    {
+        await using var factory = new CompanionFactory();
+        using var client = factory.CreateClient();
+        using var content = new StringContent("""{"alias":null,"model":"qwen.gguf","consoles":[null]}""", System.Text.Encoding.UTF8, "application/json");
+
+        using var response = await client.PostAsync("/api/inference/pools", content);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
 }

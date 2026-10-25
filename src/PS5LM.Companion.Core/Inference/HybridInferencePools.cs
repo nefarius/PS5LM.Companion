@@ -71,6 +71,11 @@ public sealed class HybridInferencePools : IInferencePoolSource
 
     public PoolEditResult Remove(string alias)
     {
+        if (string.IsNullOrWhiteSpace(alias))
+        {
+            return new PoolEditResult(PoolEditStatus.NotFound, "The pool is not configured.");
+        }
+
         var key = alias.Trim().ToLowerInvariant();
         InferencePool? removed;
         lock (_gate)
@@ -105,7 +110,7 @@ public sealed class HybridInferencePools : IInferencePoolSource
 
     private PoolEditResult Edit(string alias, string model, IReadOnlyList<string> consoles, bool replacing)
     {
-        var key = alias.Trim().ToLowerInvariant();
+        var key = alias?.Trim().ToLowerInvariant() ?? "";
         var errors = InferencePoolRules.Errors(key, model, consoles, id => _consoles.Find(id) is not null);
         if (errors.Count > 0)
         {
