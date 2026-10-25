@@ -51,6 +51,43 @@ public sealed class AppControlClientTests
         Assert.Null(snapshot.ActiveTitleId);
     }
 
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("\"text\"")]
+    [InlineData("""{"version":5}""")]
+    public async Task VoidShell_with_unexpected_json_shapes_is_unavailable(string body)
+    {
+        var snapshot = await new VoidShellClient(Client(_ => Json(body), out _)).ProbeAsync(CancellationToken.None);
+
+        Assert.False(snapshot.Available);
+    }
+
+    [Fact]
+    public async Task Malformed_library_entries_are_skipped()
+    {
+        var client = new VoidShellClient(Client(
+            r => r.RequestUri!.AbsolutePath == "/api/library" ? Json("""{"games":[1,"x",null,{"id":"PPSA99575"}]}""") : VoidShell(r),
+            out _));
+
+        var snapshot = await client.ProbeAsync(CancellationToken.None);
+
+        Assert.Equal(["PPSA99575"], snapshot.InstalledTitleIds);
+    }
+
+    [Fact]
+    public async Task Websrv_with_unexpected_json_shapes_is_tolerated()
+    {
+        var notWebsrv = await new WebsrvClient(Client(_ => Json("[]"), out _)).ProbeAsync(CancellationToken.None);
+        var client = new WebsrvClient(Client(
+            r => r.RequestUri!.AbsolutePath == "/fs/user/app/" ? Json("""[1,null,"x",{"name":"PPSA99581"}]""") : Websrv(r),
+            out _));
+
+        var snapshot = await client.ProbeAsync(CancellationToken.None);
+
+        Assert.False(notWebsrv.Available);
+        Assert.Equal(["PPSA99581"], snapshot.InstalledTitleIds);
+    }
+
     [Fact]
     public async Task VoidShell_launch_posts_the_title_id_as_text()
     {

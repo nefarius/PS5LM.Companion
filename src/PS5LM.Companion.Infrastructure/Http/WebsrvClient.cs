@@ -29,7 +29,7 @@ public sealed class WebsrvClient(HttpClient http) : IAppControlProvider
                 try
                 {
                     using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
-                    if (!doc.RootElement.TryGetProperty("tag", out var tag))
+                    if (doc.RootElement.ValueKind != JsonValueKind.Object || !doc.RootElement.TryGetProperty("tag", out var tag))
                     {
                         return AppProviderSnapshot.Unavailable(Kind, "Port answered but is not websrv.");
                     }
@@ -96,7 +96,7 @@ public sealed class WebsrvClient(HttpClient http) : IAppControlProvider
 
             foreach (var entry in doc.RootElement.EnumerateArray())
             {
-                if (entry.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String && name.GetString() is { Length: > 0 } value)
+                if (entry.ValueKind == JsonValueKind.Object && entry.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String && name.GetString() is { Length: > 0 } value)
                 {
                     names.Add(value);
                 }

@@ -18,7 +18,9 @@ public sealed class VoidShellClient(HttpClient http) : IAppControlProvider
         try
         {
             using var versionDoc = await GetJsonAsync("api/version", cancellationToken);
-            if (versionDoc is null || !versionDoc.RootElement.TryGetProperty("version", out var versionElement))
+            if (versionDoc is null
+                || !versionDoc.RootElement.TryGetProperty("version", out var versionElement)
+                || versionElement.ValueKind != JsonValueKind.String)
             {
                 return AppProviderSnapshot.Unavailable(Kind, "Port answered but is not VoidShell.");
             }
@@ -31,6 +33,11 @@ public sealed class VoidShellClient(HttpClient http) : IAppControlProvider
                 {
                     foreach (var game in games.EnumerateArray())
                     {
+                        if (game.ValueKind != JsonValueKind.Object)
+                        {
+                            continue;
+                        }
+
                         var exists = !game.TryGetProperty("exists", out var existsElement) || existsElement.ValueKind != JsonValueKind.False;
                         if (exists && game.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String && id.GetString() is { Length: > 0 } value)
                         {
@@ -94,7 +101,14 @@ public sealed class VoidShellClient(HttpClient http) : IAppControlProvider
 
         try
         {
-            return await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
+            var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
+            if (document.RootElement.ValueKind == JsonValueKind.Object)
+            {
+                return document;
+            }
+
+            document.Dispose();
+            return null;
         }
         catch (JsonException)
         {
