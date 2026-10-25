@@ -44,4 +44,22 @@ public sealed class ConsoleConnectionProbeTests
         Assert.Equal(ProbeOutcome.Skipped, report.Checks.Single(check => check.Name == "websrv").Outcome);
         Assert.Equal(ProbeOutcome.Skipped, report.Checks.Single(check => check.Name == "llama-server").Outcome);
     }
+
+    [Fact]
+    public async Task A_host_that_cannot_be_addressed_fails_before_any_connection()
+    {
+        var probe = new ConsoleConnectionProbe(new ThrowingConnectorFactory());
+
+        var report = await probe.TestAsync(new PS5Options { Host = "bad host" }, CancellationToken.None);
+
+        var check = Assert.Single(report.Checks);
+        Assert.Equal("Settings", check.Name);
+        Assert.Equal(ProbeOutcome.Fail, check.Outcome);
+    }
+
+    private sealed class ThrowingConnectorFactory : IConsoleConnectorFactory
+    {
+        public ConsoleConnectors Create(string consoleId, PS5Options options) =>
+            throw new UriFormatException("Invalid host.");
+    }
 }

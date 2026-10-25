@@ -21,7 +21,13 @@ public static partial class ConsoleIds
         {
             if (char.IsAsciiLetterOrDigit(character))
             {
-                if (pendingHyphen && builder.Length > 0)
+                var separator = pendingHyphen && builder.Length > 0;
+                if (builder.Length + (separator ? 2 : 1) > 40)
+                {
+                    break;
+                }
+
+                if (separator)
                 {
                     builder.Append('-');
                 }

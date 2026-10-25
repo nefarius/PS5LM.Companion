@@ -15,7 +15,16 @@ public sealed class ConsoleConnectionProbe(IConsoleConnectorFactory factory) : I
 
     public async Task<ConsoleProbeReport> TestAsync(PS5Options options, CancellationToken cancellationToken)
     {
-        var connectors = factory.Create(ProbeId, options);
+        ConsoleConnectors connectors;
+        try
+        {
+            connectors = factory.Create(ProbeId, options);
+        }
+        catch (Exception ex) when (ex is UriFormatException or InvalidOperationException or ArgumentOutOfRangeException)
+        {
+            return new ConsoleProbeReport([new ProbeCheck("Settings", ProbeOutcome.Fail, ex.Message)]);
+        }
+
         try
         {
             return new ConsoleProbeReport(

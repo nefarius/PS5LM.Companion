@@ -12,4 +12,13 @@ public sealed class ConsoleIdSuggestionTests
     [InlineData("---", "")]
     public void A_name_suggests_a_slug(string name, string expected) =>
         Assert.Equal(expected, ConsoleIds.Suggest(name));
+
+    [Fact]
+    public void A_long_name_stays_a_valid_slug()
+    {
+        var id = ConsoleIds.Suggest(new string('a', 39) + " b");
+
+        Assert.InRange(id.Length, 1, 40);
+        Assert.True(ConsoleIds.IsValid(id));
+    }
 }
