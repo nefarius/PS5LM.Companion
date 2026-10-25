@@ -25,6 +25,19 @@ public sealed class ConsoleProbe(string host, HttpClient http) : IConsoleProbe
         }
     }
 
+    public async Task<bool> PostAsync(int port, string path, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await http.PostAsync(new UriBuilder(Uri.UriSchemeHttp, host, port, path).Uri, content: null, cancellationToken);
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            return false;
+        }
+    }
+
     public async Task<bool> HtmlAsync(int port, string path, CancellationToken cancellationToken)
     {
         try

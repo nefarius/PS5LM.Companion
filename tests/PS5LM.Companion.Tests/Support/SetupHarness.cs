@@ -159,6 +159,14 @@ internal sealed class SetupHarness : IDisposable
     {
         public bool DashboardServed { get; set; } = true;
 
+        public List<string> Posts { get; } = [];
+
+        public Task<bool> PostAsync(int port, string path, CancellationToken cancellationToken)
+        {
+            Posts.Add($"{port}{path}");
+            return Task.FromResult(owner.Ports.Contains(port));
+        }
+
         public Task<bool> PortOpenAsync(int port, CancellationToken cancellationToken) => Task.FromResult(owner.Ports.Contains(port));
 
         public Task<bool> HtmlAsync(int port, string path, CancellationToken cancellationToken) =>

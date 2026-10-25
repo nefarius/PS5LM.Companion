@@ -111,7 +111,7 @@ public sealed class SetupRunnerTests
 
         var report = await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
 
-        Assert.DoesNotContain(report.Lines, l => l.Status != SetupStatus.Ok);
+        Assert.Contains(report.Lines, l => l.Component == "ShadowMountPlus install" && l.Status == SetupStatus.Ok);
     }
 
     [Fact]
@@ -137,6 +137,17 @@ public sealed class SetupRunnerTests
         var report = await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
 
         Assert.Contains(report.Lines, l => l.Component == "ShadowMountPlus install" && l.Status == SetupStatus.Warn);
+    }
+
+    [Fact]
+    public async Task Voidshell_is_asked_to_rescan_after_the_title_registers()
+    {
+        using var harness = Ready();
+
+        var report = await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
+
+        Assert.Contains("7007/api/rescan", harness.Probe.Posts);
+        Assert.Contains(report.Lines, l => l.Component == "VoidShell library" && l.Status == SetupStatus.Ok);
     }
 
     [Fact]

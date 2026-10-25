@@ -55,6 +55,9 @@ public interface IConsoleProbe
 
     /// <summary>True when <c>GET http://host:port{path}</c> answers 2xx with an HTML body.</summary>
     Task<bool> HtmlAsync(int port, string path, CancellationToken cancellationToken);
+
+    /// <summary>True when an empty <c>POST http://host:port{path}</c> answers 2xx.</summary>
+    Task<bool> PostAsync(int port, string path, CancellationToken cancellationToken);
 }
 
 /// <summary>Sends an ELF straight to elfldr.</summary>

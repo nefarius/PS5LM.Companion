@@ -54,7 +54,10 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
                 var install = await InstallAppAsync(app, cancellationToken);
                 if (install == AppInstall.Copied)
                 {
-                    await WaitForShadowMountAsync(app, cancellationToken);
+                    if (await WaitForShadowMountAsync(app, cancellationToken))
+                    {
+                        await RefreshVoidShellLibraryAsync(app, cancellationToken);
+                    }
                 }
                 else if (install == AppInstall.Unchanged)
                 {
@@ -414,7 +417,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
     }
 
     // Step 8: ShadowMountPlus scans on a timer; nothing can force it, so wait and look.
-    private async Task WaitForShadowMountAsync(ManifestApp app, CancellationToken cancellationToken)
+    private async Task<bool> WaitForShadowMountAsync(ManifestApp app, CancellationToken cancellationToken)
     {
         Ui.Info($"Waiting for ShadowMountPlus to register {app.TitleId}");
         var seen = await WaitForAsync(ct => TitleKnownAsync(app.TitleId, ct), options.Wait(options.AppInstallTimeout), cancellationToken);
@@ -424,6 +427,30 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
             seen
                 ? $"{app.Name} ({app.TitleId}) is registered on the console."
                 : $"{app.TitleId} did not show up within {options.AppInstallTimeout.TotalMinutes:0} minutes. ShadowMountPlus pauses scanning while a game is in the foreground; check /data/shadowmount/debug.log.");
+        return seen;
+    }
+
+    // VoidShell only rescans on its own timer and on request; ask it, then confirm it lists the title.
+    private async Task<bool> RequestVoidShellRescanAsync(CancellationToken cancellationToken) =>
+        manifest.Payloads.Any(p => p.Id == "voidshell")
+        && await services.Probe.PortOpenAsync(options.VoidShellPort, cancellationToken)
+        && await services.Probe.PostAsync(options.VoidShellPort, "/api/rescan", cancellationToken);
+
+    private async Task RefreshVoidShellLibraryAsync(ManifestApp app, CancellationToken cancellationToken)
+    {
+        if (!await RequestVoidShellRescanAsync(cancellationToken))
+        {
+            return;
+        }
+
+        Ui.Info("Asked VoidShell to rescan its library");
+        var listed = await WaitForAsync(ct => ListedByVoidShellAsync(app.TitleId, ct), options.Wait(TimeSpan.FromSeconds(30)), cancellationToken);
+        Add(
+            "VoidShell library",
+            listed ? SetupStatus.Ok : SetupStatus.Warn,
+            listed
+                ? $"{app.Name} ({app.TitleId}) shows up in the VoidShell library."
+                : $"VoidShell was asked to rescan but does not list {app.TitleId} yet. It rescans on its own every few seconds; reload the dashboard.");
     }
 
     // Step 9: everything reachable now?
@@ -497,6 +524,11 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
     private async Task CheckExistingRegistrationAsync(ManifestApp app, CancellationToken cancellationToken)
     {
         var listed = await ListedByVoidShellAsync(app.TitleId, cancellationToken);
+        if (!listed && await RequestVoidShellRescanAsync(cancellationToken))
+        {
+            listed = await WaitForAsync(ct => ListedByVoidShellAsync(app.TitleId, ct), options.Wait(TimeSpan.FromSeconds(30)), cancellationToken);
+        }
+
         Add(
             "ShadowMountPlus install",
             listed ? SetupStatus.Ok : SetupStatus.Warn,
