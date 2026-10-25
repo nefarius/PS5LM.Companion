@@ -13,6 +13,7 @@ using PS5LM.Companion.App.Security;
 using PS5LM.Companion.Infrastructure;
 
 using Serilog;
+using Serilog.Events;
 
 namespace PS5LM.Companion.App;
 
@@ -74,7 +75,7 @@ public sealed class Program
 
             var app = builder.Build();
 
-            app.UseSerilogRequestLogging();
+            app.UseSerilogRequestLogging(options => options.GetLevel = RequestLogLevel);
             app.UseMiddleware<AccessTokenMiddleware>();
             app.UseAntiforgery();
             app.MapStaticAssets();
@@ -103,4 +104,17 @@ public sealed class Program
             await Log.CloseAndFlushAsync();
         }
     }
+
+    /// <summary>
+    /// Container probes hit <c>/health</c> every few seconds. Successful probes stay below the default
+    /// Information minimum; failures and every other request keep Serilog's usual levels.
+    /// </summary>
+    private static LogEventLevel RequestLogLevel(HttpContext context, double _, Exception? exception) =>
+        exception is null
+        && context.Response.StatusCode < StatusCodes.Status500InternalServerError
+        && context.Request.Path.StartsWithSegments("/health")
+            ? LogEventLevel.Verbose
+            : exception is not null || context.Response.StatusCode > 499
+                ? LogEventLevel.Error
+                : LogEventLevel.Information;
 }
