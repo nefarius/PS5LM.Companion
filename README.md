@@ -84,7 +84,7 @@ Exit code 0: nothing failed. 2: a component is not working. 1: bad arguments or 
 ## Dashboard
 
 Open `http://<companion>:8080/`. The dashboard is Blazor Server with MudBlazor and updates live over its circuit; it
-needs no extra configuration. The overview lists every console. Each console has its own pages under `/consoles/{id}`
+needs no extra configuration. The overview lists every console; with one console, `/` opens that console. Each console has its own pages under `/consoles/{id}`
 (status, models, downloads); the address is the selection, so a link opens that console. The drawer lists the same
 pages, and the top bar names the console the page shows. Every console keeps being polled in the background.
 
