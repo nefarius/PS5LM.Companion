@@ -50,6 +50,7 @@ public static class ServiceCollectionExtensions
             .AddResilienceHandler("websrv", builder => builder.AddTimeout(ProbeTimeout));
 
         services.AddSingleton<IConsoleConnectorFactory, ConsoleConnectorFactory>();
+        services.AddSingleton<IConsoleProbe, ConsoleConnectionProbe>();
         services.AddSingleton<IConsoleStore>(sp =>
         {
             var dataDirectory = sp.GetRequiredService<IConfiguration>()["Companion:DataDirectory"] ?? "data";

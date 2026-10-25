@@ -22,6 +22,7 @@
         <MudNavMenu>
             <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Overview</MudNavLink>
             <MudNavLink Href="inference" Icon="@Icons.Material.Filled.AltRoute">Inference</MudNavLink>
+            <MudNavLink Href="settings/consoles" Icon="@Icons.Material.Filled.Settings">Manage consoles</MudNavLink>
             @foreach (var console in Registry.All)
             {
                 var lifecycle = console.Store.Current.Lifecycle;

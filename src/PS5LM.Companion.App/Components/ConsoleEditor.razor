@@ -1,0 +1,184 @@
+@using PS5LM.Companion.Core.Discovery
+@inject IConsoleRegistry Registry
+@inject IConsoleProbe Probe
+
+<MudDialog>
+    <DialogContent>
+        @if (_errors.Count > 0)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3">@string.Join(" ", _errors)</MudAlert>
+        }
+        <MudTextField T="string" Value="@_displayName" ValueChanged="NameChanged" Label="Name" Class="mb-2" />
+        @if (_adding)
+        {
+            <MudTextField @bind-Value="_id" Label="Id" HelperText="Used in the address. Suggested from the name." Class="mb-2"
+                          Immediate="true" OnBlur="TouchId" />
+        }
+        else
+        {
+            <MudTextField Value="@_id" Label="Id" ReadOnly="true" Class="mb-2" />
+        }
+        <MudTextField @bind-Value="_host" Label="Host" Required="true" Class="mb-2" />
+        <MudExpansionPanels Class="mt-2">
+            <MudExpansionPanel Text="Advanced">
+                <MudNumericField @bind-Value="_ftpPort" Label="FTP port" Min="1" Max="65535" Class="mb-2" />
+                <MudNumericField @bind-Value="_llamaPort" Label="llama-server port" Min="1" Max="65535" Class="mb-2" />
+                <MudNumericField @bind-Value="_exporterPort" Label="ps5-exporter port" Min="1" Max="65535" Class="mb-2" />
+                <MudNumericField @bind-Value="_elfldrPort" Label="elfldr port" Min="1" Max="65535" Class="mb-2" />
+                <MudTextField @bind-Value="_payloadManagerUrl" Label="Payload Manager URL" HelperText="Empty uses http://host:8084." Class="mb-2" />
+                <MudNumericField @bind-Value="_voidShellPort" Label="VoidShell port" Min="0" Max="65535" HelperText="0 disables it." Class="mb-2" />
+                <MudNumericField @bind-Value="_websrvPort" Label="websrv port" Min="0" Max="65535" HelperText="0 disables it." Class="mb-2" />
+                <MudSelect T="PS5Variant" @bind-Value="_variant" Label="App" Class="mb-2">
+                    <MudSelectItem T="PS5Variant" Value="PS5Variant.Unknown">Detect</MudSelectItem>
+                    <MudSelectItem T="PS5Variant" Value="PS5Variant.PS5LM">PS5LM</MudSelectItem>
+                    <MudSelectItem T="PS5Variant" Value="PS5Variant.PS5LMPlus">PS5LM Plus</MudSelectItem>
+                </MudSelect>
+                <MudNumericField @bind-Value="_pollInterval" Label="Status poll (seconds)" Min="1" Max="300" />
+            </MudExpansionPanel>
+        </MudExpansionPanels>
+        <ProbeChecks Report="@_report" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton OnClick="TestAsync" Disabled="_busy" StartIcon="@Icons.Material.Filled.Cable">Test connection</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync" Disabled="_busy">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private readonly List<string> _errors = [];
+    private bool _adding = true;
+    private bool _idTouched;
+    private bool _busy;
+    private string _id = string.Empty;
+    private string _displayName = string.Empty;
+    private string _host = string.Empty;
+    private string? _payloadManagerUrl;
+    private int _ftpPort = 2121;
+    private int _llamaPort = 8081;
+    private int _exporterPort = 9100;
+    private int _elfldrPort = 9021;
+    private int _voidShellPort = 7007;
+    private int _websrvPort = 8080;
+    private int _pollInterval = 3;
+    private int _discoveryCache = 30;
+    private int _loadGrace = 600;
+    private PS5Variant _variant;
+    private ConsoleProbeReport? _report;
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    /// <summary>Null adds a console. Otherwise the id to edit.</summary>
+    [Parameter]
+    public string? ConsoleId { get; set; }
+
+    public static async Task<bool> ShowAsync(IDialogService dialogs, string? consoleId)
+    {
+        var parameters = new DialogParameters<ConsoleEditor> { { editor => editor.ConsoleId, consoleId } };
+        var dialog = await dialogs.ShowAsync<ConsoleEditor>(
+            consoleId is null ? "Add a console" : "Edit console",
+            parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true });
+        return (await dialog.Result) is { Canceled: false };
+    }
+
+    protected override void OnInitialized()
+    {
+        if (ConsoleId is null || Registry.Find(ConsoleId) is not { } console)
+        {
+            return;
+        }
+
+        _adding = false;
+        var options = console.Options;
+        _id = console.Id;
+        _displayName = options.DisplayName ?? string.Empty;
+        _host = options.Host;
+        _payloadManagerUrl = options.PayloadManagerUrl;
+        _ftpPort = options.FtpPort;
+        _llamaPort = options.LlamaPort;
+        _exporterPort = options.ExporterPort;
+        _elfldrPort = options.ElfldrPort;
+        _voidShellPort = options.VoidShellPort;
+        _websrvPort = options.WebsrvPort;
+        _pollInterval = options.PollIntervalSeconds;
+        _discoveryCache = options.DiscoveryCacheSeconds;
+        _loadGrace = options.LoadGraceSeconds;
+        _variant = options.Variant;
+    }
+
+    private void NameChanged(string value)
+    {
+        _displayName = value;
+        if (_adding && !_idTouched)
+        {
+            _id = ConsoleIds.Suggest(value);
+        }
+    }
+
+    private void TouchId() => _idTouched = true;
+
+    private PS5Options ToOptions() => new()
+    {
+        DisplayName = string.IsNullOrWhiteSpace(_displayName) ? null : _displayName.Trim(),
+        Host = _host.Trim(),
+        FtpPort = _ftpPort,
+        LlamaPort = _llamaPort,
+        ExporterPort = _exporterPort,
+        ElfldrPort = _elfldrPort,
+        PayloadManagerUrl = string.IsNullOrWhiteSpace(_payloadManagerUrl) ? null : _payloadManagerUrl.Trim(),
+        VoidShellPort = _voidShellPort,
+        WebsrvPort = _websrvPort,
+        Variant = _variant,
+        PollIntervalSeconds = _pollInterval,
+        DiscoveryCacheSeconds = _discoveryCache,
+        LoadGraceSeconds = _loadGrace,
+    };
+
+    private async Task TestAsync()
+    {
+        _errors.Clear();
+        var options = ToOptions();
+        var errors = ConsoleSettings.Errors("ok", options);
+        if (errors.Count > 0)
+        {
+            _errors.AddRange(errors);
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            _report = await Probe.TestAsync(options, CancellationToken.None);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void SaveAsync()
+    {
+        _errors.Clear();
+        var id = (_adding ? _id : ConsoleId ?? _id).Trim().ToLowerInvariant();
+        var options = ToOptions();
+        var errors = ConsoleSettings.Errors(id, options);
+        if (errors.Count > 0)
+        {
+            _errors.AddRange(errors);
+            return;
+        }
+
+        var result = _adding ? Registry.Add(id, options) : Registry.Update(id, options);
+        if (!result.Succeeded)
+        {
+            _errors.Add(result.Message ?? "Could not save the console.");
+            return;
+        }
+
+        MudDialog.Close(DialogResult.Ok(true));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

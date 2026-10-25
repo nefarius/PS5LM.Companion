@@ -1,0 +1,23 @@
+@if (Report is { } report)
+{
+    <MudStack Spacing="1" Class="mt-3" aria-label="Connection test">
+        @foreach (var check in report.Checks)
+        {
+            <MudAlert Severity="@SeverityOf(check.Outcome)" Dense="true">
+                <b>@check.Name.</b> @check.Detail
+            </MudAlert>
+        }
+    </MudStack>
+}
+
+@code {
+    [Parameter]
+    public ConsoleProbeReport? Report { get; set; }
+
+    private static Severity SeverityOf(ProbeOutcome outcome) => outcome switch
+    {
+        ProbeOutcome.Pass => Severity.Success,
+        ProbeOutcome.Skipped => Severity.Info,
+        _ => Severity.Error,
+    };
+}
