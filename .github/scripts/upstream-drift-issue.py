@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Open, update or close the single Upstream drift issue from the workflow outputs."""
+import json
 import os
 import subprocess
 
@@ -15,10 +16,12 @@ if not verify_ok:
 if newer:
     problems.append("A pinned release is not the latest:\n\n" + newer)
 
-existing = subprocess.check_output(
-    ["gh", "issue", "list", "--search", f"{title} in:title", "--state", "open", "--json", "number", "--jq", ".[0].number"],
+listed = json.loads(subprocess.check_output(
+    ["gh", "issue", "list", "--search", f"{title} in:title", "--state", "open", "--limit", "50", "--json", "number,title"],
     text=True,
-).strip()
+))
+matches = sorted(item["number"] for item in listed if item.get("title") == title)
+existing = str(matches[0]) if matches else ""
 
 if not problems:
     if existing:

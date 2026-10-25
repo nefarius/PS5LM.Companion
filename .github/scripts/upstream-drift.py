@@ -33,8 +33,9 @@ for (owner, repo), tags in sorted(pins.items()):
     except subprocess.CalledProcessError:
         notes.append(f"- {owner}/{repo}: could not read the latest release (pinned {', '.join(sorted(tags))})")
         continue
-    if latest not in tags:
-        notes.append(f"- {owner}/{repo}: pinned {', '.join(sorted(tags))}, latest {latest}")
+    stale = sorted(tag for tag in tags if tag != latest)
+    if stale:
+        notes.append(f"- {owner}/{repo}: pinned {', '.join(stale)}, latest {latest}")
 
 text = "\n".join(notes)
 path = os.environ.get("GITHUB_OUTPUT")
