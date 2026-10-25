@@ -17,7 +17,8 @@ public sealed class CompanionStatusService(
     IPayloadCatalog payloads,
     IElfldrProbe elfldr,
     LoadTracker loadTracker,
-    TimeProvider time)
+    TimeProvider time,
+    IReadOnlyList<IAppControlProvider>? appControl = null)
 {
     private readonly TelemetryCalculator _telemetry = new();
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
@@ -62,11 +63,13 @@ public sealed class CompanionStatusService(
         var sensorTask = sensorProbe.ReadAsync(cancellationToken);
         var catalogTask = payloads.ReadAsync(cancellationToken);
         var elfldrTask = elfldr.IsListeningAsync(cancellationToken);
+        var appTask = ReadAppControlAsync(cancellationToken);
         var ftp = await ReadFtpWithinBudgetAsync(now, cancellationToken);
         var probe = await llamaTask;
         var sensors = await sensorTask;
         var catalog = await catalogTask;
         var elfldrListening = await elfldrTask;
+        var apps = await appTask;
 
         var telemetry = probe.State == LlamaServerState.Serving ? _telemetry.Update(probe.MetricsText, now) : ResetTelemetry();
         if (probe.State == LlamaServerState.Serving)
@@ -100,7 +103,19 @@ public sealed class CompanionStatusService(
             now,
             catalog.Available,
             catalog.Available ? null : catalog.Message,
-            PayloadDependencies.Evaluate(catalog, ftp.Reachable, sensors is not null, elfldrListening, options.ElfldrPort));
+            PayloadDependencies.Evaluate(catalog, ftp.Reachable, sensors is not null, elfldrListening, options.ElfldrPort),
+            apps);
+    }
+
+    private async Task<AppControlStatus> ReadAppControlAsync(CancellationToken cancellationToken)
+    {
+        if (appControl is not { Count: > 0 })
+        {
+            return AppControlStatus.NotChecked with { Message = "VoidShell and websrv are not configured for this console." };
+        }
+
+        var snapshots = await Task.WhenAll(appControl.Select(provider => provider.ProbeAsync(cancellationToken)));
+        return AppControlEvaluator.Evaluate(snapshots);
     }
 
     private static CompanionLifecycle DetermineLifecycle(

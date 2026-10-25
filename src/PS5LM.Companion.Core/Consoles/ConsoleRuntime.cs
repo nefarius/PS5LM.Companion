@@ -19,10 +19,11 @@ public sealed class ConsoleRuntime : IDisposable
         FileSystem = connectors.FileSystem;
         Store = new CompanionStatusStore();
         LoadTracker = new LoadTracker(time);
-        Status = new CompanionStatusService(options, connectors.FileSystem, connectors.Llama, connectors.Sensors, connectors.Payloads, connectors.Elfldr, LoadTracker, time);
+        Status = new CompanionStatusService(options, connectors.FileSystem, connectors.Llama, connectors.Sensors, connectors.Payloads, connectors.Elfldr, LoadTracker, time, connectors.AppControl);
         Models = new ModelCatalog(connectors.FileSystem);
         Control = new ModelControlService(connectors.FileSystem, Models, Status, Store, LoadTracker, TimeSpan.FromSeconds(options.LoadGraceSeconds));
         Dependencies = new DependencyLaunchService(options, connectors.Payloads, connectors.Launcher, connectors.Elfldr, Status, Store);
+        Apps = new AppLaunchService(connectors.AppControl ?? [], Status, Store);
     }
 
     /// <summary>The stable slug used in URLs, persisted transfers and logs.</summary>
@@ -48,6 +49,8 @@ public sealed class ConsoleRuntime : IDisposable
     public ModelControlService Control { get; }
 
     public DependencyLaunchService Dependencies { get; }
+
+    public AppLaunchService Apps { get; }
 
     public void Dispose() => (FileSystem as IDisposable)?.Dispose();
 }

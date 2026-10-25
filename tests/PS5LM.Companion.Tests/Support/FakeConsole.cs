@@ -1,3 +1,4 @@
+using PS5LM.Companion.Core.Abstractions;
 using PS5LM.Companion.Core.Consoles;
 using PS5LM.Companion.Core.Discovery;
 
@@ -18,7 +19,11 @@ internal sealed class FakeConsole(FakeFileSystem? fileSystem = null)
 
     public FakeElfldrProbe Elfldr { get; } = new();
 
-    public ConsoleConnectors ToConnectors() => new(FileSystem, Llama, Sensors, Payloads, Launcher, Elfldr);
+    public FakeAppProvider VoidShell { get; } = new(AppProviderKind.VoidShell);
+
+    public FakeAppProvider Websrv { get; } = new(AppProviderKind.Websrv);
+
+    public ConsoleConnectors ToConnectors() => new(FileSystem, Llama, Sensors, Payloads, Launcher, Elfldr, [VoidShell, Websrv]);
 }
 
 /// <summary>Hands out fake connectors per console id, creating them on first use.</summary>

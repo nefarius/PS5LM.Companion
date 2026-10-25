@@ -1,0 +1,97 @@
+using System.Net;
+using System.Text;
+
+using PS5LM.Companion.Infrastructure.Http;
+using PS5LM.Companion.Tests.Support;
+
+namespace PS5LM.Companion.Tests.Infrastructure;
+
+public sealed class AppControlClientTests
+{
+    private static HttpResponseMessage Json(string body, HttpStatusCode code = HttpStatusCode.OK) =>
+        new(code) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+
+    private static HttpClient Client(Func<HttpRequestMessage, HttpResponseMessage> respond, out StubHandler handler)
+    {
+        handler = new StubHandler(respond);
+        return new HttpClient(handler) { BaseAddress = new Uri("http://ps5:7007/") };
+    }
+
+    private static HttpResponseMessage VoidShell(HttpRequestMessage request) => request.RequestUri!.AbsolutePath switch
+    {
+        "/api/version" => Json("""{"version":"V1.1"}"""),
+        "/api/library" => Json("""{"games":[{"id":"PPSA01325","exists":true},{"id":"PPSA99575","exists":true},{"id":"PPSA99581","exists":false}]}"""),
+        "/api/stats" => Json("""{"state":"GAME","active_game":"PPSA9957","version":"V1.1"}"""),
+        "/api/launch" => Json("""{"status":"ok"}"""),
+        _ => new HttpResponseMessage(HttpStatusCode.NotFound),
+    };
+
+    [Fact]
+    public async Task VoidShell_probe_reads_library_and_foreground_title()
+    {
+        var snapshot = await new VoidShellClient(Client(VoidShell, out _)).ProbeAsync(CancellationToken.None);
+
+        Assert.True(snapshot.Available);
+        Assert.Equal("V1.1", snapshot.Version);
+        Assert.Equal(["PPSA01325", "PPSA99575"], snapshot.InstalledTitleIds);
+        Assert.True(snapshot.RunningKnown);
+        Assert.Equal("PPSA9957", snapshot.ActiveTitleId);
+    }
+
+    [Fact]
+    public async Task VoidShell_launch_posts_the_title_id_as_text()
+    {
+        var client = new VoidShellClient(Client(VoidShell, out var handler));
+
+        var result = await client.LaunchAsync("PPSA99575", CancellationToken.None);
+
+        Assert.True(result.Accepted);
+        var request = handler.Requests.Single();
+        Assert.Equal(HttpMethod.Post, request.Method);
+        Assert.Equal("/api/launch", request.RequestUri!.AbsolutePath);
+        Assert.Equal("text/plain", request.Content!.Headers.ContentType!.MediaType);
+    }
+
+    [Fact]
+    public async Task VoidShell_that_is_something_else_or_down_is_unavailable()
+    {
+        var other = await new VoidShellClient(Client(_ => Json("""{"hello":1}"""), out _)).ProbeAsync(CancellationToken.None);
+        var down = new VoidShellClient(Client(_ => throw new HttpRequestException("refused"), out _));
+
+        Assert.False(other.Available);
+        Assert.False((await down.ProbeAsync(CancellationToken.None)).Available);
+        Assert.False((await down.LaunchAsync("PPSA99575", CancellationToken.None)).Dispatched);
+    }
+
+    private static HttpResponseMessage Websrv(HttpRequestMessage request) => request.RequestUri!.AbsolutePath switch
+    {
+        "/version" => Json("""{"tag":"v0.30","api":1}"""),
+        "/fs/user/app/" => Json("""[{"name":"PPSA99581","mode":"d"},{"name":"PPSA01325","mode":"d"}]"""),
+        "/fs/user/appmeta/" => Json("[]"),
+        "/launch" => new HttpResponseMessage(HttpStatusCode.OK),
+        _ => new HttpResponseMessage(HttpStatusCode.NotFound),
+    };
+
+    [Fact]
+    public async Task Websrv_probe_lists_installed_titles_without_running_state()
+    {
+        var snapshot = await new WebsrvClient(Client(Websrv, out _)).ProbeAsync(CancellationToken.None);
+
+        Assert.True(snapshot.Available);
+        Assert.Contains("PPSA99581", snapshot.InstalledTitleIds);
+        Assert.False(snapshot.RunningKnown);
+    }
+
+    [Fact]
+    public async Task Websrv_launch_passes_the_title_id_and_maps_503_to_a_rejection()
+    {
+        var client = new WebsrvClient(Client(Websrv, out var handler));
+        var ok = await client.LaunchAsync("PPSA99581", CancellationToken.None);
+        var refused = await new WebsrvClient(Client(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable), out _)).LaunchAsync("PPSA99581", CancellationToken.None);
+
+        Assert.True(ok.Accepted);
+        Assert.Equal("?titleId=PPSA99581", handler.Requests.Single().RequestUri!.Query);
+        Assert.True(refused.Dispatched);
+        Assert.False(refused.Accepted);
+    }
+}
