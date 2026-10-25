@@ -151,6 +151,19 @@ public sealed class SetupRunnerTests
     }
 
     [Fact]
+    public async Task Unchanged_app_still_triggers_a_rescan_and_says_so()
+    {
+        using var harness = Ready();
+        await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
+        harness.Probe.Posts.Clear();
+
+        var report = await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
+
+        Assert.Contains("7007/api/rescan", harness.Probe.Posts);
+        Assert.Contains(report.Lines, l => l.Component == "ShadowMountPlus install" && l.Status == SetupStatus.Ok && l.Message.Contains("library rescan", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Missing_ftp_is_a_failure_and_blocks_extras_and_app()
     {
         using var harness = Ready();

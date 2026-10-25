@@ -523,13 +523,14 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
     // Nothing was copied, so an old "installed game" log line proves nothing: only the live registration counts.
     private async Task CheckExistingRegistrationAsync(ManifestApp app, CancellationToken cancellationToken)
     {
-        var rescanned = false;
-        var listed = await ListedByVoidShellAsync(app.TitleId, cancellationToken);
-        if (!listed && await RequestVoidShellRescanAsync(cancellationToken))
+        // Always ask for a rescan first: a listing from before this run could be stale.
+        var rescanned = await RequestVoidShellRescanAsync(cancellationToken);
+        if (rescanned)
         {
-            rescanned = true;
-            listed = await WaitForAsync(ct => ListedByVoidShellAsync(app.TitleId, ct), options.Wait(TimeSpan.FromSeconds(30)), cancellationToken);
+            Ui.Info("Asked VoidShell to rescan its library");
         }
+
+        var listed = await WaitForAsync(ct => ListedByVoidShellAsync(app.TitleId, ct), options.Wait(TimeSpan.FromSeconds(rescanned ? 30 : 0)), cancellationToken);
 
         Add(
             "ShadowMountPlus install",
