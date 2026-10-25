@@ -41,7 +41,7 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
                 }
 
                 return items
-                    .Where(i => i.Type is FtpObjectType.File or FtpObjectType.Directory)
+                    .Where(i => i.Name is not "." and not ".." && i.Type is FtpObjectType.File or FtpObjectType.Directory)
                     .Select(i => new RemoteEntry(
                         i.Name,
                         i.FullName,

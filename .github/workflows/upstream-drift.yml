@@ -1,0 +1,44 @@
+name: Upstream drift
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          # Pinned for the same reason as ci.yml: the aka.ms link for newer SDKs can answer 409.
+          dotnet-version: 10.0.402
+
+      - name: Verify pinned downloads
+        id: verify
+        continue-on-error: true
+        run: dotnet run --project src/PS5LM.Companion.App -- setup --verify-manifest
+
+      - name: Compare pinned tags with the latest releases
+        id: newer
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/upstream-drift.py
+
+      - name: Open or update the drift issue
+        if: always()
+        env:
+          VERIFY_OK: ${{ steps.verify.outcome == 'success' }}
+          NEWER_OK: ${{ steps.newer.outcome == 'success' }}
+          NEWER: ${{ steps.newer.outputs.newer }}
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/upstream-drift-issue.py

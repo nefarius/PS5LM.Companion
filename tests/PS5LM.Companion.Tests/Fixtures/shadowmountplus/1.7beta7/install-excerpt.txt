@@ -1,0 +1,7 @@
+[22:43:59]   [WAIT] PS5LM modified 1s ago. Waiting...
+[22:43:59]   [SKIP] source not stable yet: PS5LM (/data/homebrew/PPSA99575)
+[22:44:09]   [ACTION] Installing: PS5LM (PPSA99575)
+[22:44:09] NOTIFY: Installing: PS5LM (PPSA99575)...
+[22:44:11]   [REG] Installed NEW!
+[22:44:11] NOTIFY: installed game PPSA99575
+[23:08:37]   [LINK] nullfs mounted: /data/homebrew/PPSA99575 -> /system_ex/app/PPSA99575

@@ -1,0 +1,7 @@
+{
+  "payloads": [
+    "/data/pldmgr/payloads/elfldr/elfldr.elf",
+    "/data/pldmgr/payloads/kstuff-lite/kstuff-lite.elf"
+  ],
+  "meta": {}
+}

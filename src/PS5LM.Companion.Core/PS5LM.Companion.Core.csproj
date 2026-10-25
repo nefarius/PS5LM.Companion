@@ -5,6 +5,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="PS5LM.Companion.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <EmbeddedResource Include="Setup\setup-manifest.json" LogicalName="PS5LM.Companion.Core.Setup.setup-manifest.json" />
   </ItemGroup>
 

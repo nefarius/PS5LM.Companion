@@ -1,0 +1,6 @@
+type=dir;size=65536;modify=20261025214344; .
+type=dir;size=65536;modify=20261025220838; ..
+type=file;size=8832;modify=20261025194706; config.ini
+type=file;size=0;modify=20261025214058; manual.lst
+type=file;size=6214;modify=20261025220938; debug.log
+type=file;size=103682;modify=20261025194706; smp_icon.png
