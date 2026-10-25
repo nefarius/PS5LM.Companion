@@ -1,6 +1,7 @@
 @inject TransferService Transfers
 @inject IDialogService Dialogs
 @inject ISnackbar Snackbar
+@implements IDisposable
 
 @{
     var status = Console.Store.Current;
@@ -55,6 +56,22 @@
 
     [Parameter, EditorRequired]
     public ConsoleRuntime Console { get; set; } = default!;
+
+    protected override void OnInitialized() => Transfers.Changed += OnTransfersChanged;
+
+    private void OnTransfersChanged()
+    {
+        try
+        {
+            _ = InvokeAsync(StateHasChanged);
+        }
+        catch (ObjectDisposedException)
+        {
+            // The circuit ended.
+        }
+    }
+
+    public void Dispose() => Transfers.Changed -= OnTransfersChanged;
 
     private static string? Warning(CompanionStatus status)
     {
