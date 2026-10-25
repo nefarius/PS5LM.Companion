@@ -50,8 +50,10 @@ public sealed class VoidShellClient(HttpClient http) : IAppControlProvider
                     var state = stats.RootElement.TryGetProperty("state", out var stateElement) && stateElement.ValueKind == JsonValueKind.String
                         ? stateElement.GetString()
                         : null;
+                    // active_game keeps the last title after it exits; only state GAME means it is in the foreground
+                    // (MENU is the system UI). Without a state field, trust the title.
                     if (stats.RootElement.TryGetProperty("active_game", out var game) && game.ValueKind == JsonValueKind.String
-                        && !string.Equals(state, "IDLE", StringComparison.OrdinalIgnoreCase))
+                        && (state is null || string.Equals(state, "GAME", StringComparison.OrdinalIgnoreCase)))
                     {
                         active = game.GetString();
                     }

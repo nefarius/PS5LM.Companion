@@ -39,6 +39,19 @@ public sealed class AppControlClientTests
     }
 
     [Fact]
+    public async Task VoidShell_keeps_a_stale_active_game_out_of_the_foreground_when_the_state_is_menu()
+    {
+        var client = new VoidShellClient(Client(
+            r => r.RequestUri!.AbsolutePath == "/api/stats" ? Json("""{"state":"MENU","active_game":"PPSA9957"}""") : VoidShell(r),
+            out _));
+
+        var snapshot = await client.ProbeAsync(CancellationToken.None);
+
+        Assert.True(snapshot.RunningKnown);
+        Assert.Null(snapshot.ActiveTitleId);
+    }
+
+    [Fact]
     public async Task VoidShell_launch_posts_the_title_id_as_text()
     {
         var client = new VoidShellClient(Client(VoidShell, out var handler));
