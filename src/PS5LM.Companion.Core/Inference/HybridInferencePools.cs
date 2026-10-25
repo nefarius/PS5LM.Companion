@@ -11,6 +11,7 @@ public sealed class HybridInferencePools : IInferencePoolSource
     private readonly IConsoleRegistry _consoles;
     private readonly IInferencePoolStore? _store;
     private readonly Action<string>? _warn;
+    private readonly List<StoredInferencePool> _hidden = [];
     private readonly Lock _gate = new();
     private State _state;
 
@@ -29,6 +30,7 @@ public sealed class HybridInferencePools : IInferencePoolSource
                 if (pools.Any(pool => string.Equals(pool.Alias, stored.Alias, StringComparison.OrdinalIgnoreCase)))
                 {
                     warn?.Invoke($"Stored pool '{stored.Alias}' is ignored because configuration already defines that alias.");
+                    _hidden.Add(stored);
                     continue;
                 }
 
@@ -157,10 +159,29 @@ public sealed class HybridInferencePools : IInferencePoolSource
     private static List<string> Normalize(IReadOnlyList<string> consoles) =>
         consoles.Select(console => console.Trim().ToLowerInvariant()).Distinct(StringComparer.Ordinal).ToList();
 
-    private void Persist() => _store?.Save(_state.All
-        .Where(pool => pool.Origin == InferencePoolOrigin.User)
-        .Select(pool => new StoredInferencePool(pool.Alias, pool.Model, pool.Consoles))
-        .ToList());
+    private void Persist()
+    {
+        if (_store is null)
+        {
+            return;
+        }
+
+        var pools = _state.All
+            .Where(pool => pool.Origin == InferencePoolOrigin.User)
+            .Select(pool => new StoredInferencePool(pool.Alias, pool.Model, pool.Consoles))
+            .ToList();
+        foreach (var hidden in _hidden)
+        {
+            if (pools.Any(pool => string.Equals(pool.Alias, hidden.Alias, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            pools.Add(hidden);
+        }
+
+        _store.Save(pools);
+    }
 
     private sealed class State
     {

@@ -41,6 +41,26 @@ public sealed class InferencePoolSourceTests
     }
 
     [Fact]
+    public void A_stored_pool_hidden_by_configuration_survives_another_edit()
+    {
+        var store = new MemoryPoolStore
+        {
+            Pools =
+            [
+                new StoredInferencePool("chat", "other.gguf", ["a"]),
+                new StoredInferencePool("extra", "qwen.gguf", ["a"]),
+            ],
+        };
+        var pools = Source(store, [], configured: true);
+
+        Assert.True(pools.Remove("extra").Succeeded);
+
+        var hidden = Assert.Single(store.Pools);
+        Assert.Equal("chat", hidden.Alias);
+        Assert.Equal("other.gguf", hidden.Model);
+    }
+
+    [Fact]
     public async Task Removing_a_pool_fails_its_waiters_and_a_granted_lease_still_releases()
     {
         var registry = Registry();
