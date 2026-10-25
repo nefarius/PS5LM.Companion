@@ -343,6 +343,13 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
             newParam = await reader.ReadToEndAsync(cancellationToken);
         }
 
+        var archiveTitleId = ReadTitleId(newParam);
+        if (!string.Equals(archiveTitleId, app.TitleId, StringComparison.OrdinalIgnoreCase))
+        {
+            Add(app.Name, SetupStatus.Fail, $"The download's param.json names title '{archiveTitleId ?? "(none)"}', expected {app.TitleId}. Nothing was installed.");
+            return false;
+        }
+
         var remote = $"{HomebrewRoot}/{app.TitleId}";
         var existingParam = await services.Files.ReadTextAsync(remote + "/" + ParamSuffix, MaxTextBytes, cancellationToken);
         if (existingParam is not null && existingParam.Trim() == newParam.Trim() && !options.Force)
@@ -371,6 +378,31 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
 
         Add(app.Name, SetupStatus.Ok, $"Installed {app.Version} to {remote}.");
         return true;
+    }
+
+    private static string? ReadTitleId(string paramJson)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(paramJson);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            foreach (var name in new[] { "titleId", "title_id" })
+            {
+                if (document.RootElement.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String)
+                {
+                    return value.GetString();
+                }
+            }
+        }
+        catch (JsonException)
+        {
+        }
+
+        return null;
     }
 
     // Step 8: ShadowMountPlus scans on a timer; nothing can force it, so wait and look.

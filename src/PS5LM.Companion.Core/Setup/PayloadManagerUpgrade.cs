@@ -101,6 +101,8 @@ internal sealed class PayloadManagerUpgrade(
         if (!launch.Accepted)
         {
             info($"Payload Manager could not start elfldr: {launch.Message}");
+            info(PayloadDependencies.ElfldrBootstrap(options.ElfldrPort));
+            return false;
         }
 
         if (await WaitAsync(ct => services.Probe.PortOpenAsync(options.ElfldrPort, ct), 20, cancellationToken))

@@ -157,9 +157,9 @@ public sealed record SetupManifest(
             }
 
             CheckArtifact(app.Id, app.Url, app.Sha256);
-            if (app.TitleId is not { Length: 9 })
+            if (app.TitleId is not { Length: 9 } || !app.TitleId.All(char.IsAsciiLetterOrDigit))
             {
-                throw new InvalidDataException($"App '{app.Id}' needs a nine character title id.");
+                throw new InvalidDataException($"App '{app.Id}' needs a nine character alphanumeric title id.");
             }
         }
     }

@@ -11,6 +11,7 @@ namespace PS5LM.Companion.Tests.Support;
 internal sealed class SetupHarness : IDisposable
 {
     public const string TitleId = "PPSA99581";
+    public const string ParamV1 = "{\"titleId\":\"PPSA99581\",\"v\":1}";
 
     private static readonly Dictionary<string, (int Port, string? Process)> Effects = new()
     {
@@ -193,7 +194,7 @@ internal sealed class SetupHarness : IDisposable
             var path = Path.Combine(owner._directory, name);
             if (name.EndsWith(".zip", StringComparison.Ordinal))
             {
-                File.WriteAllBytes(path, AppZip("PARAM-v1"));
+                File.WriteAllBytes(path, AppZip(ParamV1));
             }
             else if (name == "index.html")
             {

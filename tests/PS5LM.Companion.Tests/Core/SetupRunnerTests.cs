@@ -34,7 +34,7 @@ public sealed class SetupRunnerTests
         Assert.DoesNotContain("/data/voidshell/www/index.html.part", harness.Files.Files.Keys);
         Assert.Contains("PPSA00001,PPSA99581", harness.Files.Text("/data/OnionHEN/config.ini"));
         Assert.Equal(OnionConfig, harness.Files.Text("/data/OnionHEN/config.ini.bak"));
-        Assert.Equal("PARAM-v1", harness.Files.Text("/data/homebrew/PPSA99581/sce_sys/param.json"));
+        Assert.Equal(SetupHarness.ParamV1, harness.Files.Text("/data/homebrew/PPSA99581/sce_sys/param.json"));
         Assert.Equal("PNG", harness.Files.Text("/data/homebrew/PPSA99581/assets/logo.png"));
         Assert.DoesNotContain(harness.Files.Files.Keys, key => key.StartsWith("/data/ps5lm-companion/staging", StringComparison.Ordinal));
     }
@@ -88,6 +88,18 @@ public sealed class SetupRunnerTests
     }
 
     [Fact]
+    public async Task App_archive_for_another_title_is_rejected_before_anything_is_written()
+    {
+        using var harness = Ready();
+
+        // The fake archive carries PPSA99581; asking for PS5LM (PPSA99575) must not install it.
+        var report = await harness.Runner(SetupHarness.Options("ps5lm")).RunAsync(CancellationToken.None);
+
+        Assert.Contains(report.Lines, l => l.Component == "PS5LM" && l.Status == SetupStatus.Fail && l.Message.Contains("PPSA99581", StringComparison.Ordinal));
+        Assert.DoesNotContain(harness.Files.Files.Keys, key => key.Contains("PPSA99575", StringComparison.Ordinal) || key.Contains("PPSA99581", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Missing_ftp_is_a_failure_and_blocks_extras_and_app()
     {
         using var harness = Ready();
@@ -137,7 +149,7 @@ public sealed class SetupRunnerTests
 
         await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
 
-        Assert.Equal("PARAM-v1", harness.Files.Text("/data/homebrew/PPSA99581/sce_sys/param.json"));
+        Assert.Equal(SetupHarness.ParamV1, harness.Files.Text("/data/homebrew/PPSA99581/sce_sys/param.json"));
         Assert.Equal("model", harness.Files.Text("/data/homebrew/PPSA99581/models/keep.gguf"));
         Assert.DoesNotContain(harness.Files.Files.Keys, key => key.StartsWith("/data/ps5lm-companion", StringComparison.Ordinal));
     }

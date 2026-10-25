@@ -25,6 +25,7 @@ public sealed class SetupBuildersTests
     [InlineData("pldmgr_v0.6.3.elf\",", "pldmgr.elf\",")]
     [InlineData("    \"fileName\": \"pldmgr_v0.6.3.elf\",\n", "")]
     [InlineData("/data/voidshell/www/index.html", "/etc/index.html")]
+    [InlineData("\"titleId\": \"PPSA99575\"", "\"titleId\": \"PP/../.._\"")]
     public void Manifest_rejects_unpinned_or_unsafe_entries(string from, string to)
     {
         using var stream = typeof(SetupManifest).Assembly.GetManifestResourceStream("PS5LM.Companion.Core.Setup.setup-manifest.json")!;
