@@ -39,8 +39,8 @@ public sealed class ModelCatalogTests
 
         var models = await new ModelCatalog(fs).ListAsync(await DetectAsync(fs), null, CancellationToken.None);
 
-        Assert.Contains(models, m => m.AppPath == "/download0/PS5LM/models/a.gguf");
-        Assert.Contains(models, m => m.AppPath == "/app0/models/bundled.gguf");
+        Assert.Contains(models, m => m.AppPath == "/download0/PS5LM/models/a.gguf" && m.Writable);
+        Assert.Contains(models, m => m.AppPath == "/app0/models/bundled.gguf" && !m.Writable);
     }
 
     [Fact]

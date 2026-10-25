@@ -71,6 +71,31 @@ public sealed class MultiConsoleEndpointTests
         Assert.Null(factory.Connectors["living-room"].FileSystem.Text("/data/PS5LM/load"));
     }
 
+    [Fact]
+    public async Task Delete_removes_the_file_only_on_the_addressed_console()
+    {
+        await using var factory = TwoConsoles();
+        factory.Connectors["den"].FileSystem.AddFile("/data/PS5LM/models/a.gguf", new byte[3]);
+        factory.Connectors["living-room"].FileSystem.AddFile("/data/PS5LM/models/a.gguf", new byte[3]);
+        await PublishAsync(factory);
+        using var client = factory.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Delete, "/api/consoles/den/models")
+        {
+            Content = JsonContent.Create(new { path = "/data/PS5LM/models/a.gguf" }),
+        };
+
+        using var response = await client.SendAsync(request);
+        using var unknown = await client.SendAsync(new HttpRequestMessage(HttpMethod.Delete, "/api/consoles/ghost/models")
+        {
+            Content = JsonContent.Create(new { path = "/data/PS5LM/models/a.gguf" }),
+        });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.False(factory.Connectors["den"].FileSystem.Files.ContainsKey("/data/PS5LM/models/a.gguf"));
+        Assert.True(factory.Connectors["living-room"].FileSystem.Files.ContainsKey("/data/PS5LM/models/a.gguf"));
+        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+    }
+
     [Theory]
     [InlineData("GET", "/api/consoles/ghost/status")]
     [InlineData("GET", "/api/consoles/ghost/models")]

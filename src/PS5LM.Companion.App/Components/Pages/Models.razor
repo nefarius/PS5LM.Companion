@@ -1,6 +1,8 @@
 @page "/models"
 @inherits LiveComponent
 @inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+@inject ModelDeletionService Deletion
 
 <PageTitle>Models - @Target.Name</PageTitle>
 
@@ -19,7 +21,7 @@
 
 @if (Status.CommandPending)
 {
-    <MudAlert Severity="Severity.Info" Class="mb-2">A command is waiting on the console; further load or unload requests are refused until it was picked up.</MudAlert>
+    <MudAlert Severity="Severity.Info" Class="mb-2">A command is waiting on the console; further load, unload or delete requests are refused until it was picked up.</MudAlert>
 }
 
 <MudPaper Elevation="1">
@@ -41,17 +43,27 @@
                 {
                     <MudChip T="string" Size="Size.Small" Class="ml-2">Vision projector</MudChip>
                 }
+                @if (!context.Writable)
+                {
+                    <MudChip T="string" Size="Size.Small" Class="ml-2">Read-only</MudChip>
+                }
             </MudTd>
             <MudTd DataLabel="Location">@context.Location</MudTd>
             <MudTd DataLabel="Size">@Display.Bytes(context.SizeBytes)</MudTd>
             <MudTd>
-                @if (!context.IsProjector)
-                {
-                    <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
-                               StartIcon="@Icons.Material.Filled.PlayArrow"
-                               Disabled="@(IsLoaded(context) || Status.CommandPending || _acting)"
-                               OnClick="@(() => LoadAsync(context))">Load</MudButton>
-                }
+                <MudStack Row="true" Spacing="1">
+                    @if (!context.IsProjector)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.PlayArrow"
+                                   Disabled="@(IsLoaded(context) || Status.CommandPending || _acting)"
+                                   OnClick="@(() => LoadAsync(context))">Load</MudButton>
+                    }
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Error"
+                               StartIcon="@Icons.Material.Filled.Delete"
+                               Disabled="@(!CanDelete(context))"
+                               OnClick="@(() => DeleteAsync(context))">Delete</MudButton>
+                </MudStack>
             </MudTd>
         </RowTemplate>
         <NoRecordsContent>
@@ -94,6 +106,21 @@
 
     private bool IsLoaded(ModelFile model) => !model.IsProjector && ModelNames.IsSameModel(Status.LoadedModel, model.FileName, model.AppPath);
 
+    private bool CanDelete(ModelFile model)
+    {
+        if (!model.Writable || Status.CommandPending || _acting || Status.Lifecycle == CompanionLifecycle.Loading)
+        {
+            return false;
+        }
+
+        if (IsLoaded(model) || Deletion.IsTransferInProgress(Target.Id, model))
+        {
+            return false;
+        }
+
+        return !model.IsProjector || Status.LoadedModel is null;
+    }
+
     private async Task ReloadAsync()
     {
         var console = Target;
@@ -135,6 +162,63 @@
         ActAsync(() => Target.Control.LoadAsync(model.AppPath, CancellationToken.None), $"Loading {model.FileName}");
 
     private Task UnloadAsync() => ActAsync(() => Target.Control.UnloadAsync(CancellationToken.None), "Unloading the model");
+
+    private async Task DeleteAsync(ModelFile model)
+    {
+        if (_acting || !CanDelete(model))
+        {
+            return;
+        }
+
+        var confirmed = await Dialogs.ShowMessageBoxAsync(new MessageBoxOptions
+        {
+            Title = "Delete model file",
+            Message = Confirmation(model),
+            YesText = "Delete",
+            CancelText = "Cancel",
+        });
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        _acting = true;
+        try
+        {
+            var result = await Deletion.DeleteAsync(Target, model.AppPath, CancellationToken.None);
+            Snackbar.Add(
+                result.Succeeded ? result.Message ?? $"Deleted {model.FileName}." : result.Message ?? result.Outcome.ToString(),
+                result.Succeeded ? Severity.Success : Severity.Error);
+            if (result.Succeeded)
+            {
+                await ReloadAsync();
+            }
+        }
+        catch (Core.Abstractions.ConsoleUnreachableException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _acting = false;
+        }
+    }
+
+    private string Confirmation(ModelFile model)
+    {
+        var folder = DirectoryOf(model.AppPath);
+        var keepsProjector = !model.IsProjector && _models.Any(other => other.IsProjector && DirectoryOf(other.AppPath) == folder);
+        var remains = model.IsProjector
+            ? " The main model remains installed."
+            : keepsProjector ? " Its vision projector remains installed." : string.Empty;
+        return $"Delete {model.FileName} from {model.Location}? This removes only that file.{remains} Restart the PS5 app so its model list drops it.";
+    }
+
+    private static string DirectoryOf(string path)
+    {
+        var slash = path.LastIndexOf('/');
+        return slash < 0 ? path : path[..slash];
+    }
 
     /// <summary>One command at a time per page: a second click while one is running is ignored.</summary>
     private async Task ActAsync(Func<Task<OperationResult>> command, string started)

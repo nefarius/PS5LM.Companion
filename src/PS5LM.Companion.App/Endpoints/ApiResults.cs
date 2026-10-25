@@ -15,6 +15,7 @@ internal static class ApiResults
             statusCode: result.Outcome switch
             {
                 OperationOutcome.Accepted => StatusCodes.Status202Accepted,
+                OperationOutcome.Completed => StatusCodes.Status200OK,
                 OperationOutcome.NoChange => StatusCodes.Status200OK,
                 OperationOutcome.NotFound => StatusCodes.Status404NotFound,
                 OperationOutcome.Conflict => StatusCodes.Status409Conflict,

@@ -21,7 +21,7 @@ public sealed class ConsoleRuntime : IDisposable
         LoadTracker = new LoadTracker(time);
         Status = new CompanionStatusService(options, connectors.FileSystem, connectors.Llama, connectors.Sensors, connectors.Payloads, connectors.Elfldr, LoadTracker, time);
         Models = new ModelCatalog(connectors.FileSystem);
-        Control = new ModelControlService(connectors.FileSystem, Models, Status, Store, LoadTracker);
+        Control = new ModelControlService(connectors.FileSystem, Models, Status, Store, LoadTracker, TimeSpan.FromSeconds(options.LoadGraceSeconds));
         Dependencies = new DependencyLaunchService(options, connectors.Payloads, connectors.Launcher, connectors.Elfldr, Status, Store);
     }
 

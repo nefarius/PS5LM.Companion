@@ -14,6 +14,9 @@ internal sealed class FakeFileSystem : IPS5FileSystem
     /// <summary>Makes every call throw <see cref="ConsoleUnreachableException"/>.</summary>
     public bool Unreachable { get; set; }
 
+    /// <summary>Leaves the file in place, as a console that accepted DELE but still lists it.</summary>
+    public bool IgnoreDeletes { get; set; }
+
     /// <summary>Makes uploads fail midway, after reporting some progress.</summary>
     public bool FailUploads { get; set; }
 
@@ -115,7 +118,7 @@ internal sealed class FakeFileSystem : IPS5FileSystem
         });
 
     public Task DeleteAsync(string path, CancellationToken cancellationToken) =>
-        Run(() => _files.Remove(path));
+        Run(() => IgnoreDeletes || _files.Remove(path));
 
     private Task<T> Run<T>(Func<T> action)
     {

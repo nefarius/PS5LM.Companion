@@ -13,7 +13,7 @@ works before any model exists. It needs no changes to either app.
 - Manages one or more consoles from one dashboard, each with its own status, models and transfer queue.
 - Detects PS5LM (`PPSA99575`) and PS5LM Plus (`PPSA99581`) over FTP.
 - Lifecycle-aware status: disconnected, app available without a model, loading, ready, generating.
-- Lists models on the console; loads and unloads a model through the apps' command files.
+- Lists models on the console; loads and unloads a model through the apps' command files, and deletes one GGUF at a time.
 - Downloads GGUF models from Hugging Face on the companion and uploads them to the console.
 - Optional inference gateway: one OpenAI/Anthropic-compatible endpoint that load-balances consoles running the same model.
 - Live telemetry from llama-server (port 8081) and ps5-exporter (port 9100) when they are available.
@@ -68,7 +68,7 @@ needs no extra configuration. With more than one console configured, a selector 
 pages show; the choice is per browser tab and every console keeps being polled in the background.
 
 - **Status**: lifecycle, loaded model, generation speed, sensors, drive space, and the payload dependencies. Launch sends an installed payload through Payload Manager. The result confirms the file was transferred. Whether kstuff-lite, etaHEN and ShadowMountPlus are running comes from the process list.
-- **Models**: models on the console with Load and Unload.
+- **Models**: models on the console with Load, Unload and Delete. Delete removes the selected file; see [Deleting models](docs/model-deletion.md).
 - **Downloads**: search Hugging Face, queue a file, watch download and upload progress, cancel.
 
 With `Companion:AccessToken` set, the browser is sent to `/login` once and keeps an HttpOnly cookie.
@@ -88,6 +88,7 @@ Console-scoped routes live under `/api/consoles/{consoleId}`; an unknown id retu
 | `GET /api/consoles/{consoleId}/models` | Models on the console and the storage locations that accept uploads |
 | `POST /api/consoles/{consoleId}/models/load` | `{ "path": "<appPath from models>" }`; only known model paths are accepted |
 | `POST /api/consoles/{consoleId}/models/unload` | Unload the current model |
+| `DELETE /api/consoles/{consoleId}/models` | `{ "path": "<appPath from models>" }`; deletes that one file |
 | `GET /api/consoles/{consoleId}/transfers` | List that console's transfers |
 | `POST /api/consoles/{consoleId}/transfers` | Queue `{ "repo", "fileName", "targetRoot"? }` for that console |
 | `DELETE /api/consoles/{consoleId}/transfers/{id}` | Cancel a transfer (`404` if it belongs to another console) |
@@ -98,6 +99,11 @@ Load and unload write the apps' command file and return `202`; the app picks it 
 restarts its llama-server. A second command while one is unconsumed returns `409`. If the file is never consumed,
 the app is probably not running, which the companion cannot tell apart from "running without a model" while
 port 8081 is closed.
+
+Delete returns `200` after FTP no longer lists the file. A loaded or loading model, a pending command, or an active
+transfer of that file returns `409`. A read-only location returns `400`. The PS5 app keeps its own model list until
+it restarts or rescans. Projectors (`mmproj-*.gguf`) are separate files and are deleted one at a time. Details:
+[docs/model-deletion.md](docs/model-deletion.md).
 
 Each console has its own transfer queue and runs one transfer at a time; different consoles transfer in parallel. A transfer: download to the cache (resumes after a dropped connection or restart), verify size and
 SHA-256, upload as `name.gguf.part`, then rename. The apps never see a half-copied model.
