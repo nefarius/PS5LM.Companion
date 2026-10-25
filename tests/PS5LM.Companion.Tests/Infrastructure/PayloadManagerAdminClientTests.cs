@@ -67,7 +67,20 @@ public sealed class PayloadManagerAdminClientTests
 
         Assert.True(result.Accepted);
         Assert.Equal("/loadpayload:local/my%20payload", handler.Requests.Single().RequestUri!.AbsolutePath);
+        Assert.Equal(HttpMethod.Post, handler.Requests.Single().Method);
+        Assert.Equal("1", handler.Requests.Single().Headers.GetValues("X-PLDMGR-Request").Single());
         Assert.False((await Client(new StubHandler(_ => Text("Failed to launch payload\n", HttpStatusCode.InternalServerError))).LoadAsync("x", CancellationToken.None)).Accepted);
+    }
+
+    [Fact]
+    public async Task Load_falls_back_to_get_when_the_manager_rejects_post()
+    {
+        var handler = new StubHandler(r => r.Method == HttpMethod.Post ? Text(string.Empty, HttpStatusCode.MethodNotAllowed) : Text("OK"));
+
+        var result = await Client(handler).LoadAsync("/data/x.elf", CancellationToken.None);
+
+        Assert.True(result.Accepted);
+        Assert.Equal([HttpMethod.Post, HttpMethod.Get], handler.Requests.Select(r => r.Method).ToArray());
     }
 
     [Fact]

@@ -84,11 +84,17 @@ public sealed class PayloadManagerAdminClient(HttpClient http) : IPayloadManager
     {
         // Same shape as the manager's own page (encodeURI): slashes stay, everything else is escaped.
         var encoded = string.Join('/', target.Split('/').Select(Uri.EscapeDataString));
-        using var request = new HttpRequestMessage(HttpMethod.Get, "/loadpayload:" + encoded);
-        request.Headers.Add(Marker, "1");
         try
         {
-            using var response = await http.SendAsync(request, cancellationToken);
+            // 0.6.x only accepts POST for anything that changes state; 0.5.x launched on GET.
+            var response = await SendLoadAsync(HttpMethod.Post, encoded, cancellationToken);
+            if (response.StatusCode == HttpStatusCode.MethodNotAllowed)
+            {
+                response.Dispose();
+                response = await SendLoadAsync(HttpMethod.Get, encoded, cancellationToken);
+            }
+
+            using var _ = response;
             var body = (await response.Content.ReadAsStringAsync(cancellationToken)).Trim();
             return response.IsSuccessStatusCode
                 ? new PayloadLaunchResult(true, (int)response.StatusCode, string.IsNullOrEmpty(body) ? "OK" : body)
@@ -98,6 +104,13 @@ public sealed class PayloadManagerAdminClient(HttpClient http) : IPayloadManager
         {
             return new PayloadLaunchResult(false, null, $"Payload Manager did not answer: {ex.Message}");
         }
+    }
+
+    private async Task<HttpResponseMessage> SendLoadAsync(HttpMethod method, string encoded, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(method, "/loadpayload:" + encoded);
+        request.Headers.Add(Marker, "1");
+        return await http.SendAsync(request, cancellationToken);
     }
 
     public async Task<IReadOnlySet<string>?> GetProcessesAsync(CancellationToken cancellationToken)
