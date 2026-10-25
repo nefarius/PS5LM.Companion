@@ -184,7 +184,6 @@ public sealed class ModelControlService(
             }
 
             var loading = loadTracker.IsLoading(loadGrace);
-            var loadedPath = LoadedAppPath(status.LoadedModel, models);
             if (model.IsProjector)
             {
                 if (!string.IsNullOrEmpty(status.LoadedModel) || loading)
@@ -192,7 +191,7 @@ public sealed class ModelControlService(
                     return new OperationResult(OperationOutcome.Conflict, "Unload the model before deleting a vision projector.");
                 }
             }
-            else if (ModelNames.IsSameModel(loadedPath, model.FileName, model.AppPath)
+            else if (IsProtectedLoadedModel(status.LoadedModel, model, models)
                      || (loading && ModelNames.IsSameModel(loadTracker.RequestedModel, model.FileName, model.AppPath)))
             {
                 return new OperationResult(OperationOutcome.Conflict, "Unload the model before deleting it.");
@@ -230,26 +229,28 @@ public sealed class ModelControlService(
     }
 
     /// <summary>
-    /// A full reported path is that path. A bare file name is the loaded model only when one catalogued model has it;
-    /// the same name in two folders is not one identity.
+    /// A full reported path protects that path. One catalogued model with a bare name is that model. Several models
+    /// with the bare name are all protected until the console reports a full path or the model is unloaded.
     /// </summary>
-    private static string? LoadedAppPath(string? loadedId, IReadOnlyList<ModelFile> models)
+    private static bool IsProtectedLoadedModel(string? loadedId, ModelFile model, IReadOnlyList<ModelFile> models)
     {
         if (string.IsNullOrEmpty(loadedId))
         {
-            return null;
+            return false;
         }
 
         var normalized = loadedId.Replace('\\', '/');
         if (normalized.Contains('/', StringComparison.Ordinal))
         {
-            return normalized;
+            return ModelNames.IsSameModel(normalized, model.FileName, model.AppPath);
         }
 
         var matches = models
             .Where(m => !m.IsProjector && m.FileName.Equals(normalized, StringComparison.OrdinalIgnoreCase))
             .ToList();
-        return matches.Count == 1 ? matches[0].AppPath : null;
+        return matches.Count == 1
+            ? ModelNames.IsSameModel(matches[0].AppPath, model.FileName, model.AppPath)
+            : matches.Any(m => m.AppPath.Equals(model.AppPath, StringComparison.Ordinal));
     }
 
     private async Task<bool> CommandPendingAsync(StorageRoot root, CancellationToken cancellationToken) =>

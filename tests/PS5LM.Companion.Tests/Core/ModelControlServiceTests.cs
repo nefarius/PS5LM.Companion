@@ -295,14 +295,18 @@ public sealed class ModelControlServiceTests
         Assert.False(fs.Files.ContainsKey("/mnt/usb0/PS5LM/models/a.gguf"));
 
         fs.AddFile("/mnt/usb0/PS5LM/models/a.gguf", new byte[1]);
+        fs.AddFile("/data/PS5LM/models/b.gguf", new byte[1]);
         _llama.Result = new LlamaProbeResult(LlamaServerState.Serving, null, "a.gguf");
         var ambiguousUsb = await control.DeleteAsync("/mnt/usb0/PS5LM/models/a.gguf", CancellationToken.None);
-        var nowUnique = await control.DeleteAsync("/data/PS5LM/models/a.gguf", CancellationToken.None);
+        var ambiguousInternal = await control.DeleteAsync("/data/PS5LM/models/a.gguf", CancellationToken.None);
+        var otherName = await control.DeleteAsync("/data/PS5LM/models/b.gguf", CancellationToken.None);
 
-        Assert.Equal(OperationOutcome.Completed, ambiguousUsb.Outcome);
-        Assert.Equal(OperationOutcome.Conflict, nowUnique.Outcome);
-        Assert.False(fs.Files.ContainsKey("/mnt/usb0/PS5LM/models/a.gguf"));
+        Assert.Equal(OperationOutcome.Conflict, ambiguousUsb.Outcome);
+        Assert.Equal(OperationOutcome.Conflict, ambiguousInternal.Outcome);
+        Assert.Equal(OperationOutcome.Completed, otherName.Outcome);
+        Assert.True(fs.Files.ContainsKey("/mnt/usb0/PS5LM/models/a.gguf"));
         Assert.True(fs.Files.ContainsKey("/data/PS5LM/models/a.gguf"));
+        Assert.False(fs.Files.ContainsKey("/data/PS5LM/models/b.gguf"));
     }
 
     [Fact]
