@@ -344,7 +344,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         }
 
         var archiveTitleId = ReadTitleId(newParam);
-        if (!string.Equals(archiveTitleId, app.TitleId, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(archiveTitleId, app.TitleId, StringComparison.Ordinal))
         {
             Add(app.Name, SetupStatus.Fail, $"The download's param.json names title '{archiveTitleId ?? "(none)"}', expected {app.TitleId}. Nothing was installed.");
             return false;
