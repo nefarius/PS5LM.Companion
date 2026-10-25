@@ -16,7 +16,7 @@ internal sealed class CompanionFactory : WebApplicationFactory<PS5LM.Companion.A
 
     public FakeConnectorFactory Connectors { get; } = new();
 
-    /// <summary>The configured console ids; the first is the default.</summary>
+    /// <summary>The configured console ids.</summary>
     public IReadOnlyList<string> ConsoleIds { get; init; } = [PrimaryId];
 
     public FakeConsole Primary => Connectors[ConsoleIds[0]];
@@ -67,7 +67,6 @@ internal sealed class CompanionFactory : WebApplicationFactory<PS5LM.Companion.A
             builder.UseSetting(key, value);
         }
 
-        builder.UseSetting("PS5:DefaultConsoleId", ConsoleIds[0]);
         builder.UseSetting("Companion:DataDirectory", DataDirectory);
         if (AccessToken is not null)
         {

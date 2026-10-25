@@ -11,10 +11,11 @@ namespace PS5LM.Companion.Core.Consoles;
 /// </summary>
 public sealed class ConsoleRuntime : IDisposable
 {
-    public ConsoleRuntime(string id, PS5Options options, ConsoleConnectors connectors, TimeProvider time)
+    public ConsoleRuntime(string id, PS5Options options, ConsoleConnectors connectors, TimeProvider time, ConsoleSource source)
     {
         Id = id;
         Options = options;
+        Source = source;
         Name = string.IsNullOrWhiteSpace(options.DisplayName) ? id : options.DisplayName.Trim();
         FileSystem = connectors.FileSystem;
         Store = new CompanionStatusStore();
@@ -29,6 +30,9 @@ public sealed class ConsoleRuntime : IDisposable
 
     /// <summary>The stable slug used in URLs, persisted transfers and logs.</summary>
     public string Id { get; }
+
+    /// <summary>Whether this console came from configuration or was added in the companion.</summary>
+    public ConsoleSource Source { get; }
 
     /// <summary>The text shown to users.</summary>
     public string Name { get; }

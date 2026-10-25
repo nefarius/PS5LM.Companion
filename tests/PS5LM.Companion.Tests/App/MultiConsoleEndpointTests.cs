@@ -20,7 +20,7 @@ public sealed class MultiConsoleEndpointTests
     }
 
     [Fact]
-    public async Task Consoles_are_listed_with_the_default_marked()
+    public async Task Consoles_are_listed_with_where_they_came_from()
     {
         await using var factory = TwoConsoles();
         await PublishAsync(factory);
@@ -30,7 +30,7 @@ public sealed class MultiConsoleEndpointTests
 
         var consoles = json.EnumerateArray().ToList();
         Assert.Equal(["den", "living-room"], consoles.Select(c => c.GetProperty("id").GetString()));
-        Assert.Equal(["living-room"], consoles.Where(c => c.GetProperty("isDefault").GetBoolean()).Select(c => c.GetProperty("id").GetString()));
+        Assert.All(consoles, console => Assert.Equal("Configuration", console.GetProperty("source").GetString()));
     }
 
     [Fact]

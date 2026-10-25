@@ -62,6 +62,17 @@ public sealed class InferenceRouterTests
     }
 
     [Fact]
+    public void A_pool_console_that_is_not_configured_is_reported()
+    {
+        var (router, _) = Create(["a"], options => options.Pools["chat"].Consoles.Add("missing"));
+
+        var replica = Assert.Single(router.Snapshot()).Replicas.Single(item => item.ConsoleId == "missing");
+
+        Assert.False(replica.Eligible);
+        Assert.Contains("not configured", replica.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task The_least_busy_console_wins_and_ties_rotate()
     {
         var (router, registry) = Create(["a", "b"], o => o.MaxConcurrentPerConsole = 2);

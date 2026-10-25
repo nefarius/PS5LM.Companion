@@ -44,13 +44,40 @@ else
 
         foreach (var console in Registry.All)
         {
-            console.Store.Changed += OnChanged;
+            console.Store.Changed += OnStatusChanged;
         }
 
+        Registry.Changed += OnRegistryChanged;
         Recount();
     }
 
-    private void OnChanged(CompanionStatus status)
+    private void OnRegistryChanged(ConsoleChange change)
+    {
+        if (change.Previous is { } previous)
+        {
+            previous.Store.Changed -= OnStatusChanged;
+        }
+
+        if (change.Current is { } current)
+        {
+            current.Store.Changed += OnStatusChanged;
+        }
+
+        try
+        {
+            _ = InvokeAsync(() =>
+            {
+                Recount();
+                StateHasChanged();
+            });
+        }
+        catch (ObjectDisposedException)
+        {
+            // The circuit ended.
+        }
+    }
+
+    private void OnStatusChanged(CompanionStatus status)
     {
         try
         {
@@ -90,9 +117,10 @@ else
 
     public void Dispose()
     {
+        Registry.Changed -= OnRegistryChanged;
         foreach (var console in Registry.All)
         {
-            console.Store.Changed -= OnChanged;
+            console.Store.Changed -= OnStatusChanged;
         }
     }
 }

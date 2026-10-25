@@ -40,7 +40,9 @@ docker run -p 8080:8080 -v ps5lm-companion:/data \
 
 Configuration (environment variables use `__` for nesting). Each console is a section `PS5:Consoles:{id}` where `{id}`
 is a stable slug (lowercase letters, digits and hyphens, at most 40 characters); it appears in API routes and keys the
-download cache, so do not rename it casually.
+download cache, so do not rename it casually. Consoles from configuration cannot be edited. Consoles added through the
+API are stored in `data/consoles.json` and apply without a restart. A stored console whose id is also in configuration
+is ignored.
 
 | Key | Default | Purpose |
 |---|---|---|
@@ -52,7 +54,6 @@ download cache, so do not rename it casually.
 | `PS5:Consoles:{id}:PayloadManagerUrl` | `http://{Host}:8084` | Payload Manager base URL when it is not on port 8084 of the console |
 | `PS5:Consoles:{id}:Variant` | auto | `PS5LM` or `PS5LMPlus`; required when both apps are installed |
 | `PS5:Consoles:{id}:PollIntervalSeconds` | 3 | Status refresh interval |
-| `PS5:DefaultConsoleId` | first id alphabetically | Console the dashboard selects first |
 | `Companion:AccessToken` | none | Shared secret for the dashboard and `/api` (bearer token or login cookie) |
 | `Companion:AllowAnonymous` | false | Allow a network listener without a token (trusted networks only) |
 | `Companion:DataDirectory` | `data` | Download cache and transfer list (`/data` in the Docker image; mount a volume) |
@@ -102,7 +103,7 @@ Console-scoped routes live under `/api/consoles/{consoleId}`; an unknown id retu
 
 | Route | Purpose |
 |---|---|
-| `GET /api/consoles` | Configured consoles with their lifecycle; the default is flagged |
+| `GET /api/consoles` | Configured consoles with their lifecycle and whether each came from configuration or was added in the companion |
 | `GET /api/consoles/{consoleId}/status` | Normalised console status, including payload dependencies |
 | `GET /api/consoles/{consoleId}/dependencies` | Payload installation and health from the latest status check |
 | `POST /api/consoles/{consoleId}/dependencies/{id}/launch` | Launch an installed payload by its stable id (`kstuff-lite`, `etahen`, `shadowmountplus`, `ftpsrv`) |
@@ -183,13 +184,6 @@ Behaviour:
   They test each console directly; they do not send traffic through the load balancer.
 - In one measured setup, slow first replies came from prompt processing on the console, not the gateway; see [docs/app-arguments.md](docs/app-arguments.md).
 - Pool settings are read at startup, and each alias needs consoles loaded with the same model; this does not load models.
-
-## Upgrading from a single-console setup
-
-This is a breaking change. Replace `PS5__Host` (and the other `PS5__*` keys) with `PS5__Consoles__<id>__Host` and the
-matching per-console keys, and change API calls from `/api/status`, `/api/models`, `/api/dependencies` and
-`/api/transfers` to the `/api/consoles/{consoleId}/...` routes. Transfers saved by an older version have no console id
-and are shown as failed; queue them again. Cached partial downloads from before the change are ignored.
 
 ## Build
 

@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Components;
 
+using MudBlazor;
+
 using PS5LM.Companion.Core.Consoles;
 using PS5LM.Companion.Core.Domain;
 using PS5LM.Companion.Core.Status;
@@ -26,6 +28,12 @@ public abstract class LiveComponent : ComponentBase, IDisposable
     [Inject]
     protected TransferService Transfers { get; set; } = default!;
 
+    [Inject]
+    private ISnackbar Snackbar { get; set; } = default!;
+
+    [Inject]
+    private NavigationManager Navigation { get; set; } = default!;
+
     /// <summary>The console id from the route, unchanged in case.</summary>
     [Parameter]
     public string? ConsoleId { get; set; }
@@ -35,7 +43,11 @@ public abstract class LiveComponent : ComponentBase, IDisposable
 
     protected CompanionStatus Status => Target?.Store.Current ?? CompanionStatus.Initial;
 
-    protected override void OnInitialized() => Transfers.Changed += OnChanged;
+    protected override void OnInitialized()
+    {
+        Transfers.Changed += OnChanged;
+        Consoles.Changed += OnRegistryChanged;
+    }
 
     protected override async Task OnParametersSetAsync()
     {
@@ -54,6 +66,48 @@ public abstract class LiveComponent : ComponentBase, IDisposable
 
     /// <summary>Called on the renderer's thread before a live re-render, e.g. to reload data a change made stale.</summary>
     protected virtual Task OnLiveChangeAsync() => Task.CompletedTask;
+
+    private void OnRegistryChanged(ConsoleChange change)
+    {
+        if (change.Kind == ConsoleChangeKind.Removed
+            && change.Previous is { } removed
+            && string.Equals(removed.Id, ConsoleId, StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                _ = InvokeAsync(() =>
+                {
+                    Snackbar.Add($"{removed.Name} was removed.", Severity.Info);
+                    Navigation.NavigateTo("/");
+                });
+            }
+            catch (ObjectDisposedException)
+            {
+                // The circuit ended.
+            }
+
+            return;
+        }
+
+        if (change.Kind == ConsoleChangeKind.Replaced
+            && change.Current is { } current
+            && string.Equals(current.Id, ConsoleId, StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                _ = InvokeAsync(async () =>
+                {
+                    SubscribeToTarget();
+                    await OnConsoleChangedAsync();
+                    OnChanged();
+                });
+            }
+            catch (ObjectDisposedException)
+            {
+                // The circuit ended.
+            }
+        }
+    }
 
     private void SubscribeToTarget()
     {
@@ -113,6 +167,7 @@ public abstract class LiveComponent : ComponentBase, IDisposable
         }
 
         Transfers.Changed -= OnChanged;
+        Consoles.Changed -= OnRegistryChanged;
         GC.SuppressFinalize(this);
     }
 }
