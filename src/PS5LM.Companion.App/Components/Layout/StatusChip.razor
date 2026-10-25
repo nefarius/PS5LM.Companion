@@ -1,5 +1,13 @@
-@inherits LiveComponent
+@if (Console is { } console)
+{
+    var lifecycle = console.Store.Current.Lifecycle;
+    <MudChip T="string" Color="@Display.LifecycleColor(lifecycle)" Variant="Variant.Filled" Class="mr-3"
+             aria-label="@($"{console.Name}, {console.Host}, {Display.Lifecycle(lifecycle)}")">
+        @console.Name · @console.Host
+    </MudChip>
+}
 
-<MudChip T="string" Color="@Display.LifecycleColor(Status.Lifecycle)" Size="Size.Small" Variant="Variant.Filled">
-    @Display.Lifecycle(Status.Lifecycle)
-</MudChip>
+@code {
+    [Parameter]
+    public ConsoleRuntime? Console { get; set; }
+}

@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Components;
 
-using PS5LM.Companion.App.Consoles;
 using PS5LM.Companion.Core.Consoles;
 using PS5LM.Companion.Core.Domain;
 using PS5LM.Companion.Core.Status;
@@ -9,8 +8,8 @@ using PS5LM.Companion.Core.Transfers;
 namespace PS5LM.Companion.App.Components;
 
 /// <summary>
-/// A component that re-renders when the selected console's status, the selection, or a transfer changes.
-/// Updates are coalesced because transfer progress is reported many times a second.
+/// A page for one console, taken from the <c>ConsoleId</c> route value. It re-renders when that console's status
+/// or a transfer changes. Updates are coalesced because transfer progress is reported many times a second.
 /// </summary>
 public abstract class LiveComponent : ComponentBase, IDisposable
 {
@@ -18,26 +17,43 @@ public abstract class LiveComponent : ComponentBase, IDisposable
 
     private int _scheduled;
     private bool _disposed;
-
+    private string? _boundId;
     private CompanionStatusStore? _subscribed;
 
     [Inject]
-    protected ActiveConsole Active { get; set; } = default!;
+    protected IConsoleRegistry Consoles { get; set; } = default!;
 
     [Inject]
     protected TransferService Transfers { get; set; } = default!;
 
-    /// <summary>The console this page currently shows.</summary>
-    protected ConsoleRuntime Target => Active.Runtime;
+    /// <summary>The console id from the route, unchanged in case.</summary>
+    [Parameter]
+    public string? ConsoleId { get; set; }
 
-    protected CompanionStatus Status => Target.Store.Current;
+    /// <summary>The console this page shows, or <see langword="null"/> when the route names none.</summary>
+    protected ConsoleRuntime? Target => Consoles.Find(ConsoleId);
 
-    protected override void OnInitialized()
+    protected CompanionStatus Status => Target?.Store.Current ?? CompanionStatus.Initial;
+
+    protected override void OnInitialized() => Transfers.Changed += OnChanged;
+
+    protected override async Task OnParametersSetAsync()
     {
+        if (string.Equals(_boundId, ConsoleId, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _boundId = ConsoleId;
         SubscribeToTarget();
-        Active.Changed += OnSelectionChanged;
-        Transfers.Changed += OnChanged;
+        await OnConsoleChangedAsync();
     }
+
+    /// <summary>Called when the route's console changes, including the first time, so the page can reload.</summary>
+    protected virtual Task OnConsoleChangedAsync() => Task.CompletedTask;
+
+    /// <summary>Called on the renderer's thread before a live re-render, e.g. to reload data a change made stale.</summary>
+    protected virtual Task OnLiveChangeAsync() => Task.CompletedTask;
 
     private void SubscribeToTarget()
     {
@@ -46,18 +62,12 @@ public abstract class LiveComponent : ComponentBase, IDisposable
             _subscribed.Changed -= OnStatusChanged;
         }
 
-        _subscribed = Target.Store;
-        _subscribed.Changed += OnStatusChanged;
+        _subscribed = Target?.Store;
+        if (_subscribed is not null)
+        {
+            _subscribed.Changed += OnStatusChanged;
+        }
     }
-
-    private void OnSelectionChanged()
-    {
-        SubscribeToTarget();
-        OnChanged();
-    }
-
-    /// <summary>Called on the renderer's thread before a live re-render, e.g. to reload data a change made stale.</summary>
-    protected virtual Task OnLiveChangeAsync() => Task.CompletedTask;
 
     private void OnStatusChanged(CompanionStatus _) => OnChanged();
 
@@ -102,7 +112,6 @@ public abstract class LiveComponent : ComponentBase, IDisposable
             _subscribed.Changed -= OnStatusChanged;
         }
 
-        Active.Changed -= OnSelectionChanged;
         Transfers.Changed -= OnChanged;
         GC.SuppressFinalize(this);
     }

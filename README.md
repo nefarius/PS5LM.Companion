@@ -84,12 +84,13 @@ Exit code 0: nothing failed. 2: a component is not working. 1: bad arguments or 
 ## Dashboard
 
 Open `http://<companion>:8080/`. The dashboard is Blazor Server with MudBlazor and updates live over its circuit; it
-needs no extra configuration. With more than one console configured, a selector in the top bar chooses the console the
-pages show; the choice is per browser tab and every console keeps being polled in the background.
+needs no extra configuration. The overview lists every console. Each console has its own pages under `/consoles/{id}`
+(status, models, downloads); the address is the selection, so a link opens that console. The drawer lists the same
+pages, and the top bar names the console the page shows. Every console keeps being polled in the background.
 
-- **Status**: lifecycle, loaded model, generation speed, sensors, drive space, and the payload dependencies. Launch sends an installed payload through Payload Manager. The result confirms the file was transferred. Whether kstuff-lite, etaHEN and ShadowMountPlus are running comes from the process list.
-- **Models**: models on the console with Load, Unload and Delete. Delete removes the selected file; see [Deleting models](docs/model-deletion.md).
-- **Downloads**: search Hugging Face, queue a file, watch download and upload progress, cancel.
+- **Status** (`/consoles/{id}`): lifecycle, loaded model, generation speed, sensors, drive space, and the payload dependencies. Launch sends an installed payload through Payload Manager. The result confirms the file was transferred. Whether kstuff-lite, etaHEN and ShadowMountPlus are running comes from the process list.
+- **Models** (`/consoles/{id}/models`): models on the console with Load, Unload and Delete. Delete removes the selected file; see [Deleting models](docs/model-deletion.md).
+- **Downloads** (`/consoles/{id}/downloads`): search Hugging Face, queue a file, watch download and upload progress, cancel.
 
 With `Companion:AccessToken` set, the browser is sent to `/login` once and keeps an HttpOnly cookie.
 
