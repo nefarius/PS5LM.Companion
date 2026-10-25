@@ -68,11 +68,13 @@
                         <MudTd DataLabel="App">@context.Name</MudTd>
                         <MudTd DataLabel="Title ID">@context.TitleId</MudTd>
                         <MudTd DataLabel="Installed">@(context.Installed ? "Yes" : "No")</MudTd>
-                        <MudTd DataLabel="Running">@RunText(context.State)</MudTd>
+                        <MudTd DataLabel="Running">
+                            <MudChip T="string" Size="Size.Small" Color="@RunColor(context.State)">@RunText(context.State)</MudChip>
+                        </MudTd>
                         <MudTd>
                             @if (context.CanLaunch)
                             {
-                                <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="_launchingApp"
+                                <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@(_launchingApp || context.State == AppRunState.Running)"
                                            aria-label="@($"Launch {context.Name}")"
                                            OnClick="@(() => LaunchAppAsync(context))">Launch</MudButton>
                             }
@@ -223,9 +225,16 @@
         _ => "Unknown",
     };
 
+    private static Color RunColor(AppRunState state) => state switch
+    {
+        AppRunState.Running => Color.Success,
+        AppRunState.RunningVariantUnknown => Color.Warning,
+        _ => Color.Default,
+    };
+
     private async Task LaunchAppAsync(AppVariantStatus app)
     {
-        if (_launchingApp || !app.CanLaunch)
+        if (_launchingApp || !app.CanLaunch || app.State == AppRunState.Running)
         {
             return;
         }
