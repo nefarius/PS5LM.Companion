@@ -23,6 +23,7 @@ public sealed class SetupBuildersTests
     [InlineData("\"sha256\": \"2a42054fd9725e1d9595ff4add95abc30e5b49446fcdcb96c06775a376a841c4\"", "\"sha256\": \"XYZ\"")]
     [InlineData("\"url\": \"https://github.com/itsPLK/ps5-payload-manager", "\"url\": \"http://github.com/itsPLK/ps5-payload-manager")]
     [InlineData("pldmgr_v0.6.3.elf\",", "pldmgr.elf\",")]
+    [InlineData("    \"fileName\": \"pldmgr_v0.6.3.elf\",\n", "")]
     [InlineData("/data/voidshell/www/index.html", "/etc/index.html")]
     public void Manifest_rejects_unpinned_or_unsafe_entries(string from, string to)
     {

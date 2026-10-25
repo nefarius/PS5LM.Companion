@@ -138,6 +138,11 @@ public sealed record SetupManifest(
             throw new InvalidDataException("payloadManager version and minimumVersion must be numeric.");
         }
 
+        if (string.IsNullOrEmpty(PayloadManager.FileName))
+        {
+            throw new InvalidDataException("payloadManager.fileName is required.");
+        }
+
         if (!PayloadManager.FileName.Contains("_v", StringComparison.Ordinal) || PayloadManager.FileName.Contains('/', StringComparison.Ordinal))
         {
             throw new InvalidDataException("payloadManager.fileName must keep the _vX.Y.Z suffix Payload Manager uses to find updates.");

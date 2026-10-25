@@ -75,10 +75,15 @@ internal static class SetupCommand
 
             return await RunSetupAsync(values, manifest, store, ui, cancellation.Token);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
             Console.Error.WriteLine("Cancelled.");
             return 130;
+        }
+        catch (TaskCanceledException)
+        {
+            Console.Error.WriteLine("A request timed out.");
+            return 2;
         }
         catch (Exception ex) when (ex is InvalidDataException or IOException or ArgumentException or InvalidOperationException)
         {
@@ -109,7 +114,13 @@ internal static class SetupCommand
             }
         }
 
-        var ftpPort = values.TryGetValue("ftp-port", out var ftp) && int.TryParse(ftp, out var parsedFtp) ? parsedFtp : 2121;
+        var ftpPort = 2121;
+        if (values.TryGetValue("ftp-port", out var ftp)
+            && (!int.TryParse(ftp, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out ftpPort) || ftpPort is < 1 or > 65535))
+        {
+            throw new ArgumentException($"--ftp-port must be an integer from 1 to 65535, got '{ftp}'.");
+        }
+
         var baseAddress = new PS5Options { Host = host, PayloadManagerUrl = values.GetValueOrDefault("payload-manager-url") }.PayloadManagerBaseAddress();
         var options = new SetupOptions(host, variant)
         {

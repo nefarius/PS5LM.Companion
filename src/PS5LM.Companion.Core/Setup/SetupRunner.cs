@@ -59,6 +59,10 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
 
             await FinalCheckAsync(cancellationToken);
         }
+        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            Add("Setup", SetupStatus.Fail, "A request to the console timed out. Steps reported above completed before it.");
+        }
         catch (Exception ex) when (ex is IOException or HttpRequestException or ConsoleUnreachableException or InvalidDataException or JsonException)
         {
             Add("Setup", SetupStatus.Fail, ex.Message);
