@@ -105,7 +105,7 @@ public sealed class CreateConsoleEndpoint(IConsoleRegistry registry) : Endpoint<
 
     public override async Task HandleAsync(CreateConsoleRequest request, CancellationToken ct)
     {
-        var result = registry.Add(request.Id, request.Settings.ToOptions());
+        var result = registry.Add(request.Id ?? "", (request.Settings ?? new ConsoleSettingsBody()).ToOptions());
         var status = result.Status == ConsoleEditStatus.Ok ? StatusCodes.Status201Created : 0;
         if (status == StatusCodes.Status201Created)
         {

@@ -63,6 +63,22 @@ public sealed class ConsoleManagementEndpointTests
     }
 
     [Fact]
+    public async Task A_null_id_or_settings_is_a_bad_request()
+    {
+        await using var factory = new CompanionFactory { ConsoleIds = [] };
+        using var client = factory.CreateClient();
+        using var id = new StringContent("""{"id":null,"settings":{"host":"10.0.0.8"}}""", System.Text.Encoding.UTF8, "application/json");
+        using var settings = new StringContent("""{"id":"den","settings":null}""", System.Text.Encoding.UTF8, "application/json");
+
+        using var missingId = await client.PostAsync("/api/consoles", id);
+        using var missingSettings = await client.PostAsync("/api/consoles", settings);
+
+        Assert.Equal(HttpStatusCode.BadRequest, missingId.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, missingSettings.StatusCode);
+        Assert.Empty(factory.Registry.All);
+    }
+
+    [Fact]
     public async Task Removing_a_console_with_a_transfer_is_rejected()
     {
         await using var factory = new CompanionFactory { ConsoleIds = [] };
