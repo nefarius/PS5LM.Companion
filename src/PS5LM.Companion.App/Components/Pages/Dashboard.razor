@@ -1,9 +1,16 @@
-@page "/"
+@page "/consoles/{ConsoleId}"
 @inherits LiveComponent
 @inject ISnackbar Snackbar
+@inject IDialogService Dialogs
 
-<PageTitle>Status</PageTitle>
+<PageTitle>@(Target is null ? "Console not found" : $"Status - {Target.Name}")</PageTitle>
 
+@if (Target is null)
+{
+    <ConsoleNotFound />
+}
+else
+{
 <MudGrid>
     <MudItem xs="12">
         <MudText Typo="Typo.h4" HtmlTag="h1" Class="mb-2">Status<MudText Typo="Typo.subtitle1" Color="Color.Secondary" Inline="true" Class="ml-3">@Target.Name (@Target.Host)</MudText></MudText>
@@ -218,6 +225,7 @@
         </MudPaper>
     </MudItem>
 </MudGrid>
+}
 
 @code {
     private bool _launching;
@@ -238,9 +246,17 @@
         _ => Color.Default,
     };
 
+    protected override Task OnConsoleChangedAsync()
+    {
+        _launching = false;
+        _launchingApp = false;
+        return Task.CompletedTask;
+    }
+
     private async Task CloseAppAsync(AppVariantStatus app)
     {
-        if (_launchingApp)
+        var console = Target;
+        if (console is null || _launchingApp)
         {
             return;
         }
@@ -248,7 +264,14 @@
         _launchingApp = true;
         try
         {
-            var result = await Target.Closer.CloseAsync(app.Variant, CancellationToken.None);
+            if (!await Confirm.AskAsync(Dialogs, $"Close {app.Name} on {console.Name}",
+                    $"Close {app.Name} on {Confirm.On(console)}? The console returns to the home screen.", "Close")
+                || !ReferenceEquals(console, Target))
+            {
+                return;
+            }
+
+            var result = await console.Closer.CloseAsync(app.Variant, CancellationToken.None);
             Snackbar.Add(result.Message ?? result.Outcome.ToString(), result.Succeeded ? Severity.Success : Severity.Error);
         }
         finally
@@ -259,7 +282,8 @@
 
     private async Task LaunchAppAsync(AppVariantStatus app)
     {
-        if (_launchingApp || !app.CanLaunch || app.State == AppRunState.Running)
+        var console = Target;
+        if (console is null || _launchingApp || !app.CanLaunch || app.State == AppRunState.Running)
         {
             return;
         }
@@ -267,7 +291,14 @@
         _launchingApp = true;
         try
         {
-            var result = await Target.Apps.LaunchAsync(app.Variant, CancellationToken.None);
+            if (!await Confirm.AskAsync(Dialogs, $"Launch {app.Name} on {console.Name}",
+                    $"Launch {app.Name} on {Confirm.On(console)}?", "Launch")
+                || !ReferenceEquals(console, Target))
+            {
+                return;
+            }
+
+            var result = await console.Apps.LaunchAsync(app.Variant, CancellationToken.None);
             Snackbar.Add(result.Message ?? result.Outcome.ToString(), result.Succeeded ? Severity.Success : Severity.Error);
         }
         finally
@@ -293,7 +324,8 @@
 
     private async Task LaunchAsync(DependencyStatus dependency)
     {
-        if (_launching || !dependency.CanLaunch)
+        var console = Target;
+        if (console is null || _launching || !dependency.CanLaunch)
         {
             return;
         }
@@ -301,7 +333,14 @@
         _launching = true;
         try
         {
-            var result = await Target.Dependencies.LaunchAsync(dependency.Id, CancellationToken.None);
+            if (!await Confirm.AskAsync(Dialogs, $"Launch {dependency.Name} on {console.Name}",
+                    $"Launch {dependency.Name} on {Confirm.On(console)}?", "Launch")
+                || !ReferenceEquals(console, Target))
+            {
+                return;
+            }
+
+            var result = await console.Dependencies.LaunchAsync(dependency.Id, CancellationToken.None);
             Snackbar.Add(
                 result.Message ?? result.Outcome.ToString(),
                 result.Succeeded ? Severity.Success : Severity.Error);

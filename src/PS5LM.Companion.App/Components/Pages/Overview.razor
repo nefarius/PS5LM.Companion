@@ -1,0 +1,57 @@
+@page "/"
+@inject IConsoleRegistry Registry
+@implements IDisposable
+
+<PageTitle>Overview</PageTitle>
+
+<MudText Typo="Typo.h4" HtmlTag="h1" Class="mb-2">Overview</MudText>
+<MudText Color="Color.Secondary" Class="mb-4">Each console has its own status, models and downloads.</MudText>
+
+<MudGrid>
+    @foreach (var console in Registry.All)
+    {
+        var status = console.Store.Current;
+        <MudItem xs="12" sm="6" md="4">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+                    <MudIcon Icon="@Icons.Material.Filled.Circle" Size="Size.Small" Color="@Display.LifecycleColor(status.Lifecycle)" aria-hidden="true" />
+                    <MudText Typo="Typo.h6">@console.Name</MudText>
+                    <MudSpacer />
+                    <MudChip T="string" Size="Size.Small" Color="@Display.LifecycleColor(status.Lifecycle)">@Display.Lifecycle(status.Lifecycle)</MudChip>
+                </MudStack>
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">@console.Host</MudText>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="@($"consoles/{console.Id}")">Open</MudButton>
+            </MudPaper>
+        </MudItem>
+    }
+</MudGrid>
+
+@code {
+    protected override void OnInitialized()
+    {
+        foreach (var console in Registry.All)
+        {
+            console.Store.Changed += OnChanged;
+        }
+    }
+
+    private void OnChanged(CompanionStatus status)
+    {
+        try
+        {
+            _ = InvokeAsync(StateHasChanged);
+        }
+        catch (ObjectDisposedException)
+        {
+            // The circuit ended.
+        }
+    }
+
+    public void Dispose()
+    {
+        foreach (var console in Registry.All)
+        {
+            console.Store.Changed -= OnChanged;
+        }
+    }
+}

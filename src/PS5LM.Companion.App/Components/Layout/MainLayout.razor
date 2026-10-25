@@ -1,5 +1,7 @@
 @inherits LayoutComponentBase
-@inject ActiveConsole Active
+@implements IDisposable
+@inject NavigationManager Navigation
+@inject IConsoleRegistry Registry
 
 <MudThemeProvider @bind-IsDarkMode="_dark" />
 <MudPopoverProvider />
@@ -11,32 +13,28 @@
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" aria-label="Toggle navigation menu" OnClick="@(() => _drawerOpen = !_drawerOpen)" />
         <MudText Typo="Typo.h6" Class="ml-2">PS5LM Companion</MudText>
         <MudSpacer />
-        @if (Active.All.Count > 1)
-        {
-            <MudSelect T="string" Value="@Active.Runtime.Id" ValueChanged="@(id => Active.Select(id))"
-                       Label="Console" Dense="true" Margin="Margin.Dense" Variant="Variant.Outlined"
-                       Class="mr-3" Style="max-width:16rem" aria-label="Console">
-                @foreach (var console in Active.All)
-                {
-                    <MudSelectItem T="string" Value="@console.Id">@console.Name</MudSelectItem>
-                }
-            </MudSelect>
-        }
-        else
-        {
-            <MudText Typo="Typo.body2" Class="mr-3">@Active.Runtime.Name</MudText>
-        }
-        <StatusChip />
+        <StatusChip Console="@_current" />
         <MudIconButton Icon="@(_dark ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
                        Color="Color.Inherit" aria-label="@(_dark ? "Switch to light theme" : "Switch to dark theme")"
                        OnClick="@(() => _dark = !_dark)" />
     </MudAppBar>
     <MudDrawer @bind-Open="_drawerOpen" Elevation="2">
         <MudNavMenu>
-            <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Status</MudNavLink>
-            <MudNavLink Href="models" Icon="@Icons.Material.Filled.Memory">Models</MudNavLink>
-            <MudNavLink Href="transfers" Icon="@Icons.Material.Filled.CloudDownload">Downloads</MudNavLink>
+            <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Overview</MudNavLink>
             <MudNavLink Href="inference" Icon="@Icons.Material.Filled.AltRoute">Inference</MudNavLink>
+            @foreach (var console in Registry.All)
+            {
+                var lifecycle = console.Store.Current.Lifecycle;
+                <MudNavGroup Title="@console.Name"
+                             Icon="@Icons.Material.Filled.Circle"
+                             IconColor="@Display.LifecycleColor(lifecycle)"
+                             @bind-Expanded:get="@IsOpen(console.Id)"
+                             @bind-Expanded:set="@(open => SetOpen(console.Id, open))">
+                    <MudNavLink Href="@($"consoles/{console.Id}")" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Status</MudNavLink>
+                    <MudNavLink Href="@($"consoles/{console.Id}/models")" Icon="@Icons.Material.Filled.Memory">Models</MudNavLink>
+                    <MudNavLink Href="@($"consoles/{console.Id}/downloads")" Icon="@Icons.Material.Filled.CloudDownload">Downloads</MudNavLink>
+                </MudNavGroup>
+            }
         </MudNavMenu>
     </MudDrawer>
     <MudMainContent>
@@ -52,6 +50,81 @@
 </div>
 
 @code {
+    private readonly Dictionary<string, bool> _open = new(StringComparer.Ordinal);
+    private ConsoleRuntime? _current;
     private bool _drawerOpen = true;
     private bool _dark = true;
+
+    protected override void OnInitialized()
+    {
+        Navigation.LocationChanged += OnLocationChanged;
+        foreach (var console in Registry.All)
+        {
+            _open[console.Id] = false;
+            console.Store.Changed += OnStatusChanged;
+        }
+
+        RefreshCurrent();
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        RefreshCurrent();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void OnStatusChanged(CompanionStatus status)
+    {
+        try
+        {
+            _ = InvokeAsync(StateHasChanged);
+        }
+        catch (ObjectDisposedException)
+        {
+            // The circuit ended.
+        }
+    }
+
+    private void RefreshCurrent()
+    {
+        _current = FindFromUri();
+        if (_current is not null)
+        {
+            _open[_current.Id] = true;
+        }
+    }
+
+    private ConsoleRuntime? FindFromUri()
+    {
+        var relative = Navigation.ToBaseRelativePath(Navigation.Uri);
+        var cut = relative.IndexOfAny(['?', '#']);
+        if (cut >= 0)
+        {
+            relative = relative[..cut];
+        }
+
+        const string prefix = "consoles/";
+        if (!relative.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var rest = relative[prefix.Length..];
+        var slash = rest.IndexOf('/');
+        var id = slash < 0 ? rest : rest[..slash];
+        return id.Length == 0 ? null : Registry.Find(id);
+    }
+
+    private bool IsOpen(string id) => _open.TryGetValue(id, out var open) && open;
+
+    private void SetOpen(string id, bool open) => _open[id] = open;
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
+        foreach (var console in Registry.All)
+        {
+            console.Store.Changed -= OnStatusChanged;
+        }
+    }
 }

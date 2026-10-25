@@ -44,8 +44,9 @@ Start the companion with `PS5__Consoles__<id>__Host=<console>` and open the dash
 
 Configure two consoles (`PS5__Consoles__a__Host`, `PS5__Consoles__b__Host`) and repeat the relevant steps:
 
-10. **Selector**: the top bar offers both consoles; switching changes the heading, status, models and downloads
-    without a reload, and the other console keeps updating (power one off: only its chip turns disconnected).
+10. **Navigation**: the drawer lists both consoles with status, models and downloads. Opening a console puts its id
+    in the address (`/consoles/<id>`), the top bar names that console, and the other console keeps updating (power
+    one off: only its entry turns disconnected).
 11. **Isolation**: load a model on console A; console B's status and model list do not change.
 12. **Parallel downloads**: queue a file to both consoles. Both transfers progress at the same time; a second file
     to the same console waits until the first finishes.

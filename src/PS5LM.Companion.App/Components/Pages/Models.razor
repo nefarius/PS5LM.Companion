@@ -1,11 +1,17 @@
-@page "/models"
+@page "/consoles/{ConsoleId}/models"
 @inherits LiveComponent
 @inject ISnackbar Snackbar
 @inject IDialogService Dialogs
 @inject ModelDeletionService Deletion
 
-<PageTitle>Models - @Target.Name</PageTitle>
+<PageTitle>@(Target is null ? "Console not found" : $"Models - {Target.Name}")</PageTitle>
 
+@if (Target is null)
+{
+    <ConsoleNotFound />
+}
+else
+{
 <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
     <MudText Typo="Typo.h4" HtmlTag="h1">Models<MudText Typo="Typo.subtitle1" Color="Color.Secondary" Inline="true" Class="ml-3">on @Target.Name (@Target.Host)</MudText></MudText>
     <MudSpacer />
@@ -71,6 +77,7 @@
         </NoRecordsContent>
     </MudTable>
 </MudPaper>
+}
 
 @code {
     private IReadOnlyList<ModelFile> _models = [];
@@ -80,15 +87,27 @@
     private bool _acting;
     private string? _installationKey;
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnConsoleChangedAsync()
     {
+        _models = [];
+        _error = null;
         _completed = CompletedCount();
         _installationKey = InstallationKey();
+        if (Target is null)
+        {
+            return;
+        }
+
         await ReloadAsync();
     }
 
     protected override async Task OnLiveChangeAsync()
     {
+        if (Target is null)
+        {
+            return;
+        }
+
         // A finished transfer put a new model on the console, or the console (or its state folder) just appeared.
         var completed = CompletedCount();
         var key = InstallationKey();
@@ -100,9 +119,9 @@
         }
     }
 
-    private string? InstallationKey() => Target.Status.LastInstallation?.StateRoot is { } root ? $"{Target.Id}:{root.FtpPath}" : null;
+    private string? InstallationKey() => Target?.Status.LastInstallation?.StateRoot is { } root ? $"{Target.Id}:{root.FtpPath}" : null;
 
-    private int CompletedCount() => Transfers.Snapshot(Target.Id).Count(t => t.State == TransferState.Completed);
+    private int CompletedCount() => Target is null ? 0 : Transfers.Snapshot(Target.Id).Count(t => t.State == TransferState.Completed);
 
     private bool IsLoaded(ModelFile model) => !model.IsProjector && ModelNames.IsSameModel(Status.LoadedModel, model.FileName, model.AppPath);
 
@@ -113,7 +132,7 @@
             return false;
         }
 
-        if (IsLoaded(model) || Deletion.IsTransferInProgress(Target.Id, model))
+        if (Target is not { } console || IsLoaded(model) || Deletion.IsTransferInProgress(console.Id, model))
         {
             return false;
         }
@@ -124,6 +143,13 @@
     private async Task ReloadAsync()
     {
         var console = Target;
+        if (console is null)
+        {
+            _models = [];
+            _loading = false;
+            return;
+        }
+
         _loading = true;
         _error = null;
         try
@@ -158,28 +184,42 @@
         }
     }
 
-    private Task LoadAsync(ModelFile model) =>
-        ActAsync(() => Target.Control.LoadAsync(model.AppPath, CancellationToken.None), $"Loading {model.FileName}");
+    private Task LoadAsync(ModelFile model)
+    {
+        if (Target is not { } console || IsLoaded(model) || Status.CommandPending)
+        {
+            return Task.CompletedTask;
+        }
 
-    private Task UnloadAsync() => ActAsync(() => Target.Control.UnloadAsync(CancellationToken.None), "Unloading the model");
+        return ActAsync(
+            console,
+            () => console.Control.LoadAsync(model.AppPath, CancellationToken.None),
+            $"Loading {model.FileName} on {console.Name}",
+            $"Load model on {console.Name}",
+            $"Load {model.FileName} on {Confirm.On(console)}?",
+            "Load");
+    }
+
+    private Task UnloadAsync()
+    {
+        if (Target is not { } console || Status.LoadedModel is null || Status.CommandPending)
+        {
+            return Task.CompletedTask;
+        }
+
+        return ActAsync(
+            console,
+            () => console.Control.UnloadAsync(CancellationToken.None),
+            $"Unloading the model on {console.Name}",
+            $"Unload model on {console.Name}",
+            $"Unload the model on {Confirm.On(console)}? The app restarts without a model.",
+            "Unload");
+    }
 
     private async Task DeleteAsync(ModelFile model)
     {
-        if (_acting || !CanDelete(model))
-        {
-            return;
-        }
-
-        // The confirmation dialog awaits; delete on the console that was selected when Delete was clicked.
         var console = Target;
-        var confirmed = await Dialogs.ShowMessageBoxAsync(new MessageBoxOptions
-        {
-            Title = "Delete model file",
-            Message = Confirmation(model),
-            YesText = "Delete",
-            CancelText = "Cancel",
-        });
-        if (confirmed != true)
+        if (console is null || _acting || !CanDelete(model))
         {
             return;
         }
@@ -187,6 +227,13 @@
         _acting = true;
         try
         {
+            // The confirmation dialog awaits; delete on the console that was current when Delete was clicked.
+            if (!await Confirm.AskAsync(Dialogs, $"Delete model on {console.Name}", Confirmation(console, model), "Delete")
+                || !ReferenceEquals(console, Target))
+            {
+                return;
+            }
+
             var result = await Deletion.DeleteAsync(console, model.AppPath, CancellationToken.None);
             Snackbar.Add(
                 result.Succeeded ? result.Message ?? $"Deleted {model.FileName}." : result.Message ?? result.Outcome.ToString(),
@@ -206,14 +253,14 @@
         }
     }
 
-    private string Confirmation(ModelFile model)
+    private string Confirmation(ConsoleRuntime console, ModelFile model)
     {
         var folder = DirectoryOf(model.AppPath);
         var keepsProjector = !model.IsProjector && _models.Any(other => other.IsProjector && DirectoryOf(other.AppPath) == folder);
         var remains = model.IsProjector
             ? " The main model remains installed."
             : keepsProjector ? " Its vision projector remains installed." : string.Empty;
-        return $"Delete {model.FileName} from {model.Location}? This removes only that file.{remains} Restart the PS5 app so its model list drops it.";
+        return $"Delete {model.FileName} from {model.Location} on {Confirm.On(console)}? This removes only that file.{remains} Restart the PS5 app so its model list drops it.";
     }
 
     private static string DirectoryOf(string path)
@@ -223,7 +270,7 @@
     }
 
     /// <summary>One command at a time per page: a second click while one is running is ignored.</summary>
-    private async Task ActAsync(Func<Task<OperationResult>> command, string started)
+    private async Task ActAsync(ConsoleRuntime console, Func<Task<OperationResult>> command, string started, string title, string message, string yesText)
     {
         if (_acting)
         {
@@ -233,6 +280,11 @@
         _acting = true;
         try
         {
+            if (!await Confirm.AskAsync(Dialogs, title, message, yesText) || !ReferenceEquals(console, Target))
+            {
+                return;
+            }
+
             Report(await command(), started);
         }
         catch (Core.Abstractions.ConsoleUnreachableException ex)

@@ -1,10 +1,16 @@
-@page "/transfers"
+@page "/consoles/{ConsoleId}/downloads"
 @inherits LiveComponent
 @inject IModelHub Hub
 @inject ISnackbar Snackbar
 
-<PageTitle>Downloads</PageTitle>
+<PageTitle>@(Target is null ? "Console not found" : $"Downloads - {Target.Name}")</PageTitle>
 
+@if (Target is null)
+{
+    <ConsoleNotFound />
+}
+else
+{
 <MudText Typo="Typo.h4" HtmlTag="h1" Class="mb-2">Downloads<MudText Typo="Typo.subtitle1" Color="Color.Secondary" Inline="true" Class="ml-3">to @Target.Name (@Target.Host)</MudText></MudText>
 
 <MudPaper Class="pa-4 mb-4" Elevation="1">
@@ -108,6 +114,7 @@
         </NoRecordsContent>
     </MudTable>
 </MudPaper>
+}
 
 @code {
     private string _query = string.Empty;
@@ -124,17 +131,34 @@
     private string? _targetsFor;
     private string? _loadingKey;
 
-    protected override Task OnInitializedAsync() => RefreshTargetsAsync();
+    protected override Task OnConsoleChangedAsync()
+    {
+        _query = string.Empty;
+        _error = null;
+        _selectedRepo = null;
+        _repos = [];
+        _files = null;
+        _requestVersion++;
+        _enqueuing.Clear();
+        ClearTargets();
+        return RefreshTargetsAsync();
+    }
 
     // The console (or its state folder) can appear after this page opened.
-    protected override Task OnLiveChangeAsync() => RefreshTargetsAsync();
+    protected override Task OnLiveChangeAsync() => Target is null ? Task.CompletedTask : RefreshTargetsAsync();
 
     private string? CurrentTargetsKey() =>
-        Target.Status.LastInstallation?.StateRoot is { } root ? $"{Target.Id}:{root.FtpPath}" : null;
+        Target?.Status.LastInstallation?.StateRoot is { } root ? $"{Target.Id}:{root.FtpPath}" : null;
 
     private async Task RefreshTargetsAsync()
     {
         var console = Target;
+        if (console is null)
+        {
+            ClearTargets();
+            return;
+        }
+
         var installation = console.Status.LastInstallation;
         var key = CurrentTargetsKey();
         if (key is null || installation is null)
@@ -264,7 +288,8 @@
     private async Task EnqueueAsync(HubFile file)
     {
         var repo = _selectedRepo;
-        if (repo is null || !_enqueuing.Add(file.Name))
+        var console = Target;
+        if (repo is null || console is null || !_enqueuing.Add(file.Name))
         {
             return;
         }
@@ -272,7 +297,7 @@
         OperationResult result;
         try
         {
-            (result, _) = await Transfers.EnqueueAsync(new TransferRequest(Target.Id, repo, file.Name, _target), CancellationToken.None);
+            (result, _) = await Transfers.EnqueueAsync(new TransferRequest(console.Id, repo, file.Name, _target), CancellationToken.None);
         }
         catch (Exception ex) when (ex is Core.Abstractions.ConsoleUnreachableException or HubUnavailableException)
         {
