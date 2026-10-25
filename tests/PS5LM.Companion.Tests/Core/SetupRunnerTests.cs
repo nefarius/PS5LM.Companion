@@ -100,6 +100,18 @@ public sealed class SetupRunnerTests
     }
 
     [Fact]
+    public async Task Title_is_found_in_the_shadowmount_log_when_voidshell_lists_no_games()
+    {
+        using var harness = Ready();
+        harness.VoidShell.SetUp([]);
+        harness.Files.AddFile("/data/shadowmount/debug.log", "[WAIT] PS5LM PPSA99581\nNOTIFY: installed game PPSA99581\n");
+
+        var report = await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
+
+        Assert.DoesNotContain(report.Lines, l => l.Status != SetupStatus.Ok);
+    }
+
+    [Fact]
     public async Task Missing_ftp_is_a_failure_and_blocks_extras_and_app()
     {
         using var harness = Ready();

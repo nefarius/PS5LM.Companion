@@ -464,14 +464,19 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         if (services.VoidShell is not null)
         {
             var snapshot = await services.VoidShell.ProbeAsync(cancellationToken);
-            if (snapshot.Available)
+            if (snapshot.Available && snapshot.InstalledTitleIds.Any(id => id.Equals(titleId, StringComparison.OrdinalIgnoreCase)))
             {
-                return snapshot.InstalledTitleIds.Any(id => id.Equals(titleId, StringComparison.OrdinalIgnoreCase));
+                return true;
             }
         }
 
+        // VoidShell's library can be empty for titles ShadowMountPlus installed, so a running VoidShell that does
+        // not list the title is not proof of absence: read ShadowMountPlus's own "installed game <id>" line too.
         var log = await services.Files.ReadTextAsync(ShadowMountLog, MaxTextBytes, cancellationToken);
-        return log?.Contains(titleId, StringComparison.OrdinalIgnoreCase) == true;
+        return log is not null && log
+            .Split('\n')
+            .Any(line => line.Contains("installed game", StringComparison.OrdinalIgnoreCase)
+                && line.Contains(titleId, StringComparison.OrdinalIgnoreCase));
     }
 
     private async Task<bool> IsReadyAsync(ManifestPayload payload, CancellationToken cancellationToken, IReadOnlySet<string>? known = null)
