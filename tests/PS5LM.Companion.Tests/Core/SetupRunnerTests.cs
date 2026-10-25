@@ -104,11 +104,39 @@ public sealed class SetupRunnerTests
     {
         using var harness = Ready();
         harness.VoidShell.SetUp([]);
-        harness.Files.AddFile("/data/shadowmount/debug.log", "[WAIT] PS5LM PPSA99581\nNOTIFY: installed game PPSA99581\n");
+        harness.Files.AddFile("/data/shadowmount/debug.log", "NOTIFY: installed game PPSA99581\n");
+        harness.Files.AfterMove = () => harness.Files.AddFile(
+            "/data/shadowmount/debug.log",
+            harness.Files.Text("/data/shadowmount/debug.log") + "[WAIT] PS5LM PPSA99581\nNOTIFY: installed game PPSA99581\n");
 
         var report = await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
 
         Assert.DoesNotContain(report.Lines, l => l.Status != SetupStatus.Ok);
+    }
+
+    [Fact]
+    public async Task Stale_install_log_line_is_not_taken_as_proof_for_a_new_install()
+    {
+        using var harness = Ready();
+        harness.VoidShell.SetUp([]);
+        harness.Files.AddFile("/data/shadowmount/debug.log", "NOTIFY: installed game PPSA99581\n");
+
+        var report = await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
+
+        Assert.Contains(report.Lines, l => l.Component == "ShadowMountPlus install" && l.Status == SetupStatus.Warn);
+    }
+
+    [Fact]
+    public async Task Unchanged_app_is_confirmed_through_voidshell_not_the_log()
+    {
+        using var harness = Ready();
+        await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
+        harness.Files.AddFile("/data/shadowmount/debug.log", "NOTIFY: installed game PPSA99581\n");
+        harness.VoidShell.SetUp([]);
+
+        var report = await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
+
+        Assert.Contains(report.Lines, l => l.Component == "ShadowMountPlus install" && l.Status == SetupStatus.Warn);
     }
 
     [Fact]

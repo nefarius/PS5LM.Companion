@@ -51,9 +51,14 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
             if (app is not null)
             {
                 await AllowAppInOnionHenAsync(app, cancellationToken);
-                if (await InstallAppAsync(app, cancellationToken))
+                var install = await InstallAppAsync(app, cancellationToken);
+                if (install == AppInstall.Copied)
                 {
                     await WaitForShadowMountAsync(app, cancellationToken);
+                }
+                else if (install == AppInstall.Unchanged)
+                {
+                    await CheckExistingRegistrationAsync(app, cancellationToken);
                 }
             }
 
@@ -305,12 +310,12 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
     }
 
     // Step 7: copy the app into the folder ShadowMountPlus scans.
-    private async Task<bool> InstallAppAsync(ManifestApp app, CancellationToken cancellationToken)
+    private async Task<AppInstall> InstallAppAsync(ManifestApp app, CancellationToken cancellationToken)
     {
         if (!await services.Probe.PortOpenAsync(options.FtpPort, cancellationToken))
         {
             Add(app.Name, SetupStatus.Fail, $"ftpsrv is not answering on port {options.FtpPort}, so the app cannot be installed.");
-            return false;
+            return AppInstall.Failed;
         }
 
         var zipPath = await services.Artifacts.FetchAsync(app.Url, app.Sha256, cancellationToken);
@@ -323,7 +328,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         if (param is null)
         {
             Add(app.Name, SetupStatus.Fail, "The download has no sce_sys/param.json.");
-            return false;
+            return AppInstall.Failed;
         }
 
         var root = param.FullName[..^ParamSuffix.Length];
@@ -334,7 +339,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         if (files.Any(f => f.Relative.Contains("..", StringComparison.Ordinal) || f.Relative.StartsWith('/')))
         {
             Add(app.Name, SetupStatus.Fail, "The download contains an unsafe path.");
-            return false;
+            return AppInstall.Failed;
         }
 
         string newParam;
@@ -347,7 +352,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         if (!string.Equals(archiveTitleId, app.TitleId, StringComparison.Ordinal))
         {
             Add(app.Name, SetupStatus.Fail, $"The download's param.json names title '{archiveTitleId ?? "(none)"}', expected {app.TitleId}. Nothing was installed.");
-            return false;
+            return AppInstall.Failed;
         }
 
         var remote = $"{HomebrewRoot}/{app.TitleId}";
@@ -355,7 +360,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         if (existingParam is not null && existingParam.Trim() == newParam.Trim() && !options.Force)
         {
             Add(app.Name, SetupStatus.Ok, $"{app.Version} is already installed in {remote}.");
-            return true;
+            return AppInstall.Unchanged;
         }
 
         var inPlace = existingParam is not null || await services.Files.DirectoryExistsAsync(remote, cancellationToken);
@@ -363,6 +368,9 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         Ui.Info(inPlace
             ? $"Updating {app.Name} {app.Version} in place ({files.Count} files)"
             : $"Installing {app.Name} {app.Version} ({files.Count} files) through a staging folder");
+
+        // Only log lines written after this point can belong to this install.
+        _installLogBaseline = CountInstalledLines(await services.Files.ReadTextAsync(ShadowMountLog, MaxTextBytes, cancellationToken), app.TitleId);
 
         // param.json goes last so a half-copied folder is not mistaken for a complete title.
         foreach (var (entry, relative) in files.OrderBy(f => f.Relative == ParamSuffix))
@@ -377,7 +385,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         }
 
         Add(app.Name, SetupStatus.Ok, $"Installed {app.Version} to {remote}.");
-        return true;
+        return AppInstall.Copied;
     }
 
     private static string? ReadTitleId(string paramJson)
@@ -459,24 +467,55 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         }
     }
 
-    private async Task<bool> TitleKnownAsync(string titleId, CancellationToken cancellationToken)
+    private int _installLogBaseline;
+
+    private enum AppInstall
     {
-        if (services.VoidShell is not null)
+        Failed,
+        Unchanged,
+        Copied,
+    }
+
+    private static int CountInstalledLines(string? log, string titleId) =>
+        log is null
+            ? 0
+            : log.Split('\n').Count(line => line.Contains("installed game", StringComparison.OrdinalIgnoreCase)
+                && line.Contains(titleId, StringComparison.OrdinalIgnoreCase));
+
+    private async Task<bool> ListedByVoidShellAsync(string titleId, CancellationToken cancellationToken)
+    {
+        if (services.VoidShell is null)
         {
-            var snapshot = await services.VoidShell.ProbeAsync(cancellationToken);
-            if (snapshot.Available && snapshot.InstalledTitleIds.Any(id => id.Equals(titleId, StringComparison.OrdinalIgnoreCase)))
-            {
-                return true;
-            }
+            return false;
         }
 
-        // VoidShell's library can be empty for titles ShadowMountPlus installed, so a running VoidShell that does
-        // not list the title is not proof of absence: read ShadowMountPlus's own "installed game <id>" line too.
+        var snapshot = await services.VoidShell.ProbeAsync(cancellationToken);
+        return snapshot.Available && snapshot.InstalledTitleIds.Any(id => id.Equals(titleId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    // Nothing was copied, so an old "installed game" log line proves nothing: only the live registration counts.
+    private async Task CheckExistingRegistrationAsync(ManifestApp app, CancellationToken cancellationToken)
+    {
+        var listed = await ListedByVoidShellAsync(app.TitleId, cancellationToken);
+        Add(
+            "ShadowMountPlus install",
+            listed ? SetupStatus.Ok : SetupStatus.Warn,
+            listed
+                ? $"{app.Name} ({app.TitleId}) is registered on the console."
+                : $"{app.Name} was already in place and nothing was copied, so setup cannot confirm the registration (VoidShell does not list it). Check the home screen.");
+    }
+
+    private async Task<bool> TitleKnownAsync(string titleId, CancellationToken cancellationToken)
+    {
+        if (await ListedByVoidShellAsync(titleId, cancellationToken))
+        {
+            return true;
+        }
+
+        // VoidShell's library can be empty for titles ShadowMountPlus installed, so read ShadowMountPlus's own
+        // "installed game <id>" line, counting only lines written since this run copied the files.
         var log = await services.Files.ReadTextAsync(ShadowMountLog, MaxTextBytes, cancellationToken);
-        return log is not null && log
-            .Split('\n')
-            .Any(line => line.Contains("installed game", StringComparison.OrdinalIgnoreCase)
-                && line.Contains(titleId, StringComparison.OrdinalIgnoreCase));
+        return CountInstalledLines(log, titleId) > _installLogBaseline;
     }
 
     private async Task<bool> IsReadyAsync(ManifestPayload payload, CancellationToken cancellationToken, IReadOnlySet<string>? known = null)

@@ -20,6 +20,9 @@ internal sealed class FakeFileSystem : IPS5FileSystem
     /// <summary>Makes uploads fail midway, after reporting some progress.</summary>
     public bool FailUploads { get; set; }
 
+    /// <summary>Runs when a directory move is requested, to simulate the console reacting to the new folder.</summary>
+    public Action? AfterMove { get; set; }
+
     public IReadOnlyDictionary<string, byte[]> Files => _files;
 
     public FakeFileSystem AddDirectory(string path)
@@ -121,6 +124,7 @@ internal sealed class FakeFileSystem : IPS5FileSystem
         Run(() =>
         {
             var source = from.TrimEnd('/') + "/";
+            AfterMove?.Invoke();
             if (!_directories.Contains(from.TrimEnd('/')) || _directories.Contains(to.TrimEnd('/')))
             {
                 throw new IOException($"Cannot move {from} to {to}.");
