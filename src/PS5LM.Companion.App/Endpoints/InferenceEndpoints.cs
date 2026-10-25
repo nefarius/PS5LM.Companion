@@ -96,3 +96,66 @@ public sealed class GetInferenceTestResultsEndpoint(InferenceRouter router, Infe
         await Send.OkAsync(new SelfTestResults(tests.Last(alias, SelfTestKind.Check), tests.Last(alias, SelfTestKind.Benchmark)), ct);
     }
 }
+
+public sealed record InferencePoolBody
+{
+    public string Alias { get; set; } = string.Empty;
+
+    public string Model { get; set; } = string.Empty;
+
+    public List<string> Consoles { get; set; } = [];
+}
+
+public sealed record InferencePoolSettings(string Model, List<string> Consoles);
+
+public sealed class CreateInferencePoolEndpoint(IInferencePoolSource pools) : Endpoint<InferencePoolBody>
+{
+    public override void Configure()
+    {
+        Post("/inference/pools");
+        AllowAnonymous();
+        Description(b => b.WithTags("Inference"));
+    }
+
+    public override async Task HandleAsync(InferencePoolBody request, CancellationToken ct) =>
+        await Send.ResultAsync(PoolEdits.From(pools.Add(request.Alias, request.Model, request.Consoles), created: true));
+}
+
+public sealed class UpdateInferencePoolEndpoint(IInferencePoolSource pools) : Endpoint<InferencePoolSettings>
+{
+    public override void Configure()
+    {
+        Put("/inference/pools/{alias}");
+        AllowAnonymous();
+        Description(b => b.WithTags("Inference"));
+    }
+
+    public override async Task HandleAsync(InferencePoolSettings request, CancellationToken ct) =>
+        await Send.ResultAsync(PoolEdits.From(pools.Update(Route<string>("alias") ?? "", request.Model, request.Consoles)));
+}
+
+public sealed class DeleteInferencePoolEndpoint(IInferencePoolSource pools) : EndpointWithoutRequest
+{
+    public override void Configure()
+    {
+        Delete("/inference/pools/{alias}");
+        AllowAnonymous();
+        Description(b => b.WithTags("Inference"));
+    }
+
+    public override async Task HandleAsync(CancellationToken ct) =>
+        await Send.ResultAsync(PoolEdits.From(pools.Remove(Route<string>("alias") ?? ""), removed: true));
+}
+
+internal static class PoolEdits
+{
+    public static IResult From(PoolEditResult result, bool created = false, bool removed = false) => result.Status switch
+    {
+        PoolEditStatus.Ok when removed => Results.NoContent(),
+        PoolEditStatus.Ok when created => Results.Created($"/api/inference/pools/{result.Pool!.Alias}", result.Pool),
+        PoolEditStatus.Ok => Results.Ok(result.Pool),
+        PoolEditStatus.Invalid => ApiResults.Error(result.Message ?? "Invalid pool.", StatusCodes.Status400BadRequest),
+        PoolEditStatus.Conflict or PoolEditStatus.ReadOnly => ApiResults.Error(result.Message ?? "That pool cannot be changed.", StatusCodes.Status409Conflict),
+        _ => ApiResults.Error(result.Message ?? "That pool is not configured.", StatusCodes.Status404NotFound),
+    };
+}

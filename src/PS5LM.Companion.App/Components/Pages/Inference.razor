@@ -3,17 +3,24 @@
 @using PS5LM.Companion.App.Inference
 @using PS5LM.Companion.Core.Inference
 @inject InferenceRouter Router
+@inject IInferencePoolSource Pools
+@inject IConsoleRegistry Consoles
 @inject InferenceSelfTest SelfTest
+@inject IDialogService Dialogs
 @inject ISnackbar Snackbar
 
 <PageTitle>Inference gateway</PageTitle>
 
-<MudText Typo="Typo.h4" HtmlTag="h1" Class="mb-2">Inference gateway</MudText>
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+    <MudText Typo="Typo.h4" HtmlTag="h1">Inference gateway</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="AddAsync">Add pool</MudButton>
+</MudStack>
 
 @if (!Router.Enabled)
 {
     <MudAlert Severity="Severity.Info">
-        The gateway is off. Configure <code>Inference:Pools:{alias}:Model</code> and <code>Inference:Pools:{alias}:Consoles:0</code> to serve a model from several consoles.
+        The gateway is off until a pool exists. Add one here, or configure <code>Inference:Pools:{alias}:Model</code> and <code>Inference:Pools:{alias}:Consoles:0</code>. Pools from configuration stay read-only.
     </MudAlert>
 }
 else
@@ -30,10 +37,18 @@ else
             <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
                 <MudText Typo="Typo.h6" HtmlTag="h2">@pool.Alias</MudText>
                 <MudText Color="Color.Secondary" Class="ml-2">@pool.Model</MudText>
+                <MudChip T="string" Size="Size.Small" Color="@(pool.Origin == InferencePoolOrigin.Configuration ? Color.Default : Color.Info)">
+                    @(pool.Origin == InferencePoolOrigin.Configuration ? "From configuration" : "Added here")
+                </MudChip>
                 <MudChip T="string" Size="Size.Small" Color="@(pool.EligibleReplicas > 0 ? Color.Success : Color.Warning)" Class="ml-2">
                     @pool.EligibleReplicas of @pool.Replicas.Count ready
                 </MudChip>
                 <MudSpacer />
+                @if (pool.Origin == InferencePoolOrigin.User)
+                {
+                    <MudButton Variant="Variant.Text" OnClick="@(() => EditAsync(pool))">Edit</MudButton>
+                    <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="@(() => RemoveAsync(pool))">Remove</MudButton>
+                }
                 <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.CheckCircle" Disabled="@(running || pool.EligibleReplicas == 0)"
                            OnClick="@(() => RunAsync(pool.Alias, SelfTestKind.Check))">Test</MudButton>
                 <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Speed" Class="ml-2" Disabled="@(running || pool.EligibleReplicas == 0)"
@@ -123,7 +138,38 @@ else
     protected override void OnInitialized()
     {
         _pools = Router.Snapshot();
+        Pools.Changed += OnPoolsChanged;
         _timer = new Timer(_ => _ = Refresh(), null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+    }
+
+    private void OnPoolsChanged() => _ = Refresh();
+
+    private async Task AddAsync()
+    {
+        if (await PoolEditor.ShowAsync(Dialogs, null))
+        {
+            await Refresh();
+        }
+    }
+
+    private async Task EditAsync(PoolSnapshot pool)
+    {
+        if (await PoolEditor.ShowAsync(Dialogs, pool.Alias))
+        {
+            await Refresh();
+        }
+    }
+
+    private async Task RemoveAsync(PoolSnapshot pool)
+    {
+        if (!await Confirm.AskAsync(Dialogs, $"Remove {pool.Alias}", $"Stop serving '{pool.Alias}'? A request already admitted finishes.", "Remove"))
+        {
+            return;
+        }
+
+        var result = Pools.Remove(pool.Alias);
+        Snackbar.Add(result.Succeeded ? $"{pool.Alias} was removed." : result.Message ?? "Could not remove the pool.", result.Succeeded ? Severity.Success : Severity.Error);
+        await Refresh();
     }
 
     private async Task Refresh()
@@ -183,5 +229,9 @@ else
 
     private static string Rate(double? value) => value is { } v ? v.ToString("0.0") : "-";
 
-    public void Dispose() => _timer?.Dispose();
+    public void Dispose()
+    {
+        Pools.Changed -= OnPoolsChanged;
+        _timer?.Dispose();
+    }
 }

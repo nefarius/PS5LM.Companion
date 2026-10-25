@@ -54,7 +54,7 @@ public sealed class InferenceLease
 public sealed record ReplicaSnapshot(string ConsoleId, CompanionLifecycle Lifecycle, string? LoadedModel, int ActiveRequests, bool Eligible, string Reason);
 
 /// <summary>One public model alias with its replicas.</summary>
-public sealed record PoolSnapshot(string Alias, string Model, int EligibleReplicas, IReadOnlyList<ReplicaSnapshot> Replicas);
+public sealed record PoolSnapshot(string Alias, string Model, int EligibleReplicas, IReadOnlyList<ReplicaSnapshot> Replicas, InferencePoolOrigin Origin = InferencePoolOrigin.Configuration);
 
 /// <summary>
 /// Chooses which console serves a request. A console is a candidate only while it reports the pool's model as
@@ -65,32 +65,45 @@ public sealed class InferenceRouter
 {
     private readonly IConsoleRegistry _registry;
     private readonly InferenceOptions _options;
+    private readonly IInferencePoolSource? _pools;
     private readonly object _gate = new();
     private readonly Dictionary<string, int> _active = new(StringComparer.Ordinal);
     private readonly Dictionary<string, long> _lastAssigned = new(StringComparer.Ordinal);
     private readonly LinkedList<Waiter> _waiters = new();
     private long _sequence;
 
-    public InferenceRouter(IConsoleRegistry registry, InferenceOptions options)
+    public InferenceRouter(IConsoleRegistry registry, InferenceOptions options, IInferencePoolSource? pools = null)
     {
         _registry = registry;
         _options = options;
+        _pools = pools;
+        if (pools is not null)
+        {
+            pools.Changed += OnPoolsChanged;
+        }
     }
 
-    public bool Enabled => _options.Enabled;
+    public bool Enabled => PoolPairs().Any();
 
     /// <summary>The configured aliases, in alphabetical order.</summary>
-    public IReadOnlyList<string> Aliases => _options.Pools.Keys.Order(StringComparer.OrdinalIgnoreCase).ToList();
+    public IReadOnlyList<string> Aliases => PoolPairs().Select(pair => pair.Key).Order(StringComparer.OrdinalIgnoreCase).ToList();
 
-    public bool HasAlias(string alias) => _options.Pools.ContainsKey(alias);
+    public bool HasAlias(string alias) => TryGetPool(alias, out _);
 
     /// <summary>The only alias when exactly one pool exists; used when a request names no model.</summary>
-    public string? SoleAlias => _options.Pools.Count == 1 ? _options.Pools.Keys.Single() : null;
+    public string? SoleAlias
+    {
+        get
+        {
+            var pairs = PoolPairs().ToList();
+            return pairs.Count == 1 ? pairs[0].Key : null;
+        }
+    }
 
     /// <param name="onlyConsole">Restricts the choice to one console of the pool, for tests that must reach a specific replica.</param>
     public async Task<InferenceAdmission> AcquireAsync(string alias, CancellationToken cancellationToken, string? onlyConsole = null)
     {
-        if (!_options.Pools.TryGetValue(alias, out var pool))
+        if (!TryGetPool(alias, out var pool))
         {
             return InferenceAdmission.Fail(AdmissionFailure.UnknownModel, $"The model '{alias}' is not served by this gateway.");
         }
@@ -115,7 +128,7 @@ public sealed class InferenceRouter
                 return InferenceAdmission.Fail(AdmissionFailure.QueueFull, $"Every console serving '{alias}' is busy and the queue is full.");
             }
 
-            waiter = new Waiter(alias, pool, onlyConsole);
+            waiter = new Waiter(alias, onlyConsole);
             node = _waiters.AddLast(waiter);
         }
 
@@ -169,7 +182,7 @@ public sealed class InferenceRouter
     {
         lock (_gate)
         {
-            return _options.Pools
+            return PoolPairs()
                 .OrderBy(p => p.Key, StringComparer.OrdinalIgnoreCase)
                 .Select(p =>
                 {
@@ -178,7 +191,7 @@ public sealed class InferenceRouter
                             ? Describe(console, p.Value)
                             : new ReplicaSnapshot(id, CompanionLifecycle.Disconnected, null, 0, false, "Console is not configured."))
                         .ToList();
-                    return new PoolSnapshot(p.Key, p.Value.Model, replicas.Count(r => r.Eligible), replicas);
+                    return new PoolSnapshot(p.Key, p.Value.Model, replicas.Count(r => r.Eligible), replicas, p.Origin);
                 })
                 .ToList();
         }
@@ -243,7 +256,15 @@ public sealed class InferenceRouter
         {
             var next = node.Next;
             var waiter = node.Value;
-            var eligible = Eligible(waiter.Pool, waiter.OnlyConsole);
+            if (!TryGetPool(waiter.Alias, out var pool))
+            {
+                _waiters.Remove(node);
+                waiter.Completion.TrySetResult(InferenceAdmission.Fail(AdmissionFailure.UnknownModel, $"The model '{waiter.Alias}' is not served by this gateway."));
+                node = next;
+                continue;
+            }
+
+            var eligible = Eligible(pool, waiter.OnlyConsole);
             if (eligible.Count == 0)
             {
                 _waiters.Remove(node);
@@ -259,13 +280,50 @@ public sealed class InferenceRouter
         }
     }
 
-    private sealed class Waiter(string alias, InferencePoolOptions pool, string? onlyConsole)
+    private void OnPoolsChanged()
+    {
+        lock (_gate)
+        {
+            Dispatch();
+        }
+    }
+
+    private bool TryGetPool(string alias, out InferencePoolOptions pool)
+    {
+        if (_pools is null)
+        {
+            return _options.Pools.TryGetValue(alias, out pool!);
+        }
+
+        var found = _pools.Find(alias);
+        if (found is null)
+        {
+            pool = null!;
+            return false;
+        }
+
+        pool = new InferencePoolOptions { Model = found.Model, Consoles = found.Consoles.ToList() };
+        return true;
+    }
+
+    private IEnumerable<(string Key, InferencePoolOptions Value, InferencePoolOrigin Origin)> PoolPairs()
+    {
+        if (_pools is null)
+        {
+            return _options.Pools.Select(pair => (pair.Key, pair.Value, InferencePoolOrigin.Configuration));
+        }
+
+        return _pools.All.Select(pool => (
+            pool.Alias,
+            new InferencePoolOptions { Model = pool.Model, Consoles = pool.Consoles.ToList() },
+            pool.Origin));
+    }
+
+    private sealed class Waiter(string alias, string? onlyConsole)
     {
         public string? OnlyConsole { get; } = onlyConsole;
 
         public string Alias { get; } = alias;
-
-        public InferencePoolOptions Pool { get; } = pool;
 
         public TaskCompletionSource<InferenceAdmission> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
