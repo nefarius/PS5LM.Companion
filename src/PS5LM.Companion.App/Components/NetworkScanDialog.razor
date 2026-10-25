@@ -1,3 +1,4 @@
+@implements IDisposable
 @inject IConsoleDiscovery Discovery
 
 <MudDialog>
@@ -34,10 +35,12 @@
 
 @code {
     private readonly List<DiscoveredConsole> _results = [];
+    private readonly CancellationTokenSource _cancel = new();
     private string? _cidr;
     private string? _error;
     private bool _busy;
     private bool _scanned;
+    private bool _disposed;
 
     [CascadingParameter]
     private IMudDialogInstance MudDialog { get; set; } = default!;
@@ -58,12 +61,15 @@
         _results.Clear();
         try
         {
-            _results.AddRange(await Discovery.ScanAsync(string.IsNullOrWhiteSpace(_cidr) ? null : _cidr.Trim(), CancellationToken.None));
+            _results.AddRange(await Discovery.ScanAsync(string.IsNullOrWhiteSpace(_cidr) ? null : _cidr.Trim(), _cancel.Token));
             _scanned = true;
         }
         catch (FormatException ex)
         {
             _error = ex.Message;
+        }
+        catch (OperationCanceledException)
+        {
         }
         finally
         {
@@ -73,5 +79,21 @@
 
     private void Pick(DiscoveredConsole console) => MudDialog.Close(DialogResult.Ok(console.Host));
 
-    private void Cancel() => MudDialog.Cancel();
+    private void Cancel()
+    {
+        _cancel.Cancel();
+        MudDialog.Cancel();
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _cancel.Cancel();
+        _cancel.Dispose();
+    }
 }
