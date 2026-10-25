@@ -117,6 +117,31 @@ internal sealed class FakeFileSystem : IPS5FileSystem
             return true;
         });
 
+    public Task MoveDirectoryAsync(string from, string to, CancellationToken cancellationToken) =>
+        Run(() =>
+        {
+            var source = from.TrimEnd('/') + "/";
+            if (!_directories.Contains(from.TrimEnd('/')) || _directories.Contains(to.TrimEnd('/')))
+            {
+                throw new IOException($"Cannot move {from} to {to}.");
+            }
+
+            var moved = _files.Where(f => f.Key.StartsWith(source, StringComparison.Ordinal)).ToList();
+            foreach (var (key, bytes) in moved)
+            {
+                _files.Remove(key);
+                AddFile(to.TrimEnd('/') + "/" + key[source.Length..], bytes);
+            }
+
+            foreach (var dir in _directories.Where(d => d == from.TrimEnd('/') || d.StartsWith(source, StringComparison.Ordinal)).ToList())
+            {
+                _directories.Remove(dir);
+            }
+
+            AddDirectory(to);
+            return true;
+        });
+
     public Task DeleteAsync(string path, CancellationToken cancellationToken) =>
         Run(() => IgnoreDeletes || _files.Remove(path));
 

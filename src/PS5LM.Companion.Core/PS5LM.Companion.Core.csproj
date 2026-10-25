@@ -4,4 +4,8 @@
     <RootNamespace>PS5LM.Companion.Core</RootNamespace>
   </PropertyGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Setup\setup-manifest.json" LogicalName="PS5LM.Companion.Core.Setup.setup-manifest.json" />
+  </ItemGroup>
+
 </Project>

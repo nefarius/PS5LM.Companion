@@ -112,6 +112,8 @@ public sealed class CompanionStatusServiceTests
 
         public Task MoveAsync(string from, string to, CancellationToken cancellationToken) => HangAsync<bool>(cancellationToken);
 
+        public Task MoveDirectoryAsync(string from, string to, CancellationToken cancellationToken) => HangAsync<bool>(cancellationToken);
+
         public Task DeleteAsync(string path, CancellationToken cancellationToken) => HangAsync<bool>(cancellationToken);
     }
 

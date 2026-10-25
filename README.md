@@ -64,6 +64,21 @@ The companion refuses to start on a non-loopback address without `Companion:Acce
 `Kestrel:Endpoints`. The token travels in clear text over plain HTTP: put the companion behind a TLS reverse proxy
 (the login cookie is marked `Secure` on HTTPS) unless the network is trusted.
 
+## Setting up a fresh console
+
+`setup` is a one-shot command for a console that only runs [PS5 Payload Manager](https://github.com/itsPLK/ps5-payload-manager) on
+port 8084. It does not start the dashboard. It upgrades Payload Manager if needed, uploads the payloads (elfldr, kstuff-lite,
+OnionHEN, ftpsrv, ShadowMountPlus, VoidShell with its `index.html`, PS5 Web File Manager), enables autoload with a 3 s pause after
+kstuff-lite and after OnionHEN, launches them, installs PS5LM or PS5LM Plus for ShadowMountPlus, and prints a report. Downloads
+come from a pinned manifest with SHA-256 checksums. Details: [docs/setup.md](docs/setup.md).
+
+```sh
+dotnet PS5LM.Companion.App.dll setup --host 192.168.1.50 --variant ps5lmplus
+docker run --rm -v ps5lm-companion:/data ps5lm-companion setup --host 192.168.1.50 --variant ps5lm --upgrade-payload-manager
+```
+
+Exit code 0: nothing failed. 2: a component is not working. 1: bad arguments or manifest.
+
 ## Dashboard
 
 Open `http://<companion>:8080/`. The dashboard is Blazor Server with MudBlazor and updates live over its circuit; it

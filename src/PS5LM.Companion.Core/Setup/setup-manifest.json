@@ -1,0 +1,101 @@
+{
+  "payloadManager": {
+    "version": "0.6.3",
+    "minimumVersion": "0.6.0",
+    "fileName": "pldmgr_v0.6.3.elf",
+    "url": "https://github.com/itsPLK/ps5-payload-manager/releases/download/v0.6.3/pldmgr_v0.6.3.elf",
+    "sha256": "2a42054fd9725e1d9595ff4add95abc30e5b49446fcdcb96c06775a376a841c4"
+  },
+  "payloads": [
+    {
+      "id": "elfldr",
+      "name": "elfldr",
+      "version": "v0.27",
+      "url": "https://github.com/ps5-payload-dev/elfldr/releases/download/v0.27/elfldr-ps5.elf",
+      "sha256": "82f6227610172c98bad6efe68219fc93a10027035991f47eb4b75532d023407d",
+      "ready": { "port": 9021 },
+      "readyTimeoutSeconds": 20
+    },
+    {
+      "id": "kstuff-lite",
+      "name": "kstuff-lite",
+      "version": "v1.11",
+      "url": "https://github.com/EchoStretch/kstuff-lite/releases/download/v1.11/kstuff.elf",
+      "sha256": "ab9a6cb4d3b1daf139d4d646e402b1cf569071acd64599c936d7a3a6164dc779",
+      "ready": { "processes": ["kstuff.elf", "kstuff-lite.elf"] },
+      "delayAfterMs": 3000,
+      "readyTimeoutSeconds": 45
+    },
+    {
+      "id": "onionhen",
+      "name": "OnionHEN",
+      "version": "v0.9.0",
+      "url": "https://github.com/aydencharles/onionHEN/releases/download/v0.9.0/OnionHEN.elf",
+      "sha256": "1f1f7c883d5d998be1d95d7d80b718f85180f8156f257661b0f445a7c6b7c212",
+      "ready": { "processes": ["onion_daemon.elf", "onion_util.elf"] },
+      "delayAfterMs": 3000,
+      "readyTimeoutSeconds": 60
+    },
+    {
+      "id": "ftpsrv",
+      "name": "ftpsrv",
+      "version": "v0.21.1",
+      "url": "https://github.com/ps5-payload-dev/ftpsrv/releases/download/v0.21.1/ftpsrv-ps5.elf",
+      "sha256": "7d4b31c83eae4e056580482a3a074e1db25922efc74ac1e439473b45d71a5938",
+      "ready": { "port": 2121 },
+      "readyTimeoutSeconds": 20
+    },
+    {
+      "id": "shadowmountplus",
+      "name": "ShadowMountPlus",
+      "version": "1.7beta7",
+      "url": "https://github.com/drakmor/ShadowMountPlus/releases/download/1.7beta7/shadowmountplus.elf",
+      "sha256": "a8f9d7f76e8749912508ade0cd5c78076b5bbf1271813c78c80c3d3d9d4777ee",
+      "ready": { "processes": ["shadowmountplus.elf"] },
+      "readyTimeoutSeconds": 30
+    },
+    {
+      "id": "voidshell",
+      "name": "VoidShell",
+      "version": "v1.1.1",
+      "url": "https://github.com/amilarajans/voidshell/releases/download/v1.1.1/voidshell.elf",
+      "sha256": "6ff9a3e1f9f2eac70fe32268619c79912ca69332971feb1663f907cad114e13c",
+      "ready": { "port": 7007 },
+      "readyTimeoutSeconds": 30,
+      "files": [
+        {
+          "url": "https://github.com/amilarajans/voidshell/releases/download/v1.1.1/index.html",
+          "sha256": "09f3fe7c2e5d65020b116077f2c515f0995a6213e464de6d4e25d43a8ffeb953",
+          "target": "/data/voidshell/www/index.html"
+        }
+      ]
+    },
+    {
+      "id": "ps5-web-file-manager",
+      "name": "PS5 Web File Manager",
+      "version": "v1.12",
+      "url": "https://github.com/owendswang/ps5-web-file-manager/releases/download/v1.12/web-file-mgr-v1.12.elf",
+      "sha256": "f3461eb967da7afbbf0420d3294fbc8f999cc2ad53a756bed413aa80c7cfa67a",
+      "ready": { "port": 8888 },
+      "readyTimeoutSeconds": 30
+    }
+  ],
+  "apps": [
+    {
+      "id": "ps5lm",
+      "name": "PS5LM",
+      "titleId": "PPSA99575",
+      "version": "v0.9.1",
+      "url": "https://github.com/cobanov/PS5LM/releases/download/v0.9.1/ps5lm-app-v0.9.1.zip",
+      "sha256": "7b221d2b754f4d812cd0cb19e62e116f5191de144bb3763b13ead566a6a8b556"
+    },
+    {
+      "id": "ps5lmplus",
+      "name": "PS5LM Plus",
+      "titleId": "PPSA99581",
+      "version": "v0.8.3",
+      "url": "https://github.com/abhi245y/PS5LM-Plus/releases/download/v0.8.3/ps5lm-app-v0.8.3.zip",
+      "sha256": "42acffcacc33f371b10a4cfaa6ede0100a677231de171712b9a879bc104b6ef9"
+    }
+  ]
+}
