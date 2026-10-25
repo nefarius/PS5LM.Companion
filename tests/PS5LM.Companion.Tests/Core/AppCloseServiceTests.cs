@@ -104,10 +104,18 @@ public sealed class AppCloseServiceTests
     public async Task Cancellation_while_waiting_withdraws_the_request()
     {
         var (service, fs, _) = Harness();
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+        using var cts = new CancellationTokenSource();
+        var close = service.CloseAsync(PS5Variant.PS5LM, cts.Token);
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.CloseAsync(PS5Variant.PS5LM, cts.Token));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        while (!fs.Files.ContainsKey(QuitFile))
+        {
+            await Task.Delay(5, timeout.Token);
+        }
 
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => close);
         Assert.DoesNotContain(QuitFile, fs.Files.Keys);
     }
 
