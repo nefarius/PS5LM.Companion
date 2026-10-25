@@ -1,5 +1,6 @@
 using System.Net;
 
+using PS5LM.Companion.Core.Domain;
 using PS5LM.Companion.Tests.Support;
 
 namespace PS5LM.Companion.Tests.App;
@@ -84,6 +85,76 @@ public sealed class DashboardTests
         using var response = await client.GetAsync(path);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task One_console_opens_straight_on_its_status_page()
+    {
+        await using var factory = new CompanionFactory();
+        using var client = factory.CreateClient(new() { AllowAutoRedirect = false });
+
+        using var response = await client.GetAsync("/");
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.EndsWith("/consoles/ps5", response.Headers.Location?.OriginalString);
+    }
+
+    [Fact]
+    public async Task The_overview_summarises_every_console()
+    {
+        await using var factory = new CompanionFactory { ConsoleIds = ["den", "room"] };
+        // The first refresh publishes on its own. Wait for it, then replace both, so the next poll (minutes away) cannot overwrite the page.
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (factory.Registry.All.Any(console => console.Store.Current.UpdatedAt == DateTimeOffset.MinValue))
+        {
+            if (DateTime.UtcNow > deadline)
+            {
+                throw new TimeoutException("The status monitor did not publish a first check.");
+            }
+
+            await Task.Delay(20);
+        }
+
+        var checkedAt = DateTimeOffset.UtcNow;
+        factory.Registry.Find("den")!.Store.Publish(CompanionStatus.Initial with
+        {
+            Lifecycle = CompanionLifecycle.Ready,
+            Variant = PS5Variant.PS5LM,
+            LoadedModel = "qwen.gguf",
+            Telemetry = new TelemetrySnapshot(10, 4, 0, 12.5, 40, checkedAt),
+            Sensors = new ConsoleSensors(61.2, null, null, null, [new DriveSpace("/data", 1000, 250)]),
+            UpdatedAt = checkedAt,
+            PayloadManagerAvailable = false,
+            Dependencies =
+            [
+                new DependencyStatus("kstuff-lite", "kstuff-lite", DependencyRequirement.Required, DependencyPresence.NotInstalled, DependencyHealth.Unavailable, false, "Missing"),
+            ],
+        });
+        factory.Registry.Find("room")!.Store.Publish(CompanionStatus.Initial with
+        {
+            Lifecycle = CompanionLifecycle.Disconnected,
+            UpdatedAt = checkedAt,
+            PayloadManagerAvailable = true,
+            Dependencies = [],
+        });
+        using var client = factory.CreateClient();
+
+        var html = await client.GetStringAsync("/");
+
+        Assert.Contains("Overview", html);
+        Assert.Contains("2 consoles", html);
+        Assert.Contains("1 ready", html);
+        Assert.Contains("0 generating", html);
+        Assert.Contains("1 offline", html);
+        Assert.Contains("den", html);
+        Assert.Contains("room", html);
+        Assert.Contains("qwen.gguf", html);
+        Assert.Contains("12.5 tokens/s", html);
+        Assert.Contains("61.2", html);
+        Assert.Contains("250 B free", html);
+        Assert.Contains("Unload the model on den", html);
+        Assert.Contains("Payload Manager unreachable", html);
+        Assert.Contains("Required payloads missing", html);
     }
 
     [Fact]

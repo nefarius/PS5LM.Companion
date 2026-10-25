@@ -26,13 +26,19 @@
             {
                 var lifecycle = console.Store.Current.Lifecycle;
                 <MudNavGroup Title="@console.Name"
-                             Icon="@Icons.Material.Filled.Circle"
-                             IconColor="@Display.LifecycleColor(lifecycle)"
                              @bind-Expanded:get="@IsOpen(console.Id)"
                              @bind-Expanded:set="@(open => SetOpen(console.Id, open))">
-                    <MudNavLink Href="@($"consoles/{console.Id}")" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Status</MudNavLink>
-                    <MudNavLink Href="@($"consoles/{console.Id}/models")" Icon="@Icons.Material.Filled.Memory">Models</MudNavLink>
-                    <MudNavLink Href="@($"consoles/{console.Id}/downloads")" Icon="@Icons.Material.Filled.CloudDownload">Downloads</MudNavLink>
+                    <TitleContent>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                            <LifecycleDot Lifecycle="@lifecycle" />
+                            <MudText Typo="Typo.body1">@console.Name</MudText>
+                        </MudStack>
+                    </TitleContent>
+                    <ChildContent>
+                        <MudNavLink Href="@($"consoles/{console.Id}")" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Status</MudNavLink>
+                        <MudNavLink Href="@($"consoles/{console.Id}/models")" Icon="@Icons.Material.Filled.Memory">Models</MudNavLink>
+                        <MudNavLink Href="@($"consoles/{console.Id}/downloads")" Icon="@Icons.Material.Filled.CloudDownload">Downloads</MudNavLink>
+                    </ChildContent>
                 </MudNavGroup>
             }
         </MudNavMenu>

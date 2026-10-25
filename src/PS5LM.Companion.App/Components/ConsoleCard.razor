@@ -1,0 +1,137 @@
+@inject TransferService Transfers
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+@implements IDisposable
+
+@{
+    var status = Console.Store.Current;
+    var transfers = Transfers.Snapshot(Console.Id);
+    var running = transfers.FirstOrDefault(transfer => transfer.IsActive && transfer.State != TransferState.Queued);
+    var queued = transfers.Count(transfer => transfer.State == TransferState.Queued);
+    var space = LowestFree(status);
+}
+
+<MudPaper Class="pa-4" Elevation="1">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-1">
+        <LifecycleDot Lifecycle="@status.Lifecycle" />
+        <MudLink Href="@($"consoles/{Console.Id}")" Typo="Typo.h6">@Console.Name</MudLink>
+        <MudSpacer />
+        <MudChip T="string" Size="Size.Small" Color="@Display.LifecycleColor(status.Lifecycle)">@Display.Lifecycle(status.Lifecycle)</MudChip>
+    </MudStack>
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">@Console.Host</MudText>
+    @if (Warning(status) is { } warning)
+    {
+        <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-2" NoIcon="true">@warning</MudAlert>
+    }
+    <MudSimpleTable Dense="true" Hover="false" Elevation="0" Class="mb-2">
+        <tbody>
+            <tr><td>App</td><td>@(status.Variant == PS5Variant.Unknown ? "Not detected" : status.Variant.ToString())</td></tr>
+            <tr><td>Loaded model</td><td>@(status.LoadedModel ?? "None")</td></tr>
+            <tr><td>Generation</td><td>@(status.Telemetry is { } telemetry ? $"{telemetry.GenerationTokensPerSecond:0.0} tokens/s" : "n/a")</td></tr>
+            <tr><td>SoC temperature</td><td>@(status.Sensors?.SocTemperatureC is { } temp ? $"{temp:0.#} °C" : "n/a")</td></tr>
+            <tr><td>Free space</td><td>@(space is { } drive ? $"{Display.Bytes(drive.FreeBytes)} free" : "n/a")</td></tr>
+        </tbody>
+    </MudSimpleTable>
+    @if (running is not null)
+    {
+        <MudText Typo="Typo.caption">@running.FileName</MudText>
+        <MudProgressLinear Value="@Display.Progress(running)" Color="Color.Info" Class="mb-1" aria-label="@($"Transfer of {running.FileName}")" />
+    }
+    @if (queued > 0)
+    {
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">@queued queued</MudText>
+    }
+    <MudStack Row="true" Spacing="1" Class="mt-2">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Href="@($"consoles/{Console.Id}")">Open</MudButton>
+        @if (status.LoadedModel is not null)
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Warning" Size="Size.Small" Disabled="@(status.CommandPending || _unloading)"
+                       aria-label="@($"Unload the model on {Console.Name}")" OnClick="UnloadAsync">Unload</MudButton>
+        }
+    </MudStack>
+</MudPaper>
+
+@code {
+    private bool _unloading;
+
+    [Parameter, EditorRequired]
+    public ConsoleRuntime Console { get; set; } = default!;
+
+    protected override void OnInitialized() => Transfers.Changed += OnTransfersChanged;
+
+    private void OnTransfersChanged()
+    {
+        try
+        {
+            _ = InvokeAsync(StateHasChanged);
+        }
+        catch (ObjectDisposedException)
+        {
+            // The circuit ended.
+        }
+    }
+
+    public void Dispose() => Transfers.Changed -= OnTransfersChanged;
+
+    private static string? Warning(CompanionStatus status)
+    {
+        if (status.UpdatedAt == DateTimeOffset.MinValue)
+        {
+            return null;
+        }
+
+        var parts = new List<string>();
+        if (!status.PayloadManagerAvailable)
+        {
+            parts.Add("Payload Manager unreachable");
+        }
+
+        if (status.Dependencies.Any(dependency => dependency.Requirement == DependencyRequirement.Required && dependency.Presence == DependencyPresence.NotInstalled))
+        {
+            parts.Add("Required payloads missing");
+        }
+
+        if (status.Dependencies.Any(dependency => dependency.Requirement == DependencyRequirement.Required && dependency.Health == DependencyHealth.NotRunning))
+        {
+            parts.Add("Required payloads not running");
+        }
+
+        return parts.Count == 0 ? null : string.Join(". ", parts) + ".";
+    }
+
+    private static DriveSpace? LowestFree(CompanionStatus status) =>
+        status.Sensors?.Drives.Where(drive => drive.TotalBytes > 0).OrderBy(drive => drive.FreeBytes).FirstOrDefault();
+
+    private async Task UnloadAsync()
+    {
+        var console = Console;
+        var status = console.Store.Current;
+        if (_unloading || status.LoadedModel is null || status.CommandPending)
+        {
+            return;
+        }
+
+        _unloading = true;
+        try
+        {
+            if (!await Confirm.AskAsync(Dialogs, $"Unload model on {console.Name}",
+                    $"Unload the model on {Confirm.On(console)}? The app restarts without a model.", "Unload"))
+            {
+                return;
+            }
+
+            var result = await console.Control.UnloadAsync(CancellationToken.None);
+            Snackbar.Add(
+                result.Succeeded ? $"Unloading the model on {console.Name}" : result.Message ?? result.Outcome.ToString(),
+                result.Succeeded ? Severity.Success : Severity.Error);
+        }
+        catch (Core.Abstractions.ConsoleUnreachableException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _unloading = false;
+        }
+    }
+}

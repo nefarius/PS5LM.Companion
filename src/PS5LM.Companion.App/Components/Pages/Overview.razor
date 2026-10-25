@@ -1,49 +1,90 @@
 @page "/"
 @inject IConsoleRegistry Registry
+@inject NavigationManager Navigation
 @implements IDisposable
 
 <PageTitle>Overview</PageTitle>
 
 <MudText Typo="Typo.h4" HtmlTag="h1" Class="mb-2">Overview</MudText>
-<MudText Color="Color.Secondary" Class="mb-4">Each console has its own status, models and downloads.</MudText>
 
-<MudGrid>
-    @foreach (var console in Registry.All)
-    {
-        var status = console.Store.Current;
-        <MudItem xs="12" sm="6" md="4">
-            <MudPaper Class="pa-4" Elevation="1">
-                <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
-                    <MudIcon Icon="@Icons.Material.Filled.Circle" Size="Size.Small" Color="@Display.LifecycleColor(status.Lifecycle)" aria-hidden="true" />
-                    <MudText Typo="Typo.h6">@console.Name</MudText>
-                    <MudSpacer />
-                    <MudChip T="string" Size="Size.Small" Color="@Display.LifecycleColor(status.Lifecycle)">@Display.Lifecycle(status.Lifecycle)</MudChip>
-                </MudStack>
-                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">@console.Host</MudText>
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="@($"consoles/{console.Id}")">Open</MudButton>
-            </MudPaper>
-        </MudItem>
-    }
-</MudGrid>
+@if (Registry.All.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">No consoles are configured.</MudAlert>
+}
+else
+{
+    <MudStack Row="true" Spacing="1" Class="mb-4" aria-label="Fleet summary">
+        <MudChip T="string" Size="Size.Small">@Registry.All.Count consoles</MudChip>
+        <MudChip T="string" Size="Size.Small" Color="Color.Success">@_ready ready</MudChip>
+        <MudChip T="string" Size="Size.Small" Color="Color.Primary">@_generating generating</MudChip>
+        <MudChip T="string" Size="Size.Small" Color="Color.Error">@_offline offline</MudChip>
+    </MudStack>
+    <MudGrid>
+        @foreach (var console in Registry.All)
+        {
+            <MudItem xs="12" md="6" lg="4">
+                <ConsoleCard Console="@console" />
+            </MudItem>
+        }
+    </MudGrid>
+}
 
 @code {
+    private int _ready;
+    private int _generating;
+    private int _offline;
+
     protected override void OnInitialized()
     {
+        if (Registry.All.Count == 1)
+        {
+            Navigation.NavigateTo($"consoles/{Registry.All[0].Id}");
+            return;
+        }
+
         foreach (var console in Registry.All)
         {
             console.Store.Changed += OnChanged;
         }
+
+        Recount();
     }
 
     private void OnChanged(CompanionStatus status)
     {
         try
         {
-            _ = InvokeAsync(StateHasChanged);
+            _ = InvokeAsync(() =>
+            {
+                Recount();
+                StateHasChanged();
+            });
         }
         catch (ObjectDisposedException)
         {
             // The circuit ended.
+        }
+    }
+
+    private void Recount()
+    {
+        _ready = 0;
+        _generating = 0;
+        _offline = 0;
+        foreach (var lifecycle in Registry.All.Select(console => console.Store.Current.Lifecycle))
+        {
+            switch (lifecycle)
+            {
+                case CompanionLifecycle.Ready:
+                    _ready++;
+                    break;
+                case CompanionLifecycle.Generating:
+                    _generating++;
+                    break;
+                case CompanionLifecycle.Disconnected:
+                    _offline++;
+                    break;
+            }
         }
     }
 
