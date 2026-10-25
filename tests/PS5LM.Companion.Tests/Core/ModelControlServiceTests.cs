@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Time.Testing;
 
+using PS5LM.Companion.Core.Abstractions;
 using PS5LM.Companion.Core.Discovery;
 using PS5LM.Companion.Core.Domain;
 using PS5LM.Companion.Core.Models;
@@ -11,6 +12,7 @@ namespace PS5LM.Companion.Tests.Core;
 public sealed class ModelControlServiceTests
 {
     private readonly FakeTimeProvider _time = new();
+    private readonly FakeLlamaProbe _llama = new();
     private readonly LoadTracker _tracker;
     private readonly CompanionStatusStore _store = new();
 
@@ -18,7 +20,7 @@ public sealed class ModelControlServiceTests
 
     private ModelControlService Create(FakeFileSystem fs)
     {
-        var status = new CompanionStatusService(new PS5Options { Host = "ps5" }, fs, new FakeLlamaProbe(), new FakeSensorProbe(), new FakePayloadCatalog(), new FakeElfldrProbe(), _tracker, _time);
+        var status = new CompanionStatusService(new PS5Options { Host = "ps5" }, fs, _llama, new FakeSensorProbe(), new FakePayloadCatalog(), new FakeElfldrProbe(), _tracker, _time);
         return new ModelControlService(fs, new ModelCatalog(fs), status, _store, _tracker, TimeSpan.FromSeconds(600));
     }
 
@@ -217,7 +219,7 @@ public sealed class ModelControlServiceTests
             .AddFile("/data/PS5LM/models/a.gguf", new byte[1])
             .AddFile("/data/PS5LM/models/b.gguf", new byte[1])
             .AddFile("/data/PS5LM/models/mmproj-a.gguf", new byte[1]);
-        _store.Publish(CompanionStatus.Initial with { LoadedModel = "/data/PS5LM/models/a.gguf" });
+        _llama.Result = new LlamaProbeResult(LlamaServerState.Serving, null, "/data/PS5LM/models/a.gguf");
         var control = Create(fs);
 
         var loaded = await control.DeleteAsync("/data/PS5LM/models/a.gguf", CancellationToken.None);
@@ -248,21 +250,58 @@ public sealed class ModelControlServiceTests
 
         Assert.Equal(OperationOutcome.Conflict, requested.Outcome);
         Assert.Equal(OperationOutcome.Conflict, projector.Outcome);
-        Assert.Equal(OperationOutcome.Completed, other.Outcome);
+        Assert.Equal(OperationOutcome.Conflict, other.Outcome);
+        Assert.Equal(CompanionLifecycle.Loading, _store.Current.Lifecycle);
         Assert.True(fs.Files.ContainsKey("/data/PS5LM/models/a.gguf"));
         Assert.True(fs.Files.ContainsKey("/data/PS5LM/models/mmproj-b.gguf"));
-        Assert.False(fs.Files.ContainsKey("/data/PS5LM/models/b.gguf"));
+        Assert.True(fs.Files.ContainsKey("/data/PS5LM/models/b.gguf"));
     }
 
     [Fact]
-    public async Task Delete_waits_while_the_console_lifecycle_is_loading()
+    public async Task Delete_refreshes_a_stale_idle_snapshot_when_the_console_is_loading()
     {
         var fs = ConsoleFixtures.PS5LMInstalled().AddFile("/data/PS5LM/models/a.gguf", new byte[1]);
-        _store.Publish(CompanionStatus.Initial with { Lifecycle = CompanionLifecycle.Loading });
+        _store.Publish(CompanionStatus.Initial with { Lifecycle = CompanionLifecycle.AppAvailableNoModel });
+        _llama.Result = new LlamaProbeResult(LlamaServerState.Loading, null, null);
 
         var result = await Create(fs).DeleteAsync("/data/PS5LM/models/a.gguf", CancellationToken.None);
 
         Assert.Equal(OperationOutcome.Conflict, result.Outcome);
+        Assert.Equal(CompanionLifecycle.Loading, _store.Current.Lifecycle);
+        Assert.True(fs.Files.ContainsKey("/data/PS5LM/models/a.gguf"));
+    }
+
+    [Fact]
+    public async Task Delete_matches_a_full_loaded_path_and_a_unique_bare_name_only()
+    {
+        var alone = ConsoleFixtures.PS5LMInstalled().AddFile("/data/PS5LM/models/a.gguf", new byte[1]);
+        _llama.Result = new LlamaProbeResult(LlamaServerState.Serving, null, "a.gguf");
+        var unique = await Create(alone).DeleteAsync("/data/PS5LM/models/a.gguf", CancellationToken.None);
+        Assert.Equal(OperationOutcome.Conflict, unique.Outcome);
+        Assert.True(alone.Files.ContainsKey("/data/PS5LM/models/a.gguf"));
+
+        var fs = ConsoleFixtures.PS5LMInstalled()
+            .AddFile("/data/PS5LM/models/a.gguf", new byte[1])
+            .AddFile("/mnt/usb0/PS5LM/models/a.gguf", new byte[1]);
+        _llama.Result = new LlamaProbeResult(LlamaServerState.Serving, null, "/data/PS5LM/models/a.gguf");
+        var control = Create(fs);
+
+        var internalCopy = await control.DeleteAsync("/data/PS5LM/models/a.gguf", CancellationToken.None);
+        var usbCopy = await control.DeleteAsync("/mnt/usb0/PS5LM/models/a.gguf", CancellationToken.None);
+
+        Assert.Equal(OperationOutcome.Conflict, internalCopy.Outcome);
+        Assert.Equal(OperationOutcome.Completed, usbCopy.Outcome);
+        Assert.True(fs.Files.ContainsKey("/data/PS5LM/models/a.gguf"));
+        Assert.False(fs.Files.ContainsKey("/mnt/usb0/PS5LM/models/a.gguf"));
+
+        fs.AddFile("/mnt/usb0/PS5LM/models/a.gguf", new byte[1]);
+        _llama.Result = new LlamaProbeResult(LlamaServerState.Serving, null, "a.gguf");
+        var ambiguousUsb = await control.DeleteAsync("/mnt/usb0/PS5LM/models/a.gguf", CancellationToken.None);
+        var nowUnique = await control.DeleteAsync("/data/PS5LM/models/a.gguf", CancellationToken.None);
+
+        Assert.Equal(OperationOutcome.Completed, ambiguousUsb.Outcome);
+        Assert.Equal(OperationOutcome.Conflict, nowUnique.Outcome);
+        Assert.False(fs.Files.ContainsKey("/mnt/usb0/PS5LM/models/a.gguf"));
         Assert.True(fs.Files.ContainsKey("/data/PS5LM/models/a.gguf"));
     }
 

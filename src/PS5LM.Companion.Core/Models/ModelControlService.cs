@@ -174,22 +174,25 @@ public sealed class ModelControlService(
                 return new OperationResult(OperationOutcome.Conflict, "That file is being transferred.");
             }
 
-            // A load started on the console itself has no requested path here. Refuse every file until it settles.
-            if (store.Current.Lifecycle == CompanionLifecycle.Loading)
+            // The stored snapshot can be a poll behind a load started on the console. Read it again before deciding.
+            var status = await statusService.RefreshAsync(cancellationToken);
+            store.Publish(status);
+
+            if (status.Lifecycle == CompanionLifecycle.Loading)
             {
                 return new OperationResult(OperationOutcome.Conflict, "Wait until the console finishes loading before deleting a model.");
             }
 
-            var loadedId = store.Current.LoadedModel;
             var loading = loadTracker.IsLoading(loadGrace);
+            var loadedPath = LoadedAppPath(status.LoadedModel, models);
             if (model.IsProjector)
             {
-                if (loadedId is not null || loading)
+                if (!string.IsNullOrEmpty(status.LoadedModel) || loading)
                 {
                     return new OperationResult(OperationOutcome.Conflict, "Unload the model before deleting a vision projector.");
                 }
             }
-            else if (ModelNames.IsSameModel(loadedId, model.FileName, model.AppPath)
+            else if (ModelNames.IsSameModel(loadedPath, model.FileName, model.AppPath)
                      || (loading && ModelNames.IsSameModel(loadTracker.RequestedModel, model.FileName, model.AppPath)))
             {
                 return new OperationResult(OperationOutcome.Conflict, "Unload the model before deleting it.");
@@ -224,6 +227,29 @@ public sealed class ModelControlService(
         }
 
         return statusService.LastInstallation;
+    }
+
+    /// <summary>
+    /// A full reported path is that path. A bare file name is the loaded model only when one catalogued model has it;
+    /// the same name in two folders is not one identity.
+    /// </summary>
+    private static string? LoadedAppPath(string? loadedId, IReadOnlyList<ModelFile> models)
+    {
+        if (string.IsNullOrEmpty(loadedId))
+        {
+            return null;
+        }
+
+        var normalized = loadedId.Replace('\\', '/');
+        if (normalized.Contains('/', StringComparison.Ordinal))
+        {
+            return normalized;
+        }
+
+        var matches = models
+            .Where(m => !m.IsProjector && m.FileName.Equals(normalized, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        return matches.Count == 1 ? matches[0].AppPath : null;
     }
 
     private async Task<bool> CommandPendingAsync(StorageRoot root, CancellationToken cancellationToken) =>

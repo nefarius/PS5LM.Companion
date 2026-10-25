@@ -47,8 +47,8 @@ sidecars. Deleting a model does not remove them.
 
 The file stays in place when:
 
-- the console lifecycle is Loading, including a load started on the TV, because the companion may not know which file the app has open
-- it is the loaded model, or a load of that model requested from the companion is still inside the load grace window (10 minutes by default)
+- the console lifecycle is Loading on a fresh status check, including a load started on the TV, because the companion may not know which file the app has open
+- it is the loaded model, or a load of that model requested from the companion is still inside the load grace window (10 minutes by default). A full loaded path matches that path. A bare file name matches only when one catalogued model has that name; another copy in a different folder can be deleted
 - any model is loaded, or a companion load is in its grace window, and the selected file is a projector
 - a `load` or `unload` command is still waiting on the console
 - a transfer of the same file onto the same storage root is queued or running on this console

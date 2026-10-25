@@ -4,6 +4,8 @@ using System.Text.Json;
 
 using Microsoft.Extensions.DependencyInjection;
 
+using PS5LM.Companion.Core.Abstractions;
+using PS5LM.Companion.Core.Domain;
 using PS5LM.Companion.Core.Transfers;
 using PS5LM.Companion.Tests.Support;
 
@@ -161,9 +163,8 @@ public sealed class ModelEndpointTests
         using var client = factory.CreateClient();
 
         using var unknown = await client.SendAsync(Delete("/api/consoles/ps5/models", "/etc/passwd"));
-        factory.Registry.Default.Store.Publish(factory.Registry.Default.Store.Current with { LoadedModel = "a.gguf" });
+        factory.Llama.Result = new LlamaProbeResult(LlamaServerState.Serving, null, "a.gguf");
         using var loaded = await client.SendAsync(Delete("/api/consoles/ps5/models", "/data/PS5LM/models/a.gguf"));
-        factory.Registry.Default.Store.Publish(factory.Registry.Default.Store.Current with { LoadedModel = null });
         factory.FileSystem.AddFile("/data/PS5LM/load", "queued\n");
         using var pending = await client.SendAsync(Delete("/api/consoles/ps5/models", "/data/PS5LM/models/a.gguf"));
 
