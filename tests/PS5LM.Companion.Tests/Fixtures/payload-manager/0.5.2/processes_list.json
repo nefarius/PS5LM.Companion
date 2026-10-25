@@ -1,0 +1,10 @@
+{
+  "processes": [
+    {
+      "pid": 90,
+      "name": "kstuff.elf",
+      "memory": 1.0,
+      "is_daemon": true
+    }
+  ]
+}

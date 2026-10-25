@@ -1,0 +1,75 @@
+{
+  "self": {
+    "id": "pldmgr",
+    "running_version": "0.6.3",
+    "pending_version": ""
+  },
+  "items": [
+    {
+      "slot": "local/elfldr",
+      "path": "/data/pldmgr/payloads/local/elfldr/elfldr.elf",
+      "kind": "local",
+      "filename": "elfldr.elf",
+      "origin": "web_upload",
+      "origin_detail": ""
+    },
+    {
+      "slot": "local/kstuff-lite",
+      "path": "/data/pldmgr/payloads/local/kstuff-lite/kstuff-lite.elf",
+      "kind": "local",
+      "filename": "kstuff-lite.elf",
+      "origin": "web_upload",
+      "origin_detail": ""
+    },
+    {
+      "slot": "local/onionhen",
+      "path": "/data/pldmgr/payloads/local/onionhen/onionhen.elf",
+      "kind": "local",
+      "filename": "onionhen.elf",
+      "origin": "web_upload",
+      "origin_detail": ""
+    },
+    {
+      "slot": "local/ftpsrv",
+      "path": "/data/pldmgr/payloads/local/ftpsrv/ftpsrv.elf",
+      "kind": "local",
+      "filename": "ftpsrv.elf",
+      "origin": "web_upload",
+      "origin_detail": ""
+    },
+    {
+      "slot": "local/shadowmountplus",
+      "path": "/data/pldmgr/payloads/local/shadowmountplus/shadowmountplus.elf",
+      "kind": "local",
+      "filename": "shadowmountplus.elf",
+      "origin": "web_upload",
+      "origin_detail": ""
+    },
+    {
+      "slot": "local/voidshell",
+      "path": "/data/pldmgr/payloads/local/voidshell/voidshell.elf",
+      "kind": "local",
+      "filename": "voidshell.elf",
+      "origin": "web_upload",
+      "origin_detail": ""
+    },
+    {
+      "slot": "local/ps5-web-file-manager",
+      "path": "/data/pldmgr/payloads/local/ps5-web-file-manager/ps5-web-file-manager.elf",
+      "kind": "local",
+      "filename": "ps5-web-file-manager.elf",
+      "origin": "web_upload",
+      "origin_detail": ""
+    }
+  ],
+  "usb": [],
+  "payloads": [
+    "/data/pldmgr/payloads/local/elfldr/elfldr.elf",
+    "/data/pldmgr/payloads/local/kstuff-lite/kstuff-lite.elf",
+    "/data/pldmgr/payloads/local/onionhen/onionhen.elf",
+    "/data/pldmgr/payloads/local/ftpsrv/ftpsrv.elf",
+    "/data/pldmgr/payloads/local/shadowmountplus/shadowmountplus.elf",
+    "/data/pldmgr/payloads/local/voidshell/voidshell.elf",
+    "/data/pldmgr/payloads/local/ps5-web-file-manager/ps5-web-file-manager.elf"
+  ]
+}

@@ -61,8 +61,7 @@ Setup says so and exits with 2. If step 1 fails, nothing is shut down.
 `src/PS5LM.Companion.Core/Setup/setup-manifest.json` is embedded in the build. Each entry has a direct GitHub release URL and the
 SHA-256 from the release asset. A payload marked `"optional": true` is reported as a warning (with its `optionalNote`) instead of a
 failure when it is not up at the end. A payload can list `files` (URL, SHA-256, absolute target under `/data/`) that go over FTP.
-To update a version: change `version`, `url` and `sha256` (`gh release view <tag> --json assets` shows digests), then run
-`setup --verify-manifest`.
+To update a version, follow [Bumping a pin](#bumping-a-pin).
 
 ## VoidShell fork build
 
@@ -74,6 +73,19 @@ so the manifest uses the reproducible fork build [nefarius/voidshell `v1.1.1-nef
 
 To go back to upstream once it ships the fix: repin `version`, `url`, `sha256` and the `index.html` entry of `voidshell` in the manifest,
 then run `setup --verify-manifest`. A payload can still be marked `"optional": true` to downgrade a failed start to a warning.
+
+## Bumping a pin
+
+1. Change `version`, `url` and `sha256` in `setup-manifest.json` (`gh release view <tag> --json assets` shows digests), and the
+   matching `files` entry when the payload ships one.
+2. Run `setup --verify-manifest`. It downloads every pinned URL and checks the hash.
+3. Refresh the recorded responses under `tests/PS5LM.Companion.Tests/Fixtures/<upstream>/<version>/` and the `SOURCE.md` in that
+   folder (upstream version, date, how it was captured). The contract tests run the real clients against those files.
+4. Run `setup` against a test console. The contract tests cannot see hardware-only behaviour (the jailbreak, kstuff, the elfldr hand-off).
+
+A weekly workflow (`.github/workflows/upstream-drift.yml`) re-runs `--verify-manifest` and compares each pinned release tag with the
+upstream's latest tag. A mismatch opens or updates one "Upstream drift" issue. It is not part of pull-request CI, so a third-party
+outage cannot fail a pull request.
 
 ## Not automated
 

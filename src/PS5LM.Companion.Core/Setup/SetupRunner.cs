@@ -15,7 +15,7 @@ namespace PS5LM.Companion.Core.Setup;
 public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, SetupServices services)
 {
     private const string OnionConfigPath = "/data/OnionHEN/config.ini";
-    private const string ShadowMountLog = "/data/shadowmount/debug.log";
+    private const string ShadowMountLogPath = "/data/shadowmount/debug.log";
     private const string HomebrewRoot = "/data/homebrew";
     private const string StagingRoot = "/data/ps5lm-companion/staging";
     private const int MaxTextBytes = 4 * 1024 * 1024;
@@ -372,7 +372,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
             : $"Installing {app.Name} {app.Version} ({files.Count} files) through a staging folder");
 
         // Only log lines written after this point can belong to this install.
-        _installLogBaseline = CountInstalledLines(await services.Files.ReadTextAsync(ShadowMountLog, MaxTextBytes, cancellationToken), app.TitleId);
+        _installLogBaseline = ShadowMountLog.CountInstalled(await services.Files.ReadTextAsync(ShadowMountLogPath, MaxTextBytes, cancellationToken), app.TitleId);
 
         // param.json goes last so a half-copied folder is not mistaken for a complete title.
         foreach (var (entry, relative) in files.OrderBy(f => f.Relative == ParamSuffix))
@@ -502,12 +502,6 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         Copied,
     }
 
-    private static int CountInstalledLines(string? log, string titleId) =>
-        log is null
-            ? 0
-            : log.Split('\n').Count(line => line.Contains("installed game", StringComparison.OrdinalIgnoreCase)
-                && line.Contains(titleId, StringComparison.OrdinalIgnoreCase));
-
     private async Task<bool> ListedByVoidShellAsync(string titleId, CancellationToken cancellationToken)
     {
         if (services.VoidShell is null)
@@ -548,8 +542,8 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
 
         // VoidShell's library can be empty for titles ShadowMountPlus installed, so read ShadowMountPlus's own
         // "installed game <id>" line, counting only lines written since this run copied the files.
-        var log = await services.Files.ReadTextAsync(ShadowMountLog, MaxTextBytes, cancellationToken);
-        return CountInstalledLines(log, titleId) > _installLogBaseline;
+        var log = await services.Files.ReadTextAsync(ShadowMountLogPath, MaxTextBytes, cancellationToken);
+        return ShadowMountLog.CountInstalled(log, titleId) > _installLogBaseline;
     }
 
     private async Task<bool> IsReadyAsync(ManifestPayload payload, CancellationToken cancellationToken, IReadOnlySet<string>? known = null)

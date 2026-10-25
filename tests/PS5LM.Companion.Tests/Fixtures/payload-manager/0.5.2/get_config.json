@@ -1,0 +1,11 @@
+{
+  "AUTOLOAD_ENABLED": true,
+  "AUTOLOAD_LIST": "elfldr,kstuff-lite",
+  "LAST_REPOSITORY_UPDATE": 0,
+  "AUTO_BROWSER_OPEN": false,
+  "AUTOLOAD_DELAY": 5,
+  "KILL_DISC_PLAYER_ON_STARTUP": false,
+  "SCAN_USB_PAYLOADS": false,
+  "AUTO_INSTALL_APP": false,
+  "MULTI_SOURCES_ENABLED": false
+}

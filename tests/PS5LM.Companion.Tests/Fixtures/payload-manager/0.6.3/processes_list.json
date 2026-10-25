@@ -1,0 +1,58 @@
+{
+  "processes": [
+    {
+      "pid": 100,
+      "name": "web-file-mgr.elf",
+      "memory": 4.7,
+      "is_daemon": true
+    },
+    {
+      "pid": 98,
+      "name": "shadowmountplus.elf",
+      "memory": 30.1,
+      "is_daemon": true
+    },
+    {
+      "pid": 97,
+      "name": "ftpsrv.elf",
+      "memory": 3.6,
+      "is_daemon": true
+    },
+    {
+      "pid": 96,
+      "name": "onion_daemon.elf",
+      "memory": 20.4,
+      "is_daemon": true
+    },
+    {
+      "pid": 95,
+      "name": "onion_util.elf",
+      "memory": 14.1,
+      "is_daemon": true
+    },
+    {
+      "pid": 91,
+      "name": "kstuff.elf",
+      "memory": 7.2,
+      "is_daemon": true
+    },
+    {
+      "pid": 89,
+      "name": "pldmgr.elf",
+      "memory": 10.1,
+      "is_daemon": true
+    },
+    {
+      "pid": 88,
+      "name": "elfldr.elf",
+      "memory": 29.8,
+      "is_daemon": true
+    },
+    {
+      "pid": 58,
+      "name": "SceShellUI",
+      "memory": 784.3,
+      "is_daemon": false
+    }
+  ]
+}

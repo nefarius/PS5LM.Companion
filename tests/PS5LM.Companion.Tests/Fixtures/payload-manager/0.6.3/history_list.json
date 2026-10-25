@@ -1,0 +1,10 @@
+{
+  "history": [
+    "/data/pldmgr/payloads/local/ps5-web-file-manager/ps5-web-file-manager.elf",
+    "/data/pldmgr/payloads/local/voidshell/voidshell.elf",
+    "/data/pldmgr/payloads/local/shadowmountplus/shadowmountplus.elf",
+    "/data/pldmgr/payloads/local/ftpsrv/ftpsrv.elf",
+    "/data/pldmgr/payloads/local/onionhen/onionhen.elf",
+    "/data/pldmgr/payloads/local/kstuff-lite/kstuff-lite.elf"
+  ]
+}

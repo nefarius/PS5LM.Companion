@@ -1,0 +1,15 @@
+{
+  "AUTOLOAD_ENABLED": true,
+  "AUTOLOAD_LIST": "local/elfldr,local/kstuff-lite,!3000,local/onionhen,!3000,local/ftpsrv,local/shadowmountplus,local/voidshell,local/ps5-web-file-manager",
+  "LAST_REPOSITORY_UPDATE": 1792960089,
+  "AUTO_BROWSER_OPEN": true,
+  "AUTOLOAD_DELAY": 5,
+  "KILL_DISC_PLAYER_ON_STARTUP": true,
+  "SCAN_USB_PAYLOADS": false,
+  "AUTO_INSTALL_APP": true,
+  "AUTOLOAD_RETURN_TO_DASHBOARD": false,
+  "SHOW_DASHBOARD_ICONS": true,
+  "MULTI_SOURCES_ENABLED": false,
+  "FAVORITES": "",
+  "FAVORITES_INITIALIZED": false
+}
