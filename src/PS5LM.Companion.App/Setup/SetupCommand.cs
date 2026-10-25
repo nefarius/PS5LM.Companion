@@ -150,13 +150,13 @@ internal static class SetupCommand
         Console.WriteLine("Report");
         foreach (var line in report.Lines)
         {
-            var tag = line.Status switch
+            var (tag, color) = line.Status switch
             {
-                SetupStatus.Ok => "OK   ",
-                SetupStatus.Warn => "WARN ",
-                _ => "FAIL ",
+                SetupStatus.Ok => ("OK   ", Ansi.Green),
+                SetupStatus.Warn => ("WARN ", Ansi.Yellow),
+                _ => ("FAIL ", Ansi.Red),
             };
-            Console.WriteLine($"  {tag} {line.Component}: {line.Message}");
+            Console.WriteLine($"  {Ansi.Paint(tag, color)} {line.Component}: {line.Message}");
         }
 
         return report.ExitCode;
@@ -211,12 +211,52 @@ internal static class SetupCommand
     {
         public bool CanPrompt => !Console.IsInputRedirected;
 
-        public void Info(string message) => Console.WriteLine(message);
+        public void Info(string message) =>
+            Console.WriteLine($"{Ansi.Paint(DateTime.Now.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture), Ansi.Dim)} {Ansi.Highlight(message)}");
 
         public bool Confirm(string question)
         {
             Console.Write(question + " [y/N] ");
             return Console.ReadLine()?.Trim().StartsWith('y') == true;
+        }
+    }
+
+    /// <summary>ANSI colours, only when stdout is a terminal that can show them (NO_COLOR and TERM=dumb switch them off).</summary>
+    private static class Ansi
+    {
+        public const string Dim = "90";
+        public const string Red = "31";
+        public const string Green = "32";
+        public const string Yellow = "33";
+
+        private static readonly bool Enabled = Detect();
+
+        public static string Paint(string text, string code) => Enabled ? $"\u001b[{code}m{text}\u001b[0m" : text;
+
+        /// <summary>Colours a leading OK / WARN / FAIL word, as printed by <c>--verify-manifest</c>.</summary>
+        public static string Highlight(string message)
+        {
+            foreach (var (word, code) in new[] { ("OK", Green), ("WARN", Yellow), ("FAIL", Red) })
+            {
+                if (message.StartsWith(word + " ", StringComparison.Ordinal))
+                {
+                    return Paint(word, code) + message[word.Length..];
+                }
+            }
+
+            return message;
+        }
+
+        private static bool Detect()
+        {
+            if (Console.IsOutputRedirected || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("NO_COLOR")))
+            {
+                return false;
+            }
+
+            var term = Environment.GetEnvironmentVariable("TERM");
+            return !string.Equals(term, "dumb", StringComparison.OrdinalIgnoreCase)
+                && (OperatingSystem.IsWindows() || !string.IsNullOrEmpty(term));
         }
     }
 }
