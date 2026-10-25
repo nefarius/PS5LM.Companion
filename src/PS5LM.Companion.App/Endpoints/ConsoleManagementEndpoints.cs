@@ -162,6 +162,33 @@ public sealed class DeleteConsoleEndpoint(IConsoleRegistry registry, TransferSer
     }
 }
 
+public sealed record DiscoverConsolesRequest
+{
+    public string? Cidr { get; set; }
+}
+
+public sealed class DiscoverConsolesEndpoint(IConsoleDiscovery discovery) : Endpoint<DiscoverConsolesRequest, IReadOnlyList<DiscoveredConsole>>
+{
+    public override void Configure()
+    {
+        Post("/consoles/discover");
+        AllowAnonymous();
+        Description(b => b.WithTags("Consoles"));
+    }
+
+    public override async Task HandleAsync(DiscoverConsolesRequest request, CancellationToken ct)
+    {
+        try
+        {
+            await Send.OkAsync(await discovery.ScanAsync(request.Cidr, ct), ct);
+        }
+        catch (FormatException ex)
+        {
+            await Send.ResultAsync(ApiResults.Error(ex.Message, StatusCodes.Status400BadRequest));
+        }
+    }
+}
+
 public sealed class TestConsoleEndpoint(IConsoleProbe probe) : Endpoint<ConsoleSettingsBody, ConsoleProbeReport>
 {
     public override void Configure()

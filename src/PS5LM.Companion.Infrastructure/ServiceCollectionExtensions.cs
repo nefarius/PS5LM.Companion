@@ -51,6 +51,7 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<IConsoleConnectorFactory, ConsoleConnectorFactory>();
         services.AddSingleton<IConsoleProbe, ConsoleConnectionProbe>();
+        services.AddSingleton<IConsoleDiscovery, LanConsoleScanner>();
         services.AddSingleton<IConsoleStore>(sp =>
         {
             var dataDirectory = sp.GetRequiredService<IConfiguration>()["Companion:DataDirectory"] ?? "data";
