@@ -449,7 +449,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
             "VoidShell library",
             listed ? SetupStatus.Ok : SetupStatus.Warn,
             listed
-                ? $"{app.Name} ({app.TitleId}) shows up in the VoidShell library."
+                ? $"{app.Name} ({app.TitleId}) was registered: it is listed in the VoidShell library after a library rescan."
                 : $"VoidShell was asked to rescan but does not list {app.TitleId} yet. It rescans on its own every few seconds; reload the dashboard.");
     }
 
@@ -523,9 +523,11 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
     // Nothing was copied, so an old "installed game" log line proves nothing: only the live registration counts.
     private async Task CheckExistingRegistrationAsync(ManifestApp app, CancellationToken cancellationToken)
     {
+        var rescanned = false;
         var listed = await ListedByVoidShellAsync(app.TitleId, cancellationToken);
         if (!listed && await RequestVoidShellRescanAsync(cancellationToken))
         {
+            rescanned = true;
             listed = await WaitForAsync(ct => ListedByVoidShellAsync(app.TitleId, ct), options.Wait(TimeSpan.FromSeconds(30)), cancellationToken);
         }
 
@@ -533,7 +535,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
             "ShadowMountPlus install",
             listed ? SetupStatus.Ok : SetupStatus.Warn,
             listed
-                ? $"{app.Name} ({app.TitleId}) is registered on the console."
+                ? $"{app.Name} ({app.TitleId}) is registered on the console{(rescanned ? ": listed in the VoidShell library after a library rescan" : string.Empty)}."
                 : $"{app.Name} was already in place and nothing was copied, so setup cannot confirm the registration (VoidShell does not list it). Check the home screen.");
     }
 

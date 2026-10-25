@@ -147,7 +147,7 @@ public sealed class SetupRunnerTests
         var report = await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
 
         Assert.Contains("7007/api/rescan", harness.Probe.Posts);
-        Assert.Contains(report.Lines, l => l.Component == "VoidShell library" && l.Status == SetupStatus.Ok);
+        Assert.Contains(report.Lines, l => l.Component == "VoidShell library" && l.Status == SetupStatus.Ok && l.Message.Contains("library rescan", StringComparison.Ordinal));
     }
 
     [Fact]
