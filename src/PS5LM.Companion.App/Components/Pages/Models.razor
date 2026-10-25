@@ -170,6 +170,8 @@
             return;
         }
 
+        // The confirmation dialog awaits; delete on the console that was selected when Delete was clicked.
+        var console = Target;
         var confirmed = await Dialogs.ShowMessageBoxAsync(new MessageBoxOptions
         {
             Title = "Delete model file",
@@ -185,7 +187,7 @@
         _acting = true;
         try
         {
-            var result = await Deletion.DeleteAsync(Target, model.AppPath, CancellationToken.None);
+            var result = await Deletion.DeleteAsync(console, model.AppPath, CancellationToken.None);
             Snackbar.Add(
                 result.Succeeded ? result.Message ?? $"Deleted {model.FileName}." : result.Message ?? result.Outcome.ToString(),
                 result.Succeeded ? Severity.Success : Severity.Error);
