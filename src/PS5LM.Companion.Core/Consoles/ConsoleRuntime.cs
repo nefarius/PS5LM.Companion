@@ -23,6 +23,7 @@ public sealed class ConsoleRuntime : IDisposable
         Models = new ModelCatalog(connectors.FileSystem);
         Control = new ModelControlService(connectors.FileSystem, Models, Status, Store, LoadTracker, TimeSpan.FromSeconds(options.LoadGraceSeconds));
         Dependencies = new DependencyLaunchService(options, connectors.Payloads, connectors.Launcher, connectors.Elfldr, Status, Store);
+        Closer = new AppCloseService(connectors.FileSystem, Status, Store, LoadTracker, TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(1));
         Apps = new AppLaunchService(connectors.AppControl ?? [], Status, Store);
     }
 
@@ -51,6 +52,8 @@ public sealed class ConsoleRuntime : IDisposable
     public DependencyLaunchService Dependencies { get; }
 
     public AppLaunchService Apps { get; }
+
+    public AppCloseService Closer { get; }
 
     public void Dispose() => (FileSystem as IDisposable)?.Dispose();
 }

@@ -78,6 +78,12 @@
                                            aria-label="@($"Launch {context.Name}")"
                                            OnClick="@(() => LaunchAppAsync(context))">Launch</MudButton>
                             }
+                            @if (context.State is AppRunState.Running or AppRunState.RunningVariantUnknown)
+                            {
+                                <MudButton Variant="Variant.Outlined" Size="Size.Small" Color="Color.Warning" Class="ml-2" Disabled="_launchingApp"
+                                           aria-label="@($"Close {context.Name}")"
+                                           OnClick="@(() => CloseAppAsync(context))">Close</MudButton>
+                            }
                         </MudTd>
                     </RowTemplate>
                 </MudTable>
@@ -231,6 +237,25 @@
         AppRunState.RunningVariantUnknown => Color.Warning,
         _ => Color.Default,
     };
+
+    private async Task CloseAppAsync(AppVariantStatus app)
+    {
+        if (_launchingApp)
+        {
+            return;
+        }
+
+        _launchingApp = true;
+        try
+        {
+            var result = await Target.Closer.CloseAsync(app.Variant, CancellationToken.None);
+            Snackbar.Add(result.Message ?? result.Outcome.ToString(), result.Succeeded ? Severity.Success : Severity.Error);
+        }
+        finally
+        {
+            _launchingApp = false;
+        }
+    }
 
     private async Task LaunchAppAsync(AppVariantStatus app)
     {

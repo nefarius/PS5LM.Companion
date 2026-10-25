@@ -75,4 +75,43 @@ public sealed class AppEndpointTests
 
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
     }
+
+    [Fact]
+    public async Task Close_writes_the_quit_file_and_reports_acceptance_once_the_app_takes_it()
+    {
+        await using var factory = new CompanionFactory();
+        factory.Primary.VoidShell.SetUp(["PPSA99575"], active: "PPSA99575");
+        await PublishAsync(factory);
+        using var client = factory.CreateClient();
+        var app = Task.Run(async () =>
+        {
+            while (!factory.FileSystem.Files.ContainsKey("/data/PS5LM/quit"))
+            {
+                await Task.Delay(5);
+            }
+
+            await factory.FileSystem.DeleteAsync("/data/PS5LM/quit", CancellationToken.None);
+        });
+
+        var response = await client.PostAsync("/api/consoles/ps5/apps/ps5lm/close", null);
+        await app;
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Close_rejects_bad_variants_and_skips_apps_that_are_not_running()
+    {
+        await using var factory = new CompanionFactory();
+        factory.Primary.VoidShell.SetUp(["PPSA99575", "PPSA99581"], active: "PPSA99575");
+        await PublishAsync(factory);
+        using var client = factory.CreateClient();
+
+        var bad = await client.PostAsync("/api/consoles/ps5/apps/nonsense/close", null);
+        var idle = await client.PostAsync("/api/consoles/ps5/apps/ps5lmplus/close", null);
+
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, idle.StatusCode);
+        Assert.DoesNotContain("/data/PS5LM/quit", factory.FileSystem.Files.Keys);
+    }
 }
