@@ -32,6 +32,9 @@ public sealed record VariantProfile(
     /// <summary>Command file the app polls: presence requests unloading.</summary>
     public const string UnloadCommandFile = "unload";
 
+    /// <summary>Command file the app polls: presence makes it end itself through the system's exit path.</summary>
+    public const string QuitCommandFile = "quit";
+
     public string InstallPath => $"{HomebrewRoot}/{TitleId}";
 
     public static VariantProfile PS5LM { get; } = new(

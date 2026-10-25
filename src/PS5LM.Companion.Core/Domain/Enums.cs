@@ -98,3 +98,20 @@ public enum DependencyHealth
     /// <summary>Payload Manager's process list was read, and no process of this payload is running.</summary>
     NotRunning = 4,
 }
+
+/// <summary>Whether a title is the foreground app on the console.</summary>
+public enum AppRunState
+{
+    /// <summary>No installed service can tell.</summary>
+    Unknown = 0,
+
+    NotRunning = 1,
+
+    Running = 2,
+
+    /// <summary>
+    /// A PS5LM-family app runs, but the service reported a truncated title ID (VoidShell V1.1 reports
+    /// <c>PPSA9957</c>) that fits more than one installed variant.
+    /// </summary>
+    RunningVariantUnknown = 3,
+}

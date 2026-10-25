@@ -49,6 +49,57 @@
 
     <MudItem xs="12">
         <MudPaper Class="pa-4" Elevation="1">
+            <MudText Typo="Typo.h6" Class="mb-2">PS5LM app</MudText>
+            @if (Status.AppControl is { Available: true } apps)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+                    Checked and launched through @apps.Provider@(apps.Version is { Length: > 0 } ? $" {apps.Version}" : "").
+                    @apps.Message
+                </MudText>
+                <MudTable Items="apps.Apps" Hover="true" Dense="true" T="AppVariantStatus">
+                    <HeaderContent>
+                        <MudTh>App</MudTh>
+                        <MudTh>Title ID</MudTh>
+                        <MudTh>Installed</MudTh>
+                        <MudTh>Running</MudTh>
+                        <MudTh></MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="App">@context.Name</MudTd>
+                        <MudTd DataLabel="Title ID">@context.TitleId</MudTd>
+                        <MudTd DataLabel="Installed">@(context.Installed ? "Yes" : "No")</MudTd>
+                        <MudTd DataLabel="Running">
+                            <MudChip T="string" Size="Size.Small" Color="@RunColor(context.State)">@RunText(context.State)</MudChip>
+                        </MudTd>
+                        <MudTd>
+                            @if (context.CanLaunch)
+                            {
+                                <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@(_launchingApp || context.State == AppRunState.Running)"
+                                           aria-label="@($"Launch {context.Name}")"
+                                           OnClick="@(() => LaunchAppAsync(context))">Launch</MudButton>
+                            }
+                            @if (context.State == AppRunState.Running)
+                            {
+                                <MudButton Variant="Variant.Outlined" Size="Size.Small" Color="Color.Warning" Class="ml-2" Disabled="_launchingApp"
+                                           aria-label="@($"Close {context.Name}")"
+                                           OnClick="@(() => CloseAppAsync(context))">Close</MudButton>
+                            }
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+            else
+            {
+                <MudText Color="Color.Secondary">
+                    @(Checked ? Status.AppControl?.Message : "Waiting for the first status check.")
+                    VoidShell (port 7007) or websrv (port 8080) lets the companion check and launch PS5LM.
+                </MudText>
+            }
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12">
+        <MudPaper Class="pa-4" Elevation="1">
             <MudText Typo="Typo.h6" Class="mb-2">Payloads</MudText>
             <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
                 kstuff-lite, etaHEN (or onionHEN) and ShadowMountPlus are checked against Payload Manager's process list.
@@ -170,6 +221,60 @@
 
 @code {
     private bool _launching;
+    private bool _launchingApp;
+
+    private static string RunText(AppRunState state) => state switch
+    {
+        AppRunState.Running => "Running",
+        AppRunState.NotRunning => "Not running",
+        AppRunState.RunningVariantUnknown => "A PS5LM app is running",
+        _ => "Unknown",
+    };
+
+    private static Color RunColor(AppRunState state) => state switch
+    {
+        AppRunState.Running => Color.Success,
+        AppRunState.RunningVariantUnknown => Color.Warning,
+        _ => Color.Default,
+    };
+
+    private async Task CloseAppAsync(AppVariantStatus app)
+    {
+        if (_launchingApp)
+        {
+            return;
+        }
+
+        _launchingApp = true;
+        try
+        {
+            var result = await Target.Closer.CloseAsync(app.Variant, CancellationToken.None);
+            Snackbar.Add(result.Message ?? result.Outcome.ToString(), result.Succeeded ? Severity.Success : Severity.Error);
+        }
+        finally
+        {
+            _launchingApp = false;
+        }
+    }
+
+    private async Task LaunchAppAsync(AppVariantStatus app)
+    {
+        if (_launchingApp || !app.CanLaunch || app.State == AppRunState.Running)
+        {
+            return;
+        }
+
+        _launchingApp = true;
+        try
+        {
+            var result = await Target.Apps.LaunchAsync(app.Variant, CancellationToken.None);
+            Snackbar.Add(result.Message ?? result.Outcome.ToString(), result.Succeeded ? Severity.Success : Severity.Error);
+        }
+        finally
+        {
+            _launchingApp = false;
+        }
+    }
 
     private bool Checked => Status.UpdatedAt != DateTimeOffset.MinValue;
 

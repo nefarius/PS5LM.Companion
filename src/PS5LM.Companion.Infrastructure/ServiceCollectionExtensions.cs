@@ -41,6 +41,13 @@ public static class ServiceCollectionExtensions
             .AddHttpClient(ConsoleConnectorFactory.PayloadManagerClient)
             .AddResilienceHandler("payload-manager", builder => builder.AddTimeout(ProbeTimeout));
 
+        services
+            .AddHttpClient(ConsoleConnectorFactory.VoidShellHttpClient)
+            .AddResilienceHandler("voidshell", builder => builder.AddTimeout(ProbeTimeout));
+        services
+            .AddHttpClient(ConsoleConnectorFactory.WebsrvHttpClient)
+            .AddResilienceHandler("websrv", builder => builder.AddTimeout(ProbeTimeout));
+
         services.AddSingleton<IConsoleConnectorFactory, ConsoleConnectorFactory>();
         services.AddSingleton<IConsoleRegistry>(sp => new ConsoleRegistry(
             sp.GetRequiredService<IOptions<ConsolesOptions>>().Value,

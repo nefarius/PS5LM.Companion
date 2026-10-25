@@ -10,7 +10,8 @@ public sealed record ConsoleConnectors(
     IConsoleSensorProbe Sensors,
     IPayloadCatalog Payloads,
     IPayloadLauncher Launcher,
-    IElfldrProbe Elfldr);
+    IElfldrProbe Elfldr,
+    IReadOnlyList<IAppControlProvider>? AppControl = null);
 
 /// <summary>Creates the network clients for one configured console.</summary>
 public interface IConsoleConnectorFactory

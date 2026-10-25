@@ -16,6 +16,7 @@ works before any model exists. It needs no changes to either app.
 - Lists models on the console; loads and unloads a model through the apps' command files, and deletes one GGUF at a time.
 - Downloads GGUF models from Hugging Face on the companion and uploads them to the console.
 - Optional inference gateway: one OpenAI/Anthropic-compatible endpoint that load-balances consoles running the same model.
+- Checks whether PS5LM or PS5LM Plus is installed and in the foreground, and launches it, through [VoidShell](https://github.com/amilarajans/voidshell) (preferred) or [websrv](https://github.com/ps5-payload-dev/websrv).
 - Live telemetry from llama-server (port 8081) and ps5-exporter (port 9100) when they are available.
 - Shows whether the PS5LM Plus payloads are installed, reads Payload Manager's process list to see whether kstuff-lite, etaHEN (or onionHEN) and ShadowMountPlus are running, records its launches, and checks ftpsrv, elfldr and ps5-exporter directly. Launches an installed payload through [PS5 Payload Manager](https://github.com/itsPLK/ps5-payload-manager).
 
@@ -24,7 +25,8 @@ works before any model exists. It needs no changes to either app.
 - Companion: Linux, Windows or macOS with .NET 10, or the Docker image (linux/amd64, linux/arm64 via .NET base images).
 - Console: jailbroken PS5 running PS5LM or PS5LM Plus with [ftpsrv](https://github.com/ps5-payload-dev/ftpsrv) on port 2121.
 - Payload launch needs [PS5 Payload Manager](https://github.com/itsPLK/ps5-payload-manager) on port 8084 and elfldr already listening on port 9021. Payload Manager cannot start elfldr itself.
-- Not supported: launching or killing the PS5LM app remotely, editing the apps' `settings.json`, or detecting a payload that patches the system and leaves no process. Running checks match process names (for example `kstuff.elf`, `etahen.elf`, `onion_daemon.elf`, `shadowmountplus.elf`) from Payload Manager's `/processes_list`.
+- App check and launch (optional): VoidShell on port 7007 (`/api/library`, `/api/stats`, `POST /api/launch`) or websrv on port 8080 (`/fs`, `/launch?titleId=`). Both are probed on the configured console host only; nothing scans the network. VoidShell is used first. websrv cannot report the foreground title, and it stops the running app before launching. VoidShell V1.1 reports the foreground title truncated to 8 characters (`PPSA9957`); the companion matches it as a prefix. A VoidShell launch is only queued and is not confirmed; websrv answers 503 when the console refuses to start the title. Either way the app listens on port 8081 only once a model is loaded. REST: `GET /api/consoles/{id}/apps`, `POST /api/consoles/{id}/apps/{ps5lm|ps5lmplus}/launch` and `.../close`. Close writes the `quit` command file the apps poll (over FTP) so they exit through the system's exit path; it is never a kill, and a request the app does not pick up within 20 seconds is withdrawn.
+- Not supported: force-killing the PS5LM app, editing the apps' `settings.json`, or detecting a payload that patches the system and leaves no process. Running checks match process names (for example `kstuff.elf`, `etahen.elf`, `onion_daemon.elf`, `shadowmountplus.elf`) from Payload Manager's `/processes_list`.
 
 ## Quick start
 
@@ -45,6 +47,7 @@ download cache, so do not rename it casually.
 | `PS5:Consoles:{id}:Host` | required | Console IP or host name |
 | `PS5:Consoles:{id}:DisplayName` | the id | Name shown in the dashboard |
 | `PS5:Consoles:{id}:FtpPort` / `LlamaPort` / `ExporterPort` | 2121 / 8081 / 9100 | Service ports |
+| `PS5:Consoles:{id}:VoidShellPort` / `WebsrvPort` | 7007 / 8080 | App check and launch services on the console (not the companion's own port 8080); 0 disables one |
 | `PS5:Consoles:{id}:ElfldrPort` | 9021 | elfldr, required before Payload Manager can launch anything |
 | `PS5:Consoles:{id}:PayloadManagerUrl` | `http://{Host}:8084` | Payload Manager base URL when it is not on port 8084 of the console |
 | `PS5:Consoles:{id}:Variant` | auto | `PS5LM` or `PS5LMPlus`; required when both apps are installed |

@@ -105,7 +105,8 @@ public sealed record CompanionStatus(
     DateTimeOffset UpdatedAt,
     bool PayloadManagerAvailable,
     string? PayloadManagerMessage,
-    IReadOnlyList<DependencyStatus> Dependencies)
+    IReadOnlyList<DependencyStatus> Dependencies,
+    AppControlStatus? AppControl = null)
 {
     public static CompanionStatus Initial { get; } = new(
         CompanionLifecycle.Disconnected,
@@ -120,5 +121,26 @@ public sealed record CompanionStatus(
         DateTimeOffset.MinValue,
         false,
         null,
-        PayloadDependencies.Evaluate(PayloadCatalogSnapshot.NotChecked, false, false, false, PayloadDependencies.DefaultElfldrPort));
+        PayloadDependencies.Evaluate(PayloadCatalogSnapshot.NotChecked, false, false, false, PayloadDependencies.DefaultElfldrPort),
+        AppControlStatus.NotChecked);
+}
+
+/// <summary>One PS5LM app (title) as the app-control services see it.</summary>
+/// <param name="Variant">Which app.</param>
+/// <param name="TitleId">The title ID used to launch it.</param>
+/// <param name="Name">Text shown to the user.</param>
+/// <param name="Installed">Whether an available service lists the title as installed.</param>
+/// <param name="State">Whether the title is the foreground app, when a service can tell.</param>
+/// <param name="CanLaunch">Whether a Launch action can be offered.</param>
+public sealed record AppVariantStatus(PS5Variant Variant, string TitleId, string Name, bool Installed, AppRunState State, bool CanLaunch);
+
+/// <summary>What VoidShell or websrv reported about the PS5LM apps on a console.</summary>
+/// <param name="Available">Whether VoidShell or websrv answered.</param>
+/// <param name="Provider">The service used for status and launching (VoidShell is preferred), or <see langword="null"/>.</param>
+/// <param name="Version">The provider's version text, when it reports one.</param>
+/// <param name="Message">Why nothing is available, or a caveat about the state.</param>
+/// <param name="Apps">One row per PS5LM variant.</param>
+public sealed record AppControlStatus(bool Available, string? Provider, string? Version, string? Message, IReadOnlyList<AppVariantStatus> Apps)
+{
+    public static AppControlStatus NotChecked { get; } = new(false, null, null, "Not checked yet.", []);
 }

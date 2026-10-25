@@ -36,6 +36,14 @@ public sealed class PS5Options
     /// </summary>
     public string? PayloadManagerUrl { get; set; }
 
+    /// <summary>VoidShell's web port (title library, foreground title and launching). 0 disables it.</summary>
+    [Range(0, 65535)]
+    public int VoidShellPort { get; set; } = 7007;
+
+    /// <summary>ps5-payload-dev websrv's port on the console (title launching). 0 disables it.</summary>
+    [Range(0, 65535)]
+    public int WebsrvPort { get; set; } = 8080;
+
     /// <summary>Forces a variant; <see cref="PS5Variant.Unknown"/> detects it from the installed title folders.</summary>
     public PS5Variant Variant { get; set; } = PS5Variant.Unknown;
 

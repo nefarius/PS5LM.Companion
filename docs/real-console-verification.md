@@ -33,6 +33,12 @@ Start the companion with `PS5__Consoles__<id>__Host=<console>` and open the dash
 8. **Plus sandbox**: on a sandboxed PS5LM Plus, loading a model from `/app0/models` works and uploads land in the
    sandbox folder.
 9. **Both installed**: with both apps present and `PS5:Consoles:{id}:Variant` unset, the dashboard explains how to choose.
+15. **App check**: with VoidShell on port 7007, the *PS5LM app* card lists both titles as installed and marks the
+    foreground one as running (VoidShell V1.1 truncates the foreground ID to 8 characters).
+16. **App launch**: stop PS5LM, press Launch on its row. The app opens on the TV; launching again while it runs is accepted.
+    With VoidShell stopped and websrv running, Launch still works and the running column reads *Unknown*.
+17. **App close**: with PS5LM running, press Close. The `quit` file disappears within a few seconds, the app exits to the
+    home screen and the row reads *Not running*. With the app stopped, Close is not offered.
 
 ## Two consoles
 
