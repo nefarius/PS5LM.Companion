@@ -17,11 +17,17 @@ public sealed partial class JsonInferencePoolStore(string path, ILogger<JsonInfe
     };
 
     private readonly Lock _gate = new();
+    private readonly List<Entry> _withheld = [];
 
     public IReadOnlyList<StoredInferencePool> Load()
     {
         if (!File.Exists(path))
         {
+            lock (_gate)
+            {
+                _withheld.Clear();
+            }
+
             return [];
         }
 
@@ -36,11 +42,13 @@ public sealed partial class JsonInferencePoolStore(string path, ILogger<JsonInfe
             {
                 LogUnreadable(ex, path);
                 PreserveUnreadable();
+                _withheld.Clear();
                 return [];
             }
         }
 
         var pools = new List<StoredInferencePool>();
+        var withheld = new List<Entry>();
         foreach (var entry in entries ?? [])
         {
             var alias = entry.Alias?.Trim().ToLowerInvariant() ?? "";
@@ -49,10 +57,17 @@ public sealed partial class JsonInferencePoolStore(string path, ILogger<JsonInfe
             if (errors.Count > 0)
             {
                 LogSkipped(alias.Length == 0 ? "(missing alias)" : alias, string.Join(" ", errors));
+                withheld.Add(entry);
                 continue;
             }
 
             pools.Add(new StoredInferencePool(alias, entry.Model!.Trim(), consoleIds.Select(id => id.Trim().ToLowerInvariant()).Distinct(StringComparer.Ordinal).ToList()));
+        }
+
+        lock (_gate)
+        {
+            _withheld.Clear();
+            _withheld.AddRange(withheld);
         }
 
         return pools;
@@ -64,8 +79,16 @@ public sealed partial class JsonInferencePoolStore(string path, ILogger<JsonInfe
         {
             var directory = Path.GetDirectoryName(Path.GetFullPath(path))!;
             Directory.CreateDirectory(directory);
+            var aliases = new HashSet<string>(pools.Select(pool => pool.Alias), StringComparer.OrdinalIgnoreCase);
+            var kept = _withheld.Where(entry => entry.Alias is null || !aliases.Contains(entry.Alias.Trim())).ToList();
+            _withheld.Clear();
+            _withheld.AddRange(kept);
+            var document = pools
+                .Select(pool => new Entry(pool.Alias, pool.Model, pool.Consoles.ToList()))
+                .Concat(kept)
+                .ToList();
             var temp = path + ".tmp";
-            File.WriteAllText(temp, JsonSerializer.Serialize(pools, Json));
+            File.WriteAllText(temp, JsonSerializer.Serialize(document, Json));
             File.Move(temp, path, overwrite: true);
         }
     }
