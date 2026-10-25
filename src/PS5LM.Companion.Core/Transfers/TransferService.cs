@@ -256,7 +256,8 @@ public sealed class TransferService
         lock (_gate)
         {
             tasks = _workers.Values.Select(worker => worker.Task).ToList();
-            foreach (var id in _workers.Keys.ToList())
+            var stopping = _workers.Keys.ToList();
+            foreach (var id in stopping)
             {
                 StopWorkerLocked(id);
             }
@@ -334,15 +335,10 @@ public sealed class TransferService
 
     private void StopWorkerLocked(string id)
     {
-        if (_workers.TryGetValue(id, out var worker))
-        {
-            worker.Cancel.Cancel();
-        }
-
-        if (_queues.TryGetValue(id, out var channel))
-        {
-            channel.Writer.TryComplete();
-        }
+        _workers.Remove(id, out var worker);
+        _queues.Remove(id, out var channel);
+        worker?.Cancel.Cancel();
+        channel?.Writer.TryComplete();
     }
 
     private async Task RunConsoleAsync(string consoleId, Channel<Guid> queue, CancellationTokenSource cancel)

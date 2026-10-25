@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -27,17 +28,18 @@ public sealed partial class JsonConsoleStore(string path, ILogger<JsonConsoleSto
         }
 
         List<Entry>? entries;
-        try
+        lock (_gate)
         {
-            lock (_gate)
+            try
             {
                 entries = JsonSerializer.Deserialize<List<Entry>>(File.ReadAllText(path), Json);
             }
-        }
-        catch (JsonException ex)
-        {
-            LogUnreadable(ex, path);
-            return [];
+            catch (JsonException ex)
+            {
+                LogUnreadable(ex, path);
+                TryPreserveUnreadable();
+                return [];
+            }
         }
 
         var consoles = new List<StoredConsole>();
@@ -75,8 +77,30 @@ public sealed partial class JsonConsoleStore(string path, ILogger<JsonConsoleSto
         }
     }
 
+    /// <summary>Moves a corrupt file aside. A failure here still leaves <see cref="Load"/> with an empty list.</summary>
+    private void TryPreserveUnreadable()
+    {
+        try
+        {
+            if (!File.Exists(path))
+            {
+                return;
+            }
+
+            var stamp = DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmssfff", CultureInfo.InvariantCulture);
+            File.Move(path, $"{path}.{stamp}.unreadable");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogPreserveFailed(ex, path);
+        }
+    }
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not read {Path}; no stored consoles were loaded")]
     private partial void LogUnreadable(Exception exception, string path);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Could not move the unreadable console file {Path} aside")]
+    private partial void LogPreserveFailed(Exception exception, string path);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Stored console {ConsoleId} was skipped: {Reason}")]
     private partial void LogSkipped(string consoleId, string reason);

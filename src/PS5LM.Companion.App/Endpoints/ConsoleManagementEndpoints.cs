@@ -117,7 +117,7 @@ public sealed class CreateConsoleEndpoint(IConsoleRegistry registry) : Endpoint<
     }
 }
 
-public sealed class UpdateConsoleEndpoint(IConsoleRegistry registry) : Endpoint<ConsoleSettingsBody>
+public sealed class UpdateConsoleEndpoint(IConsoleRegistry registry, TransferService transfers) : Endpoint<ConsoleSettingsBody>
 {
     public override void Configure()
     {
@@ -128,7 +128,14 @@ public sealed class UpdateConsoleEndpoint(IConsoleRegistry registry) : Endpoint<
 
     public override async Task HandleAsync(ConsoleSettingsBody request, CancellationToken ct)
     {
-        var result = registry.Update(Route<string>("consoleId") ?? "", request.ToOptions());
+        var id = Route<string>("consoleId") ?? "";
+        if (transfers.HasActive(id))
+        {
+            await Send.ResultAsync(ApiResults.Error("Cancel this console's transfers before changing it.", StatusCodes.Status409Conflict));
+            return;
+        }
+
+        var result = registry.Update(id, request.ToOptions());
         await Send.ResultAsync(ConsoleEdits.Result(result, registry));
     }
 }

@@ -56,7 +56,7 @@ is ignored.
 | `PS5:Consoles:{id}:PollIntervalSeconds` | 3 | Status refresh interval |
 | `Companion:AccessToken` | none | Shared secret for the dashboard and `/api` (bearer token or login cookie) |
 | `Companion:AllowAnonymous` | false | Allow a network listener without a token (trusted networks only) |
-| `Companion:DataDirectory` | `data` | Download cache and transfer list (`/data` in the Docker image; mount a volume) |
+| `Companion:DataDirectory` | `data` | Download cache, transfer list and `consoles.json` (`/data` in the Docker image; mount a volume) |
 | `HuggingFace:Token` | none | Access token, only for gated or private repositories |
 | `Inference:Pools:{alias}:Model` / `Consoles:{n}` | none | Opt-in [inference gateway](#inference-gateway): the model and the consoles that serve it |
 
@@ -104,6 +104,10 @@ Console-scoped routes live under `/api/consoles/{consoleId}`; an unknown id retu
 | Route | Purpose |
 |---|---|
 | `GET /api/consoles` | Configured consoles with their lifecycle and whether each came from configuration or was added in the companion |
+| `POST /api/consoles` | Add a console. An id that already exists returns `409` |
+| `GET /api/consoles/{consoleId}/settings` | That console's settings and whether they came from configuration |
+| `PUT /api/consoles/{consoleId}` | Replace a user console's settings. A configuration console, or one with a queued or running transfer, returns `409` |
+| `DELETE /api/consoles/{consoleId}` | Remove a user console. A configuration console, or one with a queued or running transfer, returns `409` |
 | `GET /api/consoles/{consoleId}/status` | Normalised console status, including payload dependencies |
 | `GET /api/consoles/{consoleId}/dependencies` | Payload installation and health from the latest status check |
 | `POST /api/consoles/{consoleId}/dependencies/{id}/launch` | Launch an installed payload by its stable id (`kstuff-lite`, `etahen`, `shadowmountplus`, `ftpsrv`) |

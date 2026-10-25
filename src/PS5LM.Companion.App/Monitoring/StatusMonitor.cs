@@ -41,7 +41,14 @@ public sealed partial class StatusMonitor(IConsoleRegistry consoles, ILogger<Sta
 
             foreach (var loop in loops)
             {
-                await loop.CancelAsync();
+                try
+                {
+                    await loop.CancelAsync();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // That loop already ended and disposed its source.
+                }
             }
         }
     }

@@ -100,6 +100,24 @@ public sealed class ConsoleRegistryTests
     }
 
     [Fact]
+    public async Task Removing_a_console_frees_its_worker_for_the_next_one_with_the_same_id()
+    {
+        await using var harness = new TransferHarness();
+        harness.StartWorker();
+        Assert.True(harness.Registry.Add("den", new PS5Options { Host = "den" }).Succeeded);
+        Assert.True(harness.Registry.Remove("den").Succeeded);
+        Assert.True(harness.Registry.Add("den", new PS5Options { Host = "den" }).Succeeded);
+        await harness.PrimeAsync();
+
+        var (result, transfer) = await harness.Service.EnqueueAsync(
+            harness.Request("acme/tiny-GGUF", "tiny-Q4.gguf", consoleId: "den"), CancellationToken.None);
+        var finished = await harness.WaitUntilFinishedAsync(transfer!.Id);
+
+        Assert.Equal(OperationOutcome.Accepted, result.Outcome);
+        Assert.Equal(TransferState.Completed, finished.State);
+    }
+
+    [Fact]
     public async Task A_queued_transfer_keeps_the_console_from_being_treated_as_idle()
     {
         await using var harness = new TransferHarness();

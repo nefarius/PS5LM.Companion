@@ -73,11 +73,13 @@ public sealed class ConsoleManagementEndpointTests
         await WaitForStatusAsync(factory);
 
         using var transfer = await client.PostAsJsonAsync("/api/consoles/den/transfers", new { repo = "acme/tiny-GGUF", fileName = "tiny-Q4.gguf" });
+        using var updated = await client.PutAsJsonAsync("/api/consoles/den", new { host = "10.0.0.9" });
         using var removed = await client.DeleteAsync("/api/consoles/den");
 
         Assert.Equal(HttpStatusCode.Accepted, transfer.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, updated.StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, removed.StatusCode);
-        Assert.NotNull(factory.Registry.Find("den"));
+        Assert.Equal("10.0.0.8", factory.Registry.Find("den")!.Host);
         factory.Hub.DownloadGate.TrySetResult(true);
     }
 

@@ -42,5 +42,8 @@ public sealed class JsonConsoleStoreTests
 
         Assert.Equal("den", Assert.Single(loaded).Id);
         Assert.Empty(store.Load());
+        Assert.False(File.Exists(path));
+        var preserved = Assert.Single(Directory.GetFiles(directory, "consoles.json.*.unreadable"));
+        Assert.Contains("{ this is not json", File.ReadAllText(preserved), StringComparison.Ordinal);
     }
 }
