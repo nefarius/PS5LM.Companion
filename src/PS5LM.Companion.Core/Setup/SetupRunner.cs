@@ -54,10 +54,9 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
                 var install = await InstallAppAsync(app, cancellationToken);
                 if (install == AppInstall.Copied)
                 {
-                    if (await WaitForShadowMountAsync(app, cancellationToken))
-                    {
-                        await RefreshVoidShellLibraryAsync(app, cancellationToken);
-                    }
+                    // The rescan runs either way; the registration warning from the wait stays in the report.
+                    await WaitForShadowMountAsync(app, cancellationToken);
+                    await RefreshVoidShellLibraryAsync(app, cancellationToken);
                 }
                 else if (install == AppInstall.Unchanged)
                 {

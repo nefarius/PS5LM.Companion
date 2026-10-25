@@ -164,6 +164,18 @@ public sealed class SetupRunnerTests
     }
 
     [Fact]
+    public async Task Voidshell_rescan_is_still_requested_when_the_title_is_not_confirmed_in_time()
+    {
+        using var harness = Ready();
+        harness.VoidShell.SetUp([]);
+
+        var report = await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
+
+        Assert.Contains("7007/api/rescan", harness.Probe.Posts);
+        Assert.Contains(report.Lines, l => l.Component == "ShadowMountPlus install" && l.Status == SetupStatus.Warn);
+    }
+
+    [Fact]
     public async Task Missing_ftp_is_a_failure_and_blocks_extras_and_app()
     {
         using var harness = Ready();
