@@ -162,6 +162,28 @@ public sealed class DeleteConsoleEndpoint(IConsoleRegistry registry, TransferSer
     }
 }
 
+public sealed class TestConsoleEndpoint(IConsoleProbe probe) : Endpoint<ConsoleSettingsBody, ConsoleProbeReport>
+{
+    public override void Configure()
+    {
+        Post("/consoles/test");
+        AllowAnonymous();
+        Description(b => b.WithTags("Consoles"));
+    }
+
+    public override async Task HandleAsync(ConsoleSettingsBody request, CancellationToken ct)
+    {
+        var errors = ConsoleSettings.Errors("ok", request.ToOptions());
+        if (errors.Count > 0)
+        {
+            await Send.ResultAsync(ApiResults.Error(string.Join(" ", errors), StatusCodes.Status400BadRequest));
+            return;
+        }
+
+        await Send.OkAsync(await probe.TestAsync(request.ToOptions(), ct), ct);
+    }
+}
+
 public sealed class GetConsoleSettingsEndpoint(IConsoleRegistry registry) : EndpointWithoutRequest<ConsoleSettingsResponse>
 {
     public override void Configure()

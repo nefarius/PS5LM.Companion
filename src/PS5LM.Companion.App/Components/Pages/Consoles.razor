@@ -1,0 +1,142 @@
+@page "/settings/consoles"
+@implements IDisposable
+@inject IConsoleRegistry Registry
+@inject IConsoleProbe Probe
+@inject TransferService Transfers
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+<PageTitle>Consoles</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudText Typo="Typo.h4" HtmlTag="h1">Consoles</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="AddAsync">Add console</MudButton>
+</MudStack>
+
+<MudText Class="mb-3" Color="Color.Secondary">
+    Consoles from configuration are read-only. Consoles added here are stored in the data directory and apply without a restart.
+</MudText>
+
+@if (Registry.All.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">No consoles yet. Add one to start.</MudAlert>
+}
+else
+{
+    <MudTable Items="@Registry.All" Hover="true" Dense="true" Elevation="1">
+        <HeaderContent>
+            <MudTh>Name</MudTh>
+            <MudTh>Host</MudTh>
+            <MudTh>Source</MudTh>
+            <MudTh>Defined by</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Name">@context.Name</MudTd>
+            <MudTd DataLabel="Host">@context.Host</MudTd>
+            <MudTd DataLabel="Source">
+                <MudChip T="string" Size="Size.Small" Color="@(context.Source == ConsoleSource.Configuration ? Color.Default : Color.Info)">
+                    @(context.Source == ConsoleSource.Configuration ? "From configuration" : "Added here")
+                </MudChip>
+            </MudTd>
+            <MudTd DataLabel="Defined by">@DefinedBy(context)</MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Text" Disabled="@(_testing == context.Id)" OnClick="@(() => TestAsync(context))">Test</MudButton>
+                @if (context.Source == ConsoleSource.User)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => EditAsync(context))">Edit</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => RemoveAsync(context))">Remove</MudButton>
+                }
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@if (_report is not null)
+{
+    <MudPaper Class="pa-4 mt-4" Elevation="1" aria-label="Last connection test">
+        <MudText Typo="Typo.h6" HtmlTag="h2" Class="mb-2">@_reportTitle</MudText>
+        <ProbeChecks Report="@_report" />
+    </MudPaper>
+}
+
+@code {
+    private string? _testing;
+    private string? _reportTitle;
+    private ConsoleProbeReport? _report;
+
+    protected override void OnInitialized() => Registry.Changed += OnChanged;
+
+    private void OnChanged(ConsoleChange change)
+    {
+        try
+        {
+            _ = InvokeAsync(StateHasChanged);
+        }
+        catch (ObjectDisposedException)
+        {
+            // The circuit ended.
+        }
+    }
+
+    private static string DefinedBy(ConsoleRuntime console)
+    {
+        if (console.Source != ConsoleSource.Configuration)
+        {
+            return "data/consoles.json";
+        }
+
+        var config = $"PS5:Consoles:{console.Id}";
+        return console.Id.Contains('-')
+            ? $"{config} (this id is set in configuration; an environment variable cannot contain a hyphen)"
+            : $"{config} · PS5__Consoles__{console.Id}__Host";
+    }
+
+    private async Task AddAsync() => await ConsoleEditor.ShowAsync(Dialogs, null);
+
+    private async Task EditAsync(ConsoleRuntime console) => await ConsoleEditor.ShowAsync(Dialogs, console.Id);
+
+    private async Task TestAsync(ConsoleRuntime console)
+    {
+        _testing = console.Id;
+        try
+        {
+            _reportTitle = console.Name;
+            _report = await Probe.TestAsync(console.Options, CancellationToken.None);
+        }
+        finally
+        {
+            _testing = null;
+        }
+    }
+
+    private async Task RemoveAsync(ConsoleRuntime console)
+    {
+        var active = Transfers.Snapshot(console.Id).Where(transfer => transfer.IsActive).ToList();
+        if (active.Count > 0)
+        {
+            var listed = string.Join("; ", active.Select(transfer => $"{transfer.FileName} ({transfer.State})"));
+            await Dialogs.ShowMessageBoxAsync(new MessageBoxOptions
+            {
+                Title = $"Cannot remove {console.Name}",
+                Message = $"Cancel these transfers first: {listed}",
+                CancelText = "Close",
+            });
+            return;
+        }
+
+        if (!await Confirm.AskAsync(Dialogs, $"Remove {console.Name}",
+                $"Remove {Confirm.On(console)} from this companion? The console itself is left as it is.", "Remove"))
+        {
+            return;
+        }
+
+        var result = Registry.Remove(console.Id);
+        Snackbar.Add(
+            result.Succeeded ? $"{console.Name} was removed." : result.Message ?? "Could not remove the console.",
+            result.Succeeded ? Severity.Success : Severity.Error);
+    }
+
+    public void Dispose() => Registry.Changed -= OnChanged;
+}

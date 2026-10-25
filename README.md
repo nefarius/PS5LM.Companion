@@ -40,9 +40,9 @@ docker run -p 8080:8080 -v ps5lm-companion:/data \
 
 Configuration (environment variables use `__` for nesting). Each console is a section `PS5:Consoles:{id}` where `{id}`
 is a stable slug (lowercase letters, digits and hyphens, at most 40 characters); it appears in API routes and keys the
-download cache, so do not rename it casually. Consoles from configuration cannot be edited. Consoles added through the
-API are stored in `data/consoles.json` and apply without a restart. A stored console whose id is also in configuration
-is ignored.
+download cache, so do not rename it casually. Consoles can also be added in the dashboard under Manage consoles.
+Entries from configuration stay read-only and are marked "from configuration". Consoles added in the dashboard are
+stored in `data/consoles.json` and apply without a restart. A stored console whose id is also in configuration is ignored.
 
 | Key | Default | Purpose |
 |---|---|---|
@@ -105,6 +105,7 @@ Console-scoped routes live under `/api/consoles/{consoleId}`; an unknown id retu
 |---|---|
 | `GET /api/consoles` | Configured consoles with their lifecycle and whether each came from configuration or was added in the companion |
 | `POST /api/consoles` | Add a console. An id that already exists returns `409` |
+| `POST /api/consoles/test` | Check unsaved settings: FTP and the installed app, Payload Manager, elfldr, VoidShell, websrv, ps5-exporter, and llama-server (a closed llama port is not a failure) |
 | `GET /api/consoles/{consoleId}/settings` | That console's settings and whether they came from configuration |
 | `PUT /api/consoles/{consoleId}` | Replace a user console's settings. A configuration console, or one with a queued or running transfer, returns `409` |
 | `DELETE /api/consoles/{consoleId}` | Remove a user console. A configuration console, or one with a queued or running transfer, returns `409` |
