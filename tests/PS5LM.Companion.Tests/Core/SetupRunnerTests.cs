@@ -70,6 +70,14 @@ public sealed class SetupRunnerTests
     {
         using var harness = Ready();
         harness.LoadFails.Add("voidshell.elf");
+        harness.Manifest = harness.Manifest with
+        {
+            Payloads = harness.Manifest.Payloads
+                .Select(p => p.Id == "voidshell"
+                    ? p with { Optional = true, OptionalNote = "needs sceAppInstUtilAppInstallTitleDir on this firmware" }
+                    : p)
+                .ToList(),
+        };
 
         var report = await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
 

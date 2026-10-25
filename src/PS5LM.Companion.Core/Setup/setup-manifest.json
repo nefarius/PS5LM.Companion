@@ -57,17 +57,15 @@
     {
       "id": "voidshell",
       "name": "VoidShell",
-      "version": "v1.1.1",
-      "url": "https://github.com/amilarajans/voidshell/releases/download/v1.1.1/voidshell.elf",
-      "sha256": "6ff9a3e1f9f2eac70fe32268619c79912ca69332971feb1663f907cad114e13c",
+      "version": "v1.1.1-nefarius.1",
+      "url": "https://github.com/nefarius/voidshell/releases/download/v1.1.1-nefarius.1/voidshell.elf",
+      "sha256": "eec0113e31ca229bdea037b73bfe880219221f30c5d716ec6c430c5975ee6c58",
       "ready": { "port": 7007 },
       "readyTimeoutSeconds": 30,
-      "optional": true,
-      "optionalNote": "v1.1.1 imports sceAppInstUtilAppInstallTitleDir statically, which firmware such as 13.40 does not export, so the loader rejects it. Fix proposed upstream: https://github.com/amilarajans/voidshell/pull/2. The companion works without VoidShell (it falls back to websrv).",
       "files": [
         {
-          "url": "https://github.com/amilarajans/voidshell/releases/download/v1.1.1/index.html",
-          "sha256": "09f3fe7c2e5d65020b116077f2c515f0995a6213e464de6d4e25d43a8ffeb953",
+          "url": "https://github.com/nefarius/voidshell/releases/download/v1.1.1-nefarius.1/index.html",
+          "sha256": "ee8adbf7fb6c693b71175800b96b9ea4ece2267bc5c238d6eaf9becab494459e",
           "target": "/data/voidshell/www/index.html"
         }
       ]

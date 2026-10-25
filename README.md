@@ -77,7 +77,7 @@ dotnet PS5LM.Companion.App.dll setup --host 192.168.1.50 --variant ps5lmplus
 docker run --rm -v ps5lm-companion:/data ps5lm-companion setup --host 192.168.1.50 --variant ps5lm --upgrade-payload-manager
 ```
 
-VoidShell is optional in setup: v1.1.1 does not start on some firmware (e.g. 13.40), which is a warning, see [docs/setup.md](docs/setup.md#known-issue-voidshell-does-not-start-on-some-firmware).
+Setup installs a [fork build of VoidShell](docs/setup.md#voidshell-fork-build) because upstream v1.1.1 does not start on some firmware (e.g. 13.40).
 
 Exit code 0: nothing failed. 2: a component is not working. 1: bad arguments or manifest.
 

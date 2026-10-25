@@ -69,7 +69,7 @@ internal sealed class SetupHarness : IDisposable
 
     public FakeFileSystem Files { get; }
 
-    public SetupManifest Manifest { get; } = SetupManifest.LoadEmbedded();
+    public SetupManifest Manifest { get; set; } = SetupManifest.LoadEmbedded();
 
     public static SetupOptions Options(string? app = "ps5lmplus") => new("ps5.test", app) { WaitOverride = TimeSpan.FromMilliseconds(2), UpgradePayloadManager = false };
 

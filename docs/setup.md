@@ -64,17 +64,16 @@ failure when it is not up at the end. A payload can list `files` (URL, SHA-256, 
 To update a version: change `version`, `url` and `sha256` (`gh release view <tag> --json assets` shows digests), then run
 `setup --verify-manifest`.
 
-## Known issue: VoidShell does not start on some firmware
+## VoidShell fork build
 
-VoidShell v1.1.1 imports `sceAppInstUtilAppInstallTitleDir` statically. Firmware such as 13.40 does not export it, so the loader
-logs `Unable to resolve 'sceAppInstUtilAppInstallTitleDir'` and the payload exits before `main()`: no process, port 7007 closed,
-nothing under `/data/voidshell` except `www`. Found with klogsrv (kernel log on port 3232).
+Upstream VoidShell v1.1.1 imports `sceAppInstUtilAppInstallTitleDir` statically. Firmware such as 13.40 does not export it, so the
+loader logs `Unable to resolve 'sceAppInstUtilAppInstallTitleDir'` and the payload exits before `main()` (found with klogsrv, kernel
+log on port 3232). The upstream fix ([amilarajans/voidshell#2](https://github.com/amilarajans/voidshell/pull/2)) has had no response,
+so the manifest uses the reproducible fork build [nefarius/voidshell `v1.1.1-nefarius.1`](https://github.com/nefarius/voidshell/releases/tag/v1.1.1-nefarius.1)
+(Docker build, ps5-payload-sdk v0.45; only that fix differs from upstream). Verified on FW 13.40.
 
-- Upstream fix, resolving the symbol at runtime: [amilarajans/voidshell#2](https://github.com/amilarajans/voidshell/pull/2). Verified
-  on FW 13.40.
-- Until it is released, VoidShell is `optional` in the manifest: setup reports a warning with this explanation and exits 0 if
-  nothing else failed. The companion falls back to websrv for app check and launch, and ShadowMountPlus registration is read from its log.
-- To try the fix now, build the PR branch with ps5-payload-sdk and send the ELF to elfldr on port 9021.
+To go back to upstream once it ships the fix: repin `version`, `url`, `sha256` and the `index.html` entry of `voidshell` in the manifest,
+then run `setup --verify-manifest`. A payload can still be marked `"optional": true` to downgrade a failed start to a warning.
 
 ## Not automated
 
