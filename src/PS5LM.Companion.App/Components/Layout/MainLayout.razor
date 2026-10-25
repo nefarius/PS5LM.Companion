@@ -64,6 +64,7 @@
     protected override void OnInitialized()
     {
         Navigation.LocationChanged += OnLocationChanged;
+        Registry.Changed += OnRegistryChanged;
         foreach (var console in Registry.All)
         {
             _open[console.Id] = false;
@@ -71,6 +72,30 @@
         }
 
         RefreshCurrent();
+    }
+
+    private void OnRegistryChanged(ConsoleChange change)
+    {
+        if (change.Previous is { } previous)
+        {
+            previous.Store.Changed -= OnStatusChanged;
+        }
+
+        if (change.Current is { } current)
+        {
+            current.Store.Changed += OnStatusChanged;
+            _open.TryAdd(current.Id, false);
+        }
+
+        RefreshCurrent();
+        try
+        {
+            _ = InvokeAsync(StateHasChanged);
+        }
+        catch (ObjectDisposedException)
+        {
+            // The circuit ended.
+        }
     }
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
@@ -128,6 +153,7 @@
     public void Dispose()
     {
         Navigation.LocationChanged -= OnLocationChanged;
+        Registry.Changed -= OnRegistryChanged;
         foreach (var console in Registry.All)
         {
             console.Store.Changed -= OnStatusChanged;

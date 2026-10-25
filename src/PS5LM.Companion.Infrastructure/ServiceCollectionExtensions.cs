@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using PS5LM.Companion.Core.Abstractions;
@@ -49,10 +50,17 @@ public static class ServiceCollectionExtensions
             .AddResilienceHandler("websrv", builder => builder.AddTimeout(ProbeTimeout));
 
         services.AddSingleton<IConsoleConnectorFactory, ConsoleConnectorFactory>();
+        services.AddSingleton<IConsoleStore>(sp =>
+        {
+            var dataDirectory = sp.GetRequiredService<IConfiguration>()["Companion:DataDirectory"] ?? "data";
+            return new JsonConsoleStore(Path.Combine(dataDirectory, "consoles.json"), sp.GetRequiredService<ILogger<JsonConsoleStore>>());
+        });
         services.AddSingleton<IConsoleRegistry>(sp => new ConsoleRegistry(
             sp.GetRequiredService<IOptions<ConsolesOptions>>().Value,
             sp.GetRequiredService<IConsoleConnectorFactory>(),
-            sp.GetRequiredService<TimeProvider>()));
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<IConsoleStore>(),
+            message => sp.GetRequiredService<ILogger<ConsoleRegistry>>().LogWarning("{Message}", message)));
         return services;
     }
 

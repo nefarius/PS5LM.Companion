@@ -40,7 +40,7 @@ public sealed class RealWiringTests
     {
         await using var provider = Build();
 
-        var status = await provider.GetRequiredService<IConsoleRegistry>().Default.Status.RefreshAsync(CancellationToken.None);
+        var status = await provider.GetRequiredService<IConsoleRegistry>().Find("ps5")!.Status.RefreshAsync(CancellationToken.None);
 
         Assert.Equal(CompanionLifecycle.Disconnected, status.Lifecycle);
         Assert.False(status.Capabilities.Ftp);

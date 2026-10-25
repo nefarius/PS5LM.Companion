@@ -174,9 +174,9 @@ public sealed class InferenceRouter
                 .Select(p =>
                 {
                     var replicas = p.Value.Consoles
-                        .Select(id => _registry.Find(id))
-                        .Where(c => c is not null)
-                        .Select(c => Describe(c!, p.Value))
+                        .Select(id => _registry.Find(id) is { } console
+                            ? Describe(console, p.Value)
+                            : new ReplicaSnapshot(id, CompanionLifecycle.Disconnected, null, 0, false, "Console is not configured."))
                         .ToList();
                     return new PoolSnapshot(p.Key, p.Value.Model, replicas.Count(r => r.Eligible), replicas);
                 })

@@ -25,7 +25,7 @@ internal sealed class TransferHarness : IAsyncDisposable
             StateFile = Path.Combine(CacheDirectory, "transfers.json"),
             SpaceMarginBytes = 100,
         };
-        var consoles = new ConsolesOptions { DefaultConsoleId = PrimaryId };
+        var consoles = new ConsolesOptions();
         foreach (var id in extraConsoles.Prepend(PrimaryId))
         {
             consoles.Consoles[id] = new PS5Options { Host = id };
@@ -45,7 +45,7 @@ internal sealed class TransferHarness : IAsyncDisposable
 
     public IConsoleRegistry Registry { get; }
 
-    public ConsoleRuntime Runtime => Registry.Default;
+    public ConsoleRuntime Runtime => Registry.Find(PrimaryId)!;
 
     public FakeFileSystem FileSystem => Primary.FileSystem;
 

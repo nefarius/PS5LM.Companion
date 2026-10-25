@@ -23,6 +23,9 @@ internal sealed class FakeHub : IModelHub
     /// <summary>Fails the download after this many bytes were written, once.</summary>
     public int? FailAfterBytes { get; set; }
 
+    /// <summary>When set, the download waits for this task before writing.</summary>
+    public TaskCompletionSource<bool>? DownloadGate { get; set; }
+
     public byte[]? ServedContent { get; set; }
 
     public List<long> ResumeOffsets { get; } = [];
@@ -37,6 +40,11 @@ internal sealed class FakeHub : IModelHub
 
     public async Task DownloadAsync(string repo, string fileName, string destinationPath, IProgress<long>? progress, CancellationToken cancellationToken)
     {
+        if (DownloadGate is { } gate)
+        {
+            await gate.Task.WaitAsync(cancellationToken);
+        }
+
         var content = ServedContent ?? Content;
         var existing = File.Exists(destinationPath) ? new FileInfo(destinationPath).Length : 0;
         ResumeOffsets.Add(existing);

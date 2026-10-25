@@ -24,6 +24,9 @@ public sealed class TransferService
     private readonly TransferOptions _options;
     private readonly TimeProvider _time;
     private readonly Dictionary<string, Channel<Guid>> _queues;
+    private readonly Dictionary<string, Worker> _workers = new(StringComparer.Ordinal);
+    private CancellationToken _stopping;
+    private int _started;
 
     public TransferService(IModelHub hub, IConsoleRegistry consoles, ITransferStore store, TransferOptions options, TimeProvider time)
     {
@@ -33,6 +36,17 @@ public sealed class TransferService
         _options = options;
         _time = time;
         _queues = consoles.All.ToDictionary(c => c.Id, _ => Channel.CreateUnbounded<Guid>(), StringComparer.Ordinal);
+        _consoles.Changed += OnConsolesChanged;
+    }
+
+    /// <summary>Whether this console still has a queued or running transfer. Removal is refused while it does.</summary>
+    public bool HasActive(string consoleId)
+    {
+        lock (_gate)
+        {
+            return _transfers.Values.Any(transfer =>
+                transfer.IsActive && string.Equals(transfer.ConsoleId, consoleId, StringComparison.OrdinalIgnoreCase));
+        }
     }
 
     private readonly Lock _gate = new();
@@ -161,7 +175,18 @@ public sealed class TransferService
             throw;
         }
 
-        _queues[runtime.Id].Writer.TryWrite(transfer.Id);
+        Channel<Guid>? queue;
+        lock (_gate)
+        {
+            _queues.TryGetValue(runtime.Id, out queue);
+        }
+
+        if (queue is null || !queue.Writer.TryWrite(transfer.Id))
+        {
+            Update(transfer.Id, t => t with { State = TransferState.Failed, Error = "The console was removed before the transfer could start." });
+            await PersistAsync(cancellationToken);
+        }
+
         Changed?.Invoke();
         return (new OperationResult(OperationOutcome.Accepted), transfer);
     }
@@ -207,44 +232,185 @@ public sealed class TransferService
 
     /// <summary>
     /// The worker: one loop per console, each running one transfer at a time because that console's link and
-    /// ftpsrv are the bottleneck. A stuck console never delays another.
+    /// ftpsrv are the bottleneck. A stuck console never delays another. A console added later gets its own loop.
     /// </summary>
-    public Task RunAsync(CancellationToken stoppingToken) =>
-        Task.WhenAll(_consoles.All.Select(console => RunConsoleAsync(console, stoppingToken)));
-
-    private async Task RunConsoleAsync(ConsoleRuntime console, CancellationToken stoppingToken)
+    public async Task RunAsync(CancellationToken stoppingToken)
     {
-        await foreach (var id in _queues[console.Id].Reader.ReadAllAsync(stoppingToken))
+        _stopping = stoppingToken;
+        Volatile.Write(ref _started, 1);
+        foreach (var id in QueueIds())
         {
-            Transfer? transfer;
-            lock (_gate)
+            StartWorker(id);
+        }
+
+        try
+        {
+            await Task.Delay(Timeout.Infinite, stoppingToken);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // Shutting down. Unfinished transfers stay queued and resume on the next start.
+        }
+
+        List<Task> tasks;
+        lock (_gate)
+        {
+            tasks = _workers.Values.Select(worker => worker.Task).ToList();
+            var stopping = _workers.Keys.ToList();
+            foreach (var id in stopping)
             {
-                _transfers.TryGetValue(id, out transfer);
+                StopWorkerLocked(id);
+            }
+        }
+
+        try
+        {
+            await Task.WhenAll(tasks);
+        }
+        catch (OperationCanceledException)
+        {
+            // A loop ended because its console was removed or the host is stopping.
+        }
+    }
+
+    private void OnConsolesChanged(ConsoleChange change)
+    {
+        if (change.Kind is ConsoleChangeKind.Added or ConsoleChangeKind.Replaced && change.Current is { } current)
+        {
+            EnsureQueue(current.Id);
+            if (Volatile.Read(ref _started) == 1)
+            {
+                StartWorker(current.Id);
+            }
+        }
+
+        if (change.Kind == ConsoleChangeKind.Removed && change.Previous is { } previous)
+        {
+            StopWorker(previous.Id);
+        }
+    }
+
+    private List<string> QueueIds()
+    {
+        lock (_gate)
+        {
+            return _queues.Keys.ToList();
+        }
+    }
+
+    private void EnsureQueue(string id)
+    {
+        lock (_gate)
+        {
+            if (!_queues.ContainsKey(id))
+            {
+                _queues[id] = Channel.CreateUnbounded<Guid>();
+            }
+        }
+    }
+
+    private void StartWorker(string id)
+    {
+        lock (_gate)
+        {
+            if (_workers.ContainsKey(id) || !_queues.TryGetValue(id, out var channel))
+            {
+                return;
             }
 
-            if (transfer is not { State: TransferState.Queued })
-            {
-                continue;
-            }
+            var cancel = CancellationTokenSource.CreateLinkedTokenSource(_stopping);
+            // Yield inside the loop, so this returns before the loop takes the lock.
+            var task = RunConsoleAsync(id, channel, cancel);
+            _workers[id] = new Worker(cancel, task);
+        }
+    }
 
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-            lock (_gate)
-            {
-                _running[id] = cts;
-            }
+    private void StopWorker(string id)
+    {
+        lock (_gate)
+        {
+            StopWorkerLocked(id);
+        }
+    }
 
-            try
+    private void StopWorkerLocked(string id)
+    {
+        _workers.Remove(id, out var worker);
+        _queues.Remove(id, out var channel);
+        worker?.Cancel.Cancel();
+        channel?.Writer.TryComplete();
+    }
+
+    private async Task RunConsoleAsync(string consoleId, Channel<Guid> queue, CancellationTokenSource cancel)
+    {
+        await Task.Yield();
+        var stoppingToken = cancel.Token;
+        try
+        {
+            await foreach (var id in queue.Reader.ReadAllAsync(stoppingToken))
             {
-                await ProcessAsync(transfer, console, cts.Token);
-            }
-            finally
-            {
+                var console = _consoles.Find(consoleId);
+                if (console is null)
+                {
+                    continue;
+                }
+
+                Transfer? transfer;
                 lock (_gate)
                 {
-                    _running.Remove(id);
+                    _transfers.TryGetValue(id, out transfer);
+                }
+
+                if (transfer is not { State: TransferState.Queued })
+                {
+                    continue;
+                }
+
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                lock (_gate)
+                {
+                    _running[id] = cts;
+                }
+
+                try
+                {
+                    await ProcessAsync(transfer, console, cts.Token);
+                }
+                finally
+                {
+                    lock (_gate)
+                    {
+                        _running.Remove(id);
+                    }
                 }
             }
         }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // This console's loop was stopped.
+        }
+        finally
+        {
+            lock (_gate)
+            {
+                if (_workers.TryGetValue(consoleId, out var worker) && ReferenceEquals(worker.Cancel, cancel))
+                {
+                    _workers.Remove(consoleId);
+                }
+
+                if (_queues.TryGetValue(consoleId, out var current) && ReferenceEquals(current, queue))
+                {
+                    _queues.Remove(consoleId);
+                }
+            }
+        }
+    }
+
+    private sealed class Worker(CancellationTokenSource cancel, Task task)
+    {
+        public CancellationTokenSource Cancel { get; } = cancel;
+
+        public Task Task { get; } = task;
     }
 
     private async Task ProcessAsync(Transfer transfer, ConsoleRuntime console, CancellationToken token)

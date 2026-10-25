@@ -37,9 +37,11 @@ public sealed class ConsolesConfigurationTests
     }
 
     [Fact]
-    public void At_least_one_console_is_required()
+    public void No_consoles_is_a_valid_configuration()
     {
-        Assert.Contains("at least one console", Failure(("PS5:DefaultConsoleId", "x")), StringComparison.Ordinal);
+        using var provider = Build();
+
+        Assert.Empty(provider.GetRequiredService<IConsoleRegistry>().All);
     }
 
     [Fact]
@@ -52,32 +54,16 @@ public sealed class ConsolesConfigurationTests
     }
 
     [Fact]
-    public void The_default_console_must_exist()
-    {
-        var message = Failure(("PS5:Consoles:ps5:Host", "ps5"), ("PS5:DefaultConsoleId", "ghost"));
-
-        Assert.Contains("ghost", message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Consoles_get_isolated_runtimes_and_the_first_by_id_is_the_default()
+    public void Consoles_get_isolated_runtimes()
     {
         using var provider = Build(("PS5:Consoles:living-room:Host", "10.0.0.2"), ("PS5:Consoles:den:Host", "10.0.0.3"));
 
         var registry = provider.GetRequiredService<IConsoleRegistry>();
 
         Assert.Equal(["den", "living-room"], registry.All.Select(c => c.Id));
-        Assert.Equal("den", registry.Default.Id);
+        Assert.Equal(ConsoleSource.Configuration, registry.Find("den")!.Source);
         Assert.NotSame(registry.Find("den")!.Store, registry.Find("LIVING-ROOM")!.Store);
         Assert.NotSame(registry.Find("den")!.Status, registry.Find("living-room")!.Status);
         Assert.Null(registry.Find("ghost"));
-    }
-
-    [Fact]
-    public void An_explicit_default_wins()
-    {
-        using var provider = Build(("PS5:Consoles:a:Host", "10.0.0.2"), ("PS5:Consoles:b:Host", "10.0.0.3"), ("PS5:DefaultConsoleId", "b"));
-
-        Assert.Equal("b", provider.GetRequiredService<IConsoleRegistry>().Default.Id);
     }
 }

@@ -6,7 +6,7 @@ using PS5LM.Companion.Core.Domain;
 namespace PS5LM.Companion.App.Endpoints;
 
 /// <summary>Who a console is, without its connection details beyond the host.</summary>
-public sealed record ConsoleSummary(string Id, string Name, string Host, bool IsDefault, CompanionLifecycle Lifecycle);
+public sealed record ConsoleSummary(string Id, string Name, string Host, ConsoleSource Source, CompanionLifecycle Lifecycle);
 
 /// <summary>The normalised status of one console, with the console it belongs to.</summary>
 public sealed record ConsoleStatusResponse(ConsoleSummary Console, CompanionStatus Status);
@@ -14,7 +14,7 @@ public sealed record ConsoleStatusResponse(ConsoleSummary Console, CompanionStat
 internal static class ConsoleRoutes
 {
     public static ConsoleSummary Summary(IConsoleRegistry registry, ConsoleRuntime console) =>
-        new(console.Id, console.Name, console.Host, ReferenceEquals(console, registry.Default), console.Store.Current.Lifecycle);
+        new(console.Id, console.Name, console.Host, console.Source, console.Store.Current.Lifecycle);
 
     /// <summary>The console named by the <c>consoleId</c> route value, or a 404 answer when there is none.</summary>
     public static ConsoleRuntime? Find(IConsoleRegistry registry, string? consoleId, out IResult? notFound)
