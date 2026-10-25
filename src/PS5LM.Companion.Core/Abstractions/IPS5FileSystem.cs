@@ -45,5 +45,8 @@ public interface IPS5FileSystem
     /// <summary>Renames a file, replacing the target.</summary>
     Task MoveAsync(string from, string to, CancellationToken cancellationToken);
 
+    /// <summary>Renames a directory to a path that does not exist yet, creating the target's parent.</summary>
+    Task MoveDirectoryAsync(string from, string to, CancellationToken cancellationToken);
+
     Task DeleteAsync(string path, CancellationToken cancellationToken);
 }

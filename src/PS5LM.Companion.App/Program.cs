@@ -10,6 +10,7 @@ using PS5LM.Companion.App.Consoles;
 using PS5LM.Companion.App.Inference;
 using PS5LM.Companion.App.Monitoring;
 using PS5LM.Companion.App.Security;
+using PS5LM.Companion.App.Setup;
 using PS5LM.Companion.Infrastructure;
 
 using Serilog;
@@ -25,6 +26,12 @@ public sealed class Program
         if (args.Contains("--health-check"))
         {
             return await HealthProbe.RunAsync();
+        }
+
+        // One-shot console preparation; never starts the web host.
+        if (args.Length > 0 && args[0] == "setup")
+        {
+            return await SetupCommand.RunAsync(args[1..]);
         }
 
         Log.Logger = new LoggerConfiguration()

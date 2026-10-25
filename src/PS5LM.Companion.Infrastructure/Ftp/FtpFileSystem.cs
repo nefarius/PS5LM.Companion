@@ -146,6 +146,23 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
             },
             cancellationToken);
 
+    public Task MoveDirectoryAsync(string from, string to, CancellationToken cancellationToken) =>
+        RunAsync(
+            async client =>
+            {
+                var trimmed = to.TrimEnd('/');
+                var parent = trimmed[..trimmed.LastIndexOf('/')];
+                if (parent.Length > 0 && await TryListAsync(client, parent, cancellationToken) is null)
+                {
+                    // CreateDirectory walks the path and makes every missing level; ftpsrv answers MKD per level.
+                    await client.CreateDirectory(parent, true, cancellationToken);
+                }
+
+                await client.Rename(from.TrimEnd('/'), trimmed, cancellationToken);
+                return true;
+            },
+            cancellationToken);
+
     public Task DeleteAsync(string path, CancellationToken cancellationToken) =>
         RunAsync(
             async client =>

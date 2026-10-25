@@ -24,7 +24,9 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          global-json-file: global.json
+          # Pinned: the aka.ms link for 10.0.403 points at a storage host that answers 409.
+          # Un-pin (use global-json-file: global.json) once newer SDKs download again.
+          dotnet-version: 10.0.402
 
       - name: Restore
         run: dotnet restore PS5LM.Companion.slnx
