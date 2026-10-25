@@ -396,10 +396,14 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         {
             var ready = await IsReadyAsync(payload, cancellationToken, processes);
             var how = payload.Ready.Port > 0 ? $"port {PortFor(payload)}" : $"process {string.Join(" or ", payload.Ready.Processes!)}";
-            Add(
-                payload.Name,
-                ready ? SetupStatus.Ok : SetupStatus.Fail,
-                ready ? $"Running ({how})." : $"Not running ({how}). {_notes.GetValueOrDefault(payload.Id)}".TrimEnd());
+            var failure = payload.Optional ? SetupStatus.Warn : SetupStatus.Fail;
+            var detail = $"Not running ({how}). {_notes.GetValueOrDefault(payload.Id)}".TrimEnd();
+            if (!ready && payload.Optional && !string.IsNullOrWhiteSpace(payload.OptionalNote))
+            {
+                detail += $" Optional: {payload.OptionalNote}";
+            }
+
+            Add(payload.Name, ready ? SetupStatus.Ok : failure, ready ? $"Running ({how})." : detail);
         }
 
         var voidShell = manifest.Payloads.FirstOrDefault(p => p.Id == "voidshell");

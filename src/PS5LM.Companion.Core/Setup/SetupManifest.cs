@@ -17,6 +17,8 @@ public sealed record ReadyCheck(int Port = 0, IReadOnlyList<string>? Processes =
 /// <param name="Id">Stable id; the payload is uploaded as <c>{Id}.elf</c>.</param>
 /// <param name="DelayAfterMs">Autoload pause (and manual wait) after this payload, for heavy ones.</param>
 /// <param name="ReadyTimeoutSeconds">How long to wait for <see cref="Ready"/> after launching.</param>
+/// <param name="Optional">When true, a payload that is not up at the end is reported as a warning instead of a failure.</param>
+/// <param name="OptionalNote">Shown with the warning to explain why the payload may legitimately not start.</param>
 public sealed record ManifestPayload(
     string Id,
     string Name,
@@ -26,7 +28,9 @@ public sealed record ManifestPayload(
     ReadyCheck Ready,
     int DelayAfterMs = 0,
     int ReadyTimeoutSeconds = 30,
-    IReadOnlyList<ManifestFile>? Files = null)
+    IReadOnlyList<ManifestFile>? Files = null,
+    bool Optional = false,
+    string? OptionalNote = null)
 {
     public string UploadName => Id + ".elf";
 }

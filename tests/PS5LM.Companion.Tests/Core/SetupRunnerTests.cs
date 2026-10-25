@@ -66,6 +66,20 @@ public sealed class SetupRunnerTests
     }
 
     [Fact]
+    public async Task Optional_voidshell_that_does_not_start_is_only_a_warning()
+    {
+        using var harness = Ready();
+        harness.LoadFails.Add("voidshell.elf");
+
+        var report = await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
+
+        var line = Assert.Single(report.Lines, l => l.Component == "VoidShell");
+        Assert.Equal(SetupStatus.Warn, line.Status);
+        Assert.Contains("sceAppInstUtilAppInstallTitleDir", line.Message);
+        Assert.Equal(0, report.ExitCode);
+    }
+
+    [Fact]
     public async Task Missing_ftp_is_a_failure_and_blocks_extras_and_app()
     {
         using var harness = Ready();

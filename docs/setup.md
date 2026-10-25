@@ -59,9 +59,22 @@ Setup says so and exits with 2. If step 1 fails, nothing is shut down.
 ## The manifest
 
 `src/PS5LM.Companion.Core/Setup/setup-manifest.json` is embedded in the build. Each entry has a direct GitHub release URL and the
-SHA-256 from the release asset. A payload can list `files` (URL, SHA-256, absolute target under `/data/`) that go over FTP.
+SHA-256 from the release asset. A payload marked `"optional": true` is reported as a warning (with its `optionalNote`) instead of a
+failure when it is not up at the end. A payload can list `files` (URL, SHA-256, absolute target under `/data/`) that go over FTP.
 To update a version: change `version`, `url` and `sha256` (`gh release view <tag> --json assets` shows digests), then run
 `setup --verify-manifest`.
+
+## Known issue: VoidShell does not start on some firmware
+
+VoidShell v1.1.1 imports `sceAppInstUtilAppInstallTitleDir` statically. Firmware such as 13.40 does not export it, so the loader
+logs `Unable to resolve 'sceAppInstUtilAppInstallTitleDir'` and the payload exits before `main()`: no process, port 7007 closed,
+nothing under `/data/voidshell` except `www`. Found with klogsrv (kernel log on port 3232).
+
+- Upstream fix, resolving the symbol at runtime: [amilarajans/voidshell#2](https://github.com/amilarajans/voidshell/pull/2). Verified
+  on FW 13.40.
+- Until it is released, VoidShell is `optional` in the manifest: setup reports a warning with this explanation and exits 0 if
+  nothing else failed. The companion falls back to websrv for app check and launch, and ShadowMountPlus registration is read from its log.
+- To try the fix now, build the PR branch with ps5-payload-sdk and send the ELF to elfldr on port 9021.
 
 ## Not automated
 

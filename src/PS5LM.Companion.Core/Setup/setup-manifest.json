@@ -62,6 +62,8 @@
       "sha256": "6ff9a3e1f9f2eac70fe32268619c79912ca69332971feb1663f907cad114e13c",
       "ready": { "port": 7007 },
       "readyTimeoutSeconds": 30,
+      "optional": true,
+      "optionalNote": "v1.1.1 imports sceAppInstUtilAppInstallTitleDir statically, which firmware such as 13.40 does not export, so the loader rejects it. Fix proposed upstream: https://github.com/amilarajans/voidshell/pull/2. The companion works without VoidShell (it falls back to websrv).",
       "files": [
         {
           "url": "https://github.com/amilarajans/voidshell/releases/download/v1.1.1/index.html",
