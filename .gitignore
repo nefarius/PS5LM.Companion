@@ -443,4 +443,4 @@ FodyWeavers.xsd
 
 # Generated ASP.NET Data Protection keys
 src/PS5LM.Companion.App/data/
-**/data/keys/
+**/keys/key-*.xml

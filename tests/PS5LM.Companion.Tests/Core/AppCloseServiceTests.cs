@@ -25,9 +25,10 @@ public sealed class AppCloseServiceTests
 
     private static Task AppPicksUpQuit(FakeFileSystem fs) => Task.Run(async () =>
     {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         while (!fs.Files.ContainsKey(QuitFile))
         {
-            await Task.Delay(5);
+            await Task.Delay(5, timeout.Token);
         }
 
         await fs.DeleteAsync(QuitFile, CancellationToken.None);
@@ -81,6 +82,32 @@ public sealed class AppCloseServiceTests
         var result = await service.CloseAsync(PS5Variant.PS5LM, CancellationToken.None);
 
         Assert.Equal(OperationOutcome.NoChange, result.Outcome);
+        Assert.DoesNotContain(QuitFile, fs.Files.Keys);
+    }
+
+    [Fact]
+    public async Task A_running_app_of_unknown_variant_is_not_closed()
+    {
+        var (service, fs, store) = Harness();
+        store.Publish(CompanionStatus.Initial with
+        {
+            AppControl = AppControlEvaluator.Evaluate([new(PS5LM.Companion.Core.Abstractions.AppProviderKind.VoidShell, true, "v", ["PPSA99575", "PPSA99581"], true, "PPSA99", null)]),
+        });
+
+        var result = await service.CloseAsync(PS5Variant.PS5LM, CancellationToken.None);
+
+        Assert.Equal(OperationOutcome.Conflict, result.Outcome);
+        Assert.DoesNotContain(QuitFile, fs.Files.Keys);
+    }
+
+    [Fact]
+    public async Task Cancellation_while_waiting_withdraws_the_request()
+    {
+        var (service, fs, _) = Harness();
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.CloseAsync(PS5Variant.PS5LM, cts.Token));
+
         Assert.DoesNotContain(QuitFile, fs.Files.Keys);
     }
 

@@ -27,9 +27,16 @@ public sealed class AppCloseService(
             return new OperationResult(OperationOutcome.Invalid, "Choose PS5LM or PS5LM Plus.");
         }
 
-        if (store.Current.AppControl?.Apps.FirstOrDefault(a => a.Variant == variant)?.State == AppRunState.NotRunning)
+        var state = store.Current.AppControl?.Apps.FirstOrDefault(a => a.Variant == variant)?.State;
+        if (state == AppRunState.NotRunning)
         {
             return new OperationResult(OperationOutcome.NoChange, $"{profile.DisplayName} is not running.");
+        }
+
+        if (state == AppRunState.RunningVariantUnknown)
+        {
+            // The quit file is shared by both apps, so it would end whichever one runs.
+            return new OperationResult(OperationOutcome.Conflict, "A PS5LM app is running, but the console does not say which one, so Close is not offered for either.");
         }
 
         if (!await _gate.WaitAsync(0, cancellationToken))
@@ -59,36 +66,59 @@ public sealed class AppCloseService(
 
             await fileSystem.WriteTextAsync(path, "quit\n", cancellationToken);
 
-            var deadline = DateTimeOffset.UtcNow + pickupWait;
-            while (true)
-            {
-                await Task.Delay(pollInterval, cancellationToken);
-                if (!await fileSystem.FileExistsAsync(path, cancellationToken))
-                {
-                    loadTracker.Clear();
-                    store.Publish(await status.RefreshAsync(cancellationToken));
-                    return new OperationResult(OperationOutcome.Accepted, $"{profile.DisplayName} took the quit request and is closing.");
-                }
-
-                if (DateTimeOffset.UtcNow >= deadline)
-                {
-                    break;
-                }
-            }
-
+            var taken = false;
             try
             {
-                await fileSystem.DeleteAsync(path, CancellationToken.None);
+                var deadline = DateTimeOffset.UtcNow + pickupWait;
+                while (true)
+                {
+                    await Task.Delay(pollInterval, cancellationToken);
+                    if (!await fileSystem.FileExistsAsync(path, cancellationToken))
+                    {
+                        taken = true;
+                        break;
+                    }
+
+                    if (DateTimeOffset.UtcNow >= deadline)
+                    {
+                        break;
+                    }
+                }
             }
-            catch (ConsoleUnreachableException)
+            finally
             {
+                if (!taken)
+                {
+                    // Also on cancellation or an FTP failure: a stale quit file would end the next launch.
+                    await WithdrawAsync(path);
+                }
             }
 
-            return new OperationResult(OperationOutcome.Unavailable, $"{profile.DisplayName} did not take the quit request (is it running, and not busy loading?). The request was withdrawn.");
+            if (!taken)
+            {
+                return new OperationResult(OperationOutcome.Unavailable, $"{profile.DisplayName} did not take the quit request (is it running, and not busy loading?). The request was withdrawn.");
+            }
+
+            loadTracker.Clear();
+            store.Publish(await status.RefreshAsync(cancellationToken));
+            return new OperationResult(OperationOutcome.Accepted, $"{profile.DisplayName} took the quit request and is closing.");
         }
         finally
         {
             _gate.Release();
+        }
+    }
+
+    private async Task WithdrawAsync(string path)
+    {
+        // Independent of the caller's token, but bounded.
+        using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        try
+        {
+            await fileSystem.DeleteAsync(path, cleanup.Token);
+        }
+        catch (Exception ex) when (ex is ConsoleUnreachableException or OperationCanceledException)
+        {
         }
     }
 }

@@ -85,9 +85,10 @@ public sealed class AppEndpointTests
         using var client = factory.CreateClient();
         var app = Task.Run(async () =>
         {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             while (!factory.FileSystem.Files.ContainsKey("/data/PS5LM/quit"))
             {
-                await Task.Delay(5);
+                await Task.Delay(5, timeout.Token);
             }
 
             await factory.FileSystem.DeleteAsync("/data/PS5LM/quit", CancellationToken.None);

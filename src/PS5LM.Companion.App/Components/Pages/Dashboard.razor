@@ -78,7 +78,7 @@
                                            aria-label="@($"Launch {context.Name}")"
                                            OnClick="@(() => LaunchAppAsync(context))">Launch</MudButton>
                             }
-                            @if (context.State is AppRunState.Running or AppRunState.RunningVariantUnknown)
+                            @if (context.State == AppRunState.Running)
                             {
                                 <MudButton Variant="Variant.Outlined" Size="Size.Small" Color="Color.Warning" Class="ml-2" Disabled="_launchingApp"
                                            aria-label="@($"Close {context.Name}")"
