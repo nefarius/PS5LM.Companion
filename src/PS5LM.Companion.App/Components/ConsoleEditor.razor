@@ -73,9 +73,17 @@
     [Parameter]
     public string? ConsoleId { get; set; }
 
-    public static async Task<bool> ShowAsync(IDialogService dialogs, string? consoleId)
+    /// <summary>Host filled in from a network scan.</summary>
+    [Parameter]
+    public string? InitialHost { get; set; }
+
+    public static async Task<bool> ShowAsync(IDialogService dialogs, string? consoleId, string? initialHost = null)
     {
-        var parameters = new DialogParameters<ConsoleEditor> { { editor => editor.ConsoleId, consoleId } };
+        var parameters = new DialogParameters<ConsoleEditor>
+        {
+            { editor => editor.ConsoleId, consoleId },
+            { editor => editor.InitialHost, initialHost },
+        };
         var dialog = await dialogs.ShowAsync<ConsoleEditor>(
             consoleId is null ? "Add a console" : "Edit console",
             parameters,
@@ -87,6 +95,11 @@
     {
         if (ConsoleId is null || Registry.Find(ConsoleId) is not { } console)
         {
+            if (!string.IsNullOrWhiteSpace(InitialHost))
+            {
+                _host = InitialHost.Trim();
+            }
+
             return;
         }
 

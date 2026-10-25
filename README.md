@@ -106,6 +106,7 @@ Console-scoped routes live under `/api/consoles/{consoleId}`; an unknown id retu
 | `GET /api/consoles` | Configured consoles with their lifecycle and whether each came from configuration or was added in the companion |
 | `POST /api/consoles` | Add a console. An id that already exists returns `409` |
 | `POST /api/consoles/test` | Check unsaved settings: FTP and the installed app, Payload Manager, elfldr, VoidShell, websrv, ps5-exporter, and llama-server (a closed llama port is not a failure) |
+| `POST /api/consoles/discover` | Scan the local IPv4 networks, or `{ "cidr": "192.168.1.0/24" }`, for consoles. A prefix wider than /22 is capped |
 | `GET /api/consoles/{consoleId}/settings` | That console's settings and whether they came from configuration |
 | `PUT /api/consoles/{consoleId}` | Replace a user console's settings. A configuration console, or one with a queued or running transfer, returns `409` |
 | `DELETE /api/consoles/{consoleId}` | Remove a user console. A configuration console, or one with a queued or running transfer, returns `409` |

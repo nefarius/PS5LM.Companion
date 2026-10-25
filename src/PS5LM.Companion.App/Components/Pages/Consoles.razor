@@ -11,6 +11,7 @@
 <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
     <MudText Typo="Typo.h4" HtmlTag="h1">Consoles</MudText>
     <MudSpacer />
+    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Wifi" OnClick="ScanAsync">Scan network</MudButton>
     <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="AddAsync">Add console</MudButton>
 </MudStack>
 
@@ -94,6 +95,15 @@ else
     }
 
     private async Task AddAsync() => await ConsoleEditor.ShowAsync(Dialogs, null);
+
+    private async Task ScanAsync()
+    {
+        var host = await NetworkScanDialog.ShowAsync(Dialogs);
+        if (host is not null)
+        {
+            await ConsoleEditor.ShowAsync(Dialogs, null, host);
+        }
+    }
 
     private async Task EditAsync(ConsoleRuntime console) => await ConsoleEditor.ShowAsync(Dialogs, console.Id);
 

@@ -34,6 +34,7 @@ public sealed class ConsoleSettingsPageTests
         Assert.Contains("Add your first console", html);
         Assert.Contains("Add manually", html);
         Assert.Contains("Scan network", html);
+        Assert.Contains("network_mode: host", html);
     }
 
     [Fact]
@@ -57,5 +58,20 @@ public sealed class ConsoleSettingsPageTests
 
         using var invalid = await client.PostAsJsonAsync("/api/consoles/test", new { host = "" });
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+    }
+
+    [Fact]
+    public async Task Discovery_rejects_a_bad_cidr_and_scans_a_single_address()
+    {
+        await using var factory = new CompanionFactory { ConsoleIds = [] };
+        using var client = factory.CreateClient();
+
+        using var bad = await client.PostAsJsonAsync("/api/consoles/discover", new { cidr = "nope" });
+        using var none = await client.PostAsJsonAsync("/api/consoles/discover", new { cidr = "192.0.2.1/32" });
+        var found = await none.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, none.StatusCode);
+        Assert.Equal(0, found.GetArrayLength());
     }
 }

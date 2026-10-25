@@ -14,10 +14,10 @@
         <MudText Typo="Typo.h6" HtmlTag="h2" Class="mb-1">Add your first console</MudText>
         <MudText Class="mb-4">The companion needs the address of a console running PS5LM or PS5LM Plus.</MudText>
         <MudStack Row="true" Spacing="2">
-            <MudButton Variant="Variant.Outlined" Disabled="true">Scan network</MudButton>
+            <MudButton Variant="Variant.Outlined" OnClick="ScanAsync">Scan network</MudButton>
             <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddAsync">Add manually</MudButton>
         </MudStack>
-        <MudText Typo="Typo.caption" Class="mt-2">Network scanning is not available yet.</MudText>
+        <MudText Typo="Typo.caption" Class="mt-2">A container on a bridge network only sees its own subnet. Use network_mode: host, or enter a CIDR in the scan.</MudText>
     </MudPaper>
 }
 else
@@ -103,6 +103,15 @@ else
     }
 
     private Task AddAsync() => ConsoleEditor.ShowAsync(Dialogs, null);
+
+    private async Task ScanAsync()
+    {
+        var host = await NetworkScanDialog.ShowAsync(Dialogs);
+        if (host is not null)
+        {
+            await ConsoleEditor.ShowAsync(Dialogs, null, host);
+        }
+    }
 
     private void Recount()
     {
