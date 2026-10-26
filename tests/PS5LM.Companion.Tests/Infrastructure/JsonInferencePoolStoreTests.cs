@@ -58,6 +58,28 @@ public sealed class JsonInferencePoolStoreTests
         Assert.Contains("\"alias\": \"kept\"", replaced, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Aliases_that_differ_only_by_case_load_as_one_pool()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "ps5lm-tests", Guid.NewGuid().ToString("N"), "inference-pools.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, """
+            [
+              { "alias": "Foo", "model": "first.gguf", "consoles": ["a"] },
+              { "alias": "foo", "model": "second.gguf", "consoles": ["a"] }
+            ]
+            """);
+        var store = new JsonInferencePoolStore(path, NullLogger<JsonInferencePoolStore>.Instance, OneConsole());
+
+        var loaded = store.Load();
+        store.Save(loaded);
+
+        var pool = Assert.Single(loaded);
+        Assert.Equal("foo", pool.Alias);
+        Assert.Equal("first.gguf", pool.Model);
+        Assert.DoesNotContain("second.gguf", File.ReadAllText(path), StringComparison.Ordinal);
+    }
+
     private static ConsoleRegistry Empty() => new(new ConsolesOptions(), new FakeConnectorFactory(), TimeProvider.System);
 
     private static ConsoleRegistry OneConsole()

@@ -49,6 +49,7 @@ public sealed partial class JsonInferencePoolStore(string path, ILogger<JsonInfe
 
         var pools = new List<StoredInferencePool>();
         var withheld = new List<Entry>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var entry in entries ?? [])
         {
             var alias = entry.Alias?.Trim().ToLowerInvariant() ?? "";
@@ -58,6 +59,12 @@ public sealed partial class JsonInferencePoolStore(string path, ILogger<JsonInfe
             {
                 LogSkipped(alias.Length == 0 ? "(missing alias)" : alias, string.Join(" ", errors));
                 withheld.Add(entry);
+                continue;
+            }
+
+            if (!seen.Add(alias))
+            {
+                LogSkipped(alias, "another stored pool already uses that alias.");
                 continue;
             }
 
