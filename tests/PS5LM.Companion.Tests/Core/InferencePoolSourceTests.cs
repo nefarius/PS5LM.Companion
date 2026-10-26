@@ -145,6 +145,22 @@ public sealed class InferencePoolSourceTests
     }
 
     [Fact]
+    public void Renaming_onto_a_kept_alternate_name_is_rejected()
+    {
+        var store = new MemoryPoolStore();
+        var pools = Source(store, [], configured: false);
+        Assert.True(pools.Add("extra", "b.gguf", ["a"], ["new-name", "other"]).Succeeded);
+
+        var result = pools.Update("extra", "b.gguf", ["a"], "New-Name");
+
+        Assert.Equal(PoolEditStatus.Invalid, result.Status);
+        Assert.Contains("new-name", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("extra", pools.Find("extra")!.Alias);
+        Assert.Equal(["new-name", "other"], pools.Find("extra")!.Names);
+        Assert.Equal("extra", Assert.Single(store.Pools).Alias);
+    }
+
+    [Fact]
     public void A_stored_pool_whose_names_clash_with_configuration_is_hidden()
     {
         var warnings = new List<string>();

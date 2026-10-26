@@ -164,6 +164,13 @@ public sealed class HybridInferencePools : IInferencePoolSource
                 return new PoolEditResult(PoolEditStatus.Conflict, $"A pool with alias '{target}' already exists.");
             }
 
+            // Names kept from the previous pool were checked against the old alias. A rename must not keep the new alias.
+            var nameErrors = InferencePoolRules.Errors(target, model, consoles, id => _consoles.Find(id) is not null, names);
+            if (nameErrors.Count > 0)
+            {
+                return new PoolEditResult(PoolEditStatus.Invalid, string.Join(" ", nameErrors));
+            }
+
             var kept = _state.All.Where(item => !string.Equals(item.Alias, key, StringComparison.OrdinalIgnoreCase)).ToList();
             var clashes = InferencePoolNames.Conflicts(kept.Append(pool).Select(p => (p.Alias, p.Names)));
             if (clashes.Count > 0)
