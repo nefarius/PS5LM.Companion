@@ -9,7 +9,12 @@
             <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3">@string.Join(" ", _errors)</MudAlert>
         }
         <MudTextField @bind-Value="_alias" Label="Alias" HelperText="@(_adding ? "The model name clients send." : "The model name clients send. Changing it renames the pool; clients must use the new name.")" Class="mb-2" />
-        <MudTextField @bind-Value="_names" Label="Alternate model names" Lines="2" Class="mb-2" HelperText="Other model names clients may send, one per line or comma-separated. A trailing * matches a prefix, e.g. claude-*." />
+        <MudSelect T="string" Label="Consoles" MultiSelection="true" SelectedValues="_selected" SelectedValuesChanged="SelectedChanged" Class="mb-2">
+            @foreach (var console in Registry.All)
+            {
+                <MudSelectItem T="string" Value="@console.Id">@console.Name (@console.Host)</MudSelectItem>
+            }
+        </MudSelect>
         <MudTextField @bind-Value="_model" Label="Model" Class="mb-2" HelperText="A file name such as qwen.gguf, or the path llama-server reports." />
         @if (_suggestions.Count > 0)
         {
@@ -22,12 +27,7 @@
                 }
             </MudStack>
         }
-        <MudSelect T="string" Label="Consoles" MultiSelection="true" SelectedValues="_selected" SelectedValuesChanged="SelectedChanged">
-            @foreach (var console in Registry.All)
-            {
-                <MudSelectItem T="string" Value="@console.Id">@console.Name (@console.Host)</MudSelectItem>
-            }
-        </MudSelect>
+        <MudTextField @bind-Value="_names" Label="Alternate model names" Lines="2" HelperText="Other model names clients may send, one per line or comma-separated. A trailing * matches a prefix, e.g. claude-*." />
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="Cancel">Cancel</MudButton>
