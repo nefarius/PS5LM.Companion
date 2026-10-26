@@ -33,4 +33,43 @@ public sealed class DriveSpaceLocatorTests
         Assert.Null(DriveSpaceLocator.FreeBytes(null, Root("/data/PS5LM/models")));
         Assert.Null(DriveSpaceLocator.FreeBytes(new ConsoleSensors(null, null, null, null, []), Root("/data/PS5LM/models")));
     }
+
+    [Fact]
+    public void Data_mount_is_the_data_partition_not_the_smallest_drive()
+    {
+        var sensors = new ConsoleSensors(null, null, null, null,
+        [
+            new DriveSpace("/", 2_000_000, 804 * 1024),
+            new DriveSpace("/system_tmp", 4_000_000, (long)(1.7 * 1024 * 1024)),
+            new DriveSpace("/mnt/usb0", 2000, 100),
+            new DriveSpace("/user", 900_000_000_000, 500_000_000_000),
+            new DriveSpace("/data", 800_000_000_000, 400_000_000_000),
+        ]);
+
+        var mount = DriveSpaceLocator.DataMount(sensors);
+
+        Assert.Equal("/data", mount!.MountPoint);
+        Assert.Equal(400_000_000_000, mount.FreeBytes);
+    }
+
+    [Fact]
+    public void Data_mount_falls_back_to_the_user_partition()
+    {
+        var sensors = new ConsoleSensors(null, null, null, null,
+        [
+            new DriveSpace("/mnt/usb0", 2000, 50),
+            new DriveSpace("/user", 1000, 400),
+            new DriveSpace("/data", 0, 0),
+        ]);
+
+        Assert.Equal("/user", DriveSpaceLocator.DataMount(sensors)!.MountPoint);
+    }
+
+    [Fact]
+    public void Data_mount_is_unknown_without_the_data_partition()
+    {
+        Assert.Null(DriveSpaceLocator.DataMount(null));
+        Assert.Null(DriveSpaceLocator.DataMount(new ConsoleSensors(null, null, null, null, [])));
+        Assert.Null(DriveSpaceLocator.DataMount(new ConsoleSensors(null, null, null, null, [new DriveSpace("/mnt/usb0", 2000, 50)])));
+    }
 }
