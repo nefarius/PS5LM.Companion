@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 using FluentFTP;
@@ -20,7 +22,11 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
 {
     private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(5);
 
+    /// <summary>Waiting this long behind another operation is worth a log line.</summary>
+    private static readonly TimeSpan SlowGateWait = TimeSpan.FromSeconds(1);
+
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private (string Name, long Started)? _holder;
 
     public void Dispose() => _gate.Dispose();
 
@@ -218,9 +224,33 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
         }
     }
 
-    private async Task<T> RunAsync<T>(Func<AsyncFtpClient, Task<T>> operation, CancellationToken cancellationToken)
+    private async Task<T> RunAsync<T>(Func<AsyncFtpClient, Task<T>> operation, CancellationToken cancellationToken, [CallerMemberName] string name = "")
     {
-        await _gate.WaitAsync(cancellationToken);
+        var queued = Stopwatch.GetTimestamp();
+        var holder = _holder;
+        try
+        {
+            await _gate.WaitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // The caller (for example the status refresh budget) gave up while another operation held the connection slot.
+            logger.LogInformation(
+                "FTP {Operation} on {Host}:{Port} gave up after {WaitedMs} ms waiting behind {Holder}",
+                name, options.Host, options.FtpPort, (long)Stopwatch.GetElapsedTime(queued).TotalMilliseconds, Describe(holder ?? _holder));
+            throw;
+        }
+
+        var waited = Stopwatch.GetElapsedTime(queued);
+        if (waited >= SlowGateWait)
+        {
+            logger.LogInformation(
+                "FTP {Operation} on {Host}:{Port} waited {WaitedMs} ms behind {Holder}",
+                name, options.Host, options.FtpPort, (long)waited.TotalMilliseconds, Describe(holder));
+        }
+
+        var started = Stopwatch.GetTimestamp();
+        _holder = (name, started);
         try
         {
             await using var client = new AsyncFtpClient(options.Host, "anonymous", "anonymous", options.FtpPort, CreateConfig());
@@ -232,6 +262,9 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
+                logger.LogWarning(
+                    "FTP {Operation} on {Host}:{Port} timed out connecting after {ElapsedMs} ms",
+                    name, options.Host, options.FtpPort, (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds);
                 throw new ConsoleUnreachableException($"Timed out connecting to {options.Host}:{options.FtpPort}.");
             }
 
@@ -240,23 +273,25 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
         catch (Exception ex) when (ex is FtpException or SocketException or TimeoutException or IOException
                                        && ex is not ConsoleUnreachableException)
         {
-            if (ex is FtpException)
-            {
-                // The console answered and refused the command. That is a bug or an unsupported server, so it is logged.
-                logger.LogWarning(ex, "FTP command against {Host}:{Port} failed", options.Host, options.FtpPort);
-            }
-            else
-            {
-                logger.LogDebug(ex, "FTP operation against {Host}:{Port} failed", options.Host, options.FtpPort);
-            }
+            // The console answered and refused (FtpException) or the connection broke: either way the operation, how
+            // long it ran and the underlying error are what is needed to tell a sleeping console from a busy one.
+            logger.Log(
+                ex is FtpException ? LogLevel.Warning : LogLevel.Information,
+                ex,
+                "FTP {Operation} on {Host}:{Port} failed after {ElapsedMs} ms ({ErrorType}: {Error})",
+                name, options.Host, options.FtpPort, (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds, ex.GetType().Name, ex.Message);
 
             throw new ConsoleUnreachableException($"FTP to {options.Host}:{options.FtpPort} failed: {ex.Message}", ex);
         }
         finally
         {
+            _holder = null;
             _gate.Release();
         }
     }
+
+    private static string Describe((string Name, long Started)? holder) =>
+        holder is { } h ? $"{h.Name} (running for {(long)Stopwatch.GetElapsedTime(h.Started).TotalMilliseconds} ms)" : "another operation";
 
     private static FtpConfig CreateConfig() => new()
     {
