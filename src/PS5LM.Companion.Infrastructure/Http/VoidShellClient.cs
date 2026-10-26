@@ -87,6 +87,11 @@ public sealed class VoidShellClient(HttpClient http) : IAppControlProvider
                 ? new AppLaunchResult(true, true, "VoidShell queued the title; it does not confirm the launch succeeded.")
                 : new AppLaunchResult(true, false, $"HTTP {(int)response.StatusCode}.");
         }
+        catch (TimeoutRejectedException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            // The POST may already be on the wire. Not dispatched would make the launcher try websrv as well.
+            return new AppLaunchResult(true, false, ex.Message);
+        }
         catch (Exception ex) when (IsTransient(ex, cancellationToken))
         {
             return new AppLaunchResult(false, false, ex.Message);

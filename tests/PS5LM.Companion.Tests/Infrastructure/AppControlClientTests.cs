@@ -125,11 +125,13 @@ public sealed class AppControlClientTests
 
         Assert.False(snapshot.Available);
         Assert.Contains("timeout", snapshot.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.False(launch.Dispatched);
+        Assert.True(launch.Dispatched);
+        Assert.False(launch.Accepted);
 
         using var cancelled = new CancellationTokenSource();
         await cancelled.CancelAsync();
         await Assert.ThrowsAsync<TimeoutRejectedException>(() => timedOut.ProbeAsync(cancelled.Token));
+        await Assert.ThrowsAsync<TimeoutRejectedException>(() => timedOut.LaunchAsync("PPSA99575", cancelled.Token));
     }
 
     private static HttpResponseMessage Websrv(HttpRequestMessage request) => request.RequestUri!.AbsolutePath switch
