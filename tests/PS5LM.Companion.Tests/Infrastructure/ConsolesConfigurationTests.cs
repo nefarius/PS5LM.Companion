@@ -2,6 +2,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
+using Polly;
+using Polly.Telemetry;
+
 using PS5LM.Companion.Core.Consoles;
 using PS5LM.Companion.Infrastructure;
 
@@ -65,5 +68,28 @@ public sealed class ConsolesConfigurationTests
         Assert.NotSame(registry.Find("den")!.Store, registry.Find("LIVING-ROOM")!.Store);
         Assert.NotSame(registry.Find("den")!.Status, registry.Find("living-room")!.Status);
         Assert.Null(registry.Find("ghost"));
+    }
+
+    [Fact]
+    public void A_probe_timeout_is_a_debug_event_and_other_resilience_events_keep_their_severity()
+    {
+        using var provider = Build();
+        var severity = provider.GetRequiredService<IOptions<TelemetryOptions>>().Value.SeverityProvider;
+        Assert.NotNull(severity);
+
+        var context = ResilienceContextPool.Shared.Get();
+        try
+        {
+            var source = new ResilienceTelemetrySource("voidshell-voidshell", null, "Timeout");
+            var timeout = new SeverityProviderArguments(source, new ResilienceEvent(ResilienceEventSeverity.Error, "OnTimeout"), context);
+            var retry = new SeverityProviderArguments(source, new ResilienceEvent(ResilienceEventSeverity.Warning, "OnRetry"), context);
+
+            Assert.Equal(ResilienceEventSeverity.Debug, severity(timeout));
+            Assert.Equal(ResilienceEventSeverity.Warning, severity(retry));
+        }
+        finally
+        {
+            ResilienceContextPool.Shared.Return(context);
+        }
     }
 }
