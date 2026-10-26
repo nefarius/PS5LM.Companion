@@ -1,4 +1,5 @@
 using System.Net;
+using System.Reflection;
 
 using PS5LM.Companion.Core.Domain;
 using PS5LM.Companion.Tests.Support;
@@ -29,6 +30,15 @@ public sealed class DashboardTests
         Assert.Contains("_framework/blazor.web.js", html);
         Assert.Contains("<h1", html);
         Assert.Contains("aria-label=\"Toggle navigation menu\"", html);
+        var version = typeof(PS5LM.Companion.App.Program).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion;
+        Assert.False(string.IsNullOrWhiteSpace(version));
+        Assert.Contains($"aria-label=\"Version v{version}\"", html);
+        Assert.Contains($"v{version}", html);
+        Assert.Contains("href=\"https://github.com/nefarius/PS5LM.Companion/\"", html);
+        Assert.Contains("aria-label=\"PS5LM Companion on GitHub\"", html);
+        Assert.Contains("target=\"_blank\"", html);
     }
 
     [Fact]

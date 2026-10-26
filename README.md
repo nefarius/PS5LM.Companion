@@ -33,12 +33,18 @@ works before any model exists. It needs no changes to either app.
 ## Quick start
 
 ```sh
-docker build -f docker/Dockerfile -t ps5lm-companion .
+dotnet tool restore
+version=$(dotnet minver --tag-prefix v)
+docker build -f docker/Dockerfile \
+  --build-arg MINVERVERSIONOVERRIDE="$version" \
+  -t ps5lm-companion .
 docker run -p 8080:8080 -v ps5lm-companion:/data \
   -e PS5__Consoles__ps5__Host=192.168.1.50 \
   -e Companion__AccessToken=change-me \
   ps5lm-companion
 ```
+
+The image build excludes `.git`, so MinVer cannot calculate a version inside Docker. `MINVERVERSIONOVERRIDE` is required. The command above uses the pinned MinVer CLI, which produces the same version as `dotnet build`.
 
 Configuration (environment variables use `__` for nesting). Each console is a section `PS5:Consoles:{id}` where `{id}`
 is a stable slug (lowercase letters, digits and hyphens, at most 40 characters); it appears in API routes and keys the
