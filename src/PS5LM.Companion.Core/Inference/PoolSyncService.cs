@@ -160,9 +160,9 @@ public sealed class PoolSyncService(IInferencePoolSource pools, IConsoleRegistry
         {
             // A model configured with a path must land on the storage root that path points into.
             string? targetRoot = null;
-            if (configuredModel.Contains('/', StringComparison.Ordinal))
+            var wanted = configuredModel.Trim().Replace('\\', '/');
+            if (wanted.Contains('/', StringComparison.Ordinal))
             {
-                var wanted = configuredModel.Trim().Replace('\\', '/');
                 var installation = runtime.Status.LastInstallation;
                 var targets = installation is null ? [] : await runtime.Models.UploadTargetsAsync(installation, cancellationToken);
                 targetRoot = targets.FirstOrDefault(t => $"{t.AppPath.TrimEnd('/')}/{source.FileName}".Equals(wanted, StringComparison.OrdinalIgnoreCase))?.Name;
