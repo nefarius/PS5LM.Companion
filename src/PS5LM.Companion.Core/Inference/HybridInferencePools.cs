@@ -67,9 +67,10 @@ public sealed class HybridInferencePools : IInferencePoolSource
         }
     }
 
-    public PoolEditResult Add(string alias, string model, IReadOnlyList<string> consoles) => Edit(alias, model, consoles, replacing: false);
+    public PoolEditResult Add(string alias, string model, IReadOnlyList<string> consoles) => Edit(alias, model, consoles, replacing: false, newAlias: null);
 
-    public PoolEditResult Update(string alias, string model, IReadOnlyList<string> consoles) => Edit(alias, model, consoles, replacing: true);
+    public PoolEditResult Update(string alias, string model, IReadOnlyList<string> consoles, string? newAlias = null) =>
+        Edit(alias, model, consoles, replacing: true, newAlias);
 
     public PoolEditResult Remove(string alias)
     {
@@ -110,16 +111,17 @@ public sealed class HybridInferencePools : IInferencePoolSource
         return new PoolEditResult(PoolEditStatus.Ok, null, removed);
     }
 
-    private PoolEditResult Edit(string alias, string model, IReadOnlyList<string> consoles, bool replacing)
+    private PoolEditResult Edit(string alias, string model, IReadOnlyList<string> consoles, bool replacing, string? newAlias)
     {
         var key = alias?.Trim().ToLowerInvariant() ?? "";
-        var errors = InferencePoolRules.Errors(key, model, consoles, id => _consoles.Find(id) is not null);
+        var target = string.IsNullOrWhiteSpace(newAlias) ? key : newAlias.Trim().ToLowerInvariant();
+        var errors = InferencePoolRules.Errors(target, model, consoles, id => _consoles.Find(id) is not null);
         if (errors.Count > 0)
         {
             return new PoolEditResult(PoolEditStatus.Invalid, string.Join(" ", errors));
         }
 
-        var pool = new InferencePool(key, model.Trim(), Normalize(consoles), InferencePoolOrigin.User);
+        var pool = new InferencePool(target, model.Trim(), Normalize(consoles), InferencePoolOrigin.User);
         lock (_gate)
         {
             _state.ByAlias.TryGetValue(key, out var previous);
@@ -136,6 +138,11 @@ public sealed class HybridInferencePools : IInferencePoolSource
             if (previous?.Origin == InferencePoolOrigin.Configuration)
             {
                 return new PoolEditResult(PoolEditStatus.ReadOnly, $"'{previous.Alias}' comes from configuration and cannot be changed.");
+            }
+
+            if (!string.Equals(target, key, StringComparison.Ordinal) && _state.ByAlias.ContainsKey(target))
+            {
+                return new PoolEditResult(PoolEditStatus.Conflict, $"A pool with alias '{target}' already exists.");
             }
 
             var backup = _state;

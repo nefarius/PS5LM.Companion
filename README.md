@@ -162,7 +162,7 @@ exactly. A console that is loading, unloaded or has another model is never sent 
 | `GET /v1/models` | The configured aliases with `replicas` and `ready` counts; not forwarded |
 | `GET /api/inference/pools` | Per alias and console: lifecycle, loaded model, active requests, and why a console is excluded |
 | `POST /api/inference/pools` | Add a pool (`alias`, `model`, `consoles`). A configuration alias returns `409` |
-| `PUT /api/inference/pools/{alias}` | Replace a user pool. A configuration pool returns `409` |
+| `PUT /api/inference/pools/{alias}` | Replace a user pool; an optional `alias` in the body renames it. A configuration pool or an existing target alias returns `409` |
 | `DELETE /api/inference/pools/{alias}` | Remove a user pool. A request already admitted finishes |
 | `POST /api/inference/pools/{alias}/sync` | Queue the pool model's download on every pool console that lacks it (see below). `409` when no console has the model or its source is unknown |
 

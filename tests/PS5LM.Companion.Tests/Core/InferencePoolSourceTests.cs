@@ -31,6 +31,34 @@ public sealed class InferencePoolSourceTests
     }
 
     [Fact]
+    public void Renaming_a_user_pool_moves_it_and_persists()
+    {
+        var store = new MemoryPoolStore { Pools = [new StoredInferencePool("old", "qwen.gguf", ["a"])] };
+        var pools = Source(store, [], configured: false);
+
+        var result = pools.Update("old", "qwen.gguf", ["a"], "New-Name");
+
+        Assert.True(result.Succeeded);
+        Assert.Null(pools.Find("old"));
+        Assert.Equal("new-name", pools.Find("new-name")!.Alias);
+        Assert.Equal("new-name", Assert.Single(store.Pools).Alias);
+    }
+
+    [Fact]
+    public void Renaming_onto_an_existing_alias_is_a_conflict()
+    {
+        var store = new MemoryPoolStore
+        {
+            Pools = [new StoredInferencePool("one", "a.gguf", ["a"]), new StoredInferencePool("two", "b.gguf", ["a"])],
+        };
+        var pools = Source(store, [], configured: true);
+
+        Assert.Equal(PoolEditStatus.Conflict, pools.Update("one", "a.gguf", ["a"], "two").Status);
+        Assert.Equal(PoolEditStatus.Conflict, pools.Update("one", "a.gguf", ["a"], "chat").Status);
+        Assert.NotNull(pools.Find("one"));
+    }
+
+    [Fact]
     public void A_missing_alias_or_console_is_rejected()
     {
         var pools = Source(new MemoryPoolStore(), [], configured: false);

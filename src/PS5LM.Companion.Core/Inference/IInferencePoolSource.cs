@@ -45,7 +45,8 @@ public interface IInferencePoolSource
 
     PoolEditResult Add(string alias, string model, IReadOnlyList<string> consoles);
 
-    PoolEditResult Update(string alias, string model, IReadOnlyList<string> consoles);
+    /// <summary>Replaces a user pool. A <paramref name="newAlias"/> different from <paramref name="alias"/> renames it.</summary>
+    PoolEditResult Update(string alias, string model, IReadOnlyList<string> consoles, string? newAlias = null);
 
     PoolEditResult Remove(string alias);
 }

@@ -8,7 +8,7 @@
         {
             <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3">@string.Join(" ", _errors)</MudAlert>
         }
-        <MudTextField @bind-Value="_alias" Label="Alias" ReadOnly="@(!_adding)" HelperText="The model name clients send." Class="mb-2" />
+        <MudTextField @bind-Value="_alias" Label="Alias" HelperText="@(_adding ? "The model name clients send." : "The model name clients send. Changing it renames the pool; clients must use the new name.")" Class="mb-2" />
         <MudTextField @bind-Value="_model" Label="Model" Class="mb-2" HelperText="A file name such as qwen.gguf, or the path llama-server reports." />
         @if (_suggestions.Count > 0)
         {
@@ -40,6 +40,7 @@
     private int _suggestGeneration;
     private bool _adding = true;
     private string _alias = string.Empty;
+    private string _originalAlias = string.Empty;
     private string _model = string.Empty;
     private IReadOnlyCollection<string> _selected = [];
 
@@ -68,6 +69,7 @@
 
         _adding = false;
         _alias = pool.Alias;
+        _originalAlias = pool.Alias;
         _model = pool.Model;
         _selected = pool.Consoles.ToList();
         await SuggestAsync();
@@ -130,7 +132,7 @@
         {
             result = _adding
                 ? Pools.Add(_alias, _model, _selected.ToList())
-                : Pools.Update(_alias, _model, _selected.ToList());
+                : Pools.Update(_originalAlias, _model, _selected.ToList(), _alias);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
