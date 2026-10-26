@@ -62,12 +62,15 @@ stored in `data/consoles.json` and apply without a restart. A stored console who
 | `PS5:Consoles:{id}:PayloadManagerUrl` | `http://{Host}:8084` | Payload Manager base URL when it is not on port 8084 of the console |
 | `PS5:Consoles:{id}:Variant` | auto | `PS5LM` or `PS5LMPlus`; required when both apps are installed |
 | `PS5:Consoles:{id}:PollIntervalSeconds` | 3 | Status refresh interval |
+| `PS5:Consoles:{id}:DiscoveryCacheSeconds` / `LoadGraceSeconds` | 30 / 600 | How long an app installation lookup is reused; how long the status stays "loading" after a load request while port 8081 is closed |
 | `Companion:AccessToken` | none | Shared secret for the dashboard and `/api` (bearer token or login cookie) |
 | `Companion:AllowAnonymous` | false | Allow a network listener without a token (trusted networks only) |
 | `Companion:DataDirectory` | `data` | Download cache, transfer list and `consoles.json` (`/data` in the Docker image; mount a volume) |
 | `HuggingFace:Token` | none | Access token, only for gated or private repositories |
 | `Inference:Pools:{alias}:Model` / `Consoles:{n}` | none | Opt-in [inference gateway](#inference-gateway): the model and the consoles that serve it |
 | `Inference:Pools:{alias}:AlternateNames:{n}` | none | Extra `model` names (exact, or a prefix ending in `*`) that reach the pool |
+| `Inference:MaxConcurrentPerConsole` / `MaxQueuedRequests` / `QueueTimeoutSeconds` | 1 / 16 / 30 | Per-console slots, waiting requests, and how long a request waits (see [Inference gateway](#inference-gateway)) |
+| `Inference:UpstreamTimeoutSeconds` / `MaxRequestBodyMegabytes` | 900 / 32 | Silence timeout for a forwarded request; body size read to find the model |
 
 The companion refuses to start on a non-loopback address without `Companion:AccessToken`, unless
 `Companion:AllowAnonymous` is set. The check covers `urls`/`ASPNETCORE_URLS`, `HTTP_PORTS`, `HTTPS_PORTS` and
@@ -101,6 +104,8 @@ pages, and the top bar names the console the page shows. Every console keeps bei
 - **Status** (`/consoles/{id}`): lifecycle, loaded model, generation speed, sensors, drive space, and the payload dependencies. Launch sends an installed payload through Payload Manager. The result confirms the file was transferred. Whether kstuff-lite, etaHEN and ShadowMountPlus are running comes from the process list.
 - **Models** (`/consoles/{id}/models`): models on the console with Load, Unload and Delete. Delete removes the selected file; see [Deleting models](docs/model-deletion.md).
 - **Downloads** (`/consoles/{id}/downloads`): search Hugging Face, queue a file, watch download and upload progress, cancel.
+- **Inference** (`/inference`): add, edit, rename and delete pools, see which consoles can serve each, run the self-test and benchmark, and download a pool's model to consoles that lack it.
+- **Manage consoles** (`/settings/consoles`): add, edit and remove consoles, scan the local network for them, and test settings before saving.
 
 With `Companion:AccessToken` set, the browser is sent to `/login` once and keeps an HttpOnly cookie.
 
@@ -122,6 +127,8 @@ Console-scoped routes live under `/api/consoles/{consoleId}`; an unknown id retu
 | `GET /api/consoles/{consoleId}/status` | Normalised console status, including payload dependencies |
 | `GET /api/consoles/{consoleId}/dependencies` | Payload installation and health from the latest status check |
 | `POST /api/consoles/{consoleId}/dependencies/{id}/launch` | Launch an installed payload by its stable id (`kstuff-lite`, `etahen`, `shadowmountplus`, `ftpsrv`) |
+| `GET /api/consoles/{consoleId}/apps` | Whether PS5LM and PS5LM Plus are installed and in the foreground (VoidShell or websrv) |
+| `POST /api/consoles/{consoleId}/apps/{ps5lm\|ps5lmplus}/launch` | Launch the app; `.../close` asks it to quit through its `quit` command file |
 | `GET /api/consoles/{consoleId}/models` | Models on the console and the storage locations that accept uploads |
 | `POST /api/consoles/{consoleId}/models/load` | `{ "path": "<appPath from models>" }`; only known model paths are accepted |
 | `POST /api/consoles/{consoleId}/models/unload` | Unload the current model |
@@ -183,6 +190,8 @@ and the `X-PS5LM-Pool` response header names the pool that answered.
 | `POST /api/inference/pools` | Add a pool (`alias`, `model`, `consoles`). A configuration alias returns `409` |
 | `PUT /api/inference/pools/{alias}` | Replace a user pool; an optional `alias` in the body renames it. A configuration pool or an existing target alias returns `409` |
 | `DELETE /api/inference/pools/{alias}` | Remove a user pool. A request already admitted finishes |
+| `GET /api/inference/pools/{alias}/models` | Every model file found on the pool's consoles and which consoles have it |
+| `POST /api/inference/pools/{alias}/test`, `/benchmark`; `GET .../results` | Self-test, benchmark and their latest results (see below) |
 | `POST /api/inference/pools/{alias}/sync` | Queue the pool model's download on every pool console that lacks it (see below). `409` when no console has the model or its source is unknown |
 
 Not forwarded: `/props`, `/slots`, `/lora-adapters`, `/metrics`, `/models/*`, the web UI, `/v1/embeddings` and
@@ -216,7 +225,7 @@ Behaviour:
 - **Download to missing consoles:** the button on each pool card (and `POST /api/inference/pools/{alias}/sync`) finds a pool console
   that has the model and learns where it came from: first the finished entries of PS5LM's `downloads.json` in its state folder
   (the PS5LM in-app download list; renamed copies are skipped), then the companion's own completed transfers. It then queues the
-  same Hugging Face download on each pool console that lacks the file; progress shows on that console's Transfers page.
+  same Hugging Face download on each pool console that lacks the file; progress shows on that console's Downloads page.
 
 ## Planned MCP agent runtime
 
