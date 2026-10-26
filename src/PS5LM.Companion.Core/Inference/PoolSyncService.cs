@@ -33,7 +33,7 @@ public enum PoolSyncOutcome
 
 public sealed record PoolSyncEntry(string ConsoleId, PoolSyncOutcome Outcome, string? Message);
 
-public sealed record PoolModel(string FileName, long SizeBytes, IReadOnlyList<string> Holders, bool IsPoolModel);
+public sealed record PoolModel(string FileName, long SizeBytes, IReadOnlyList<string> Holders, bool IsPoolModel, bool HasSource);
 
 public sealed record PoolModelsResult(PoolSyncStatus Status, IReadOnlyList<PoolModel> Models);
 
@@ -110,16 +110,26 @@ public sealed class PoolSyncService(IInferencePoolSource pools, IConsoleRegistry
         }
 
         var (_, listings) = await ScanAsync(pool, cancellationToken);
-        var models = listings
+        var models = new List<PoolModel>();
+        var groups = listings
             .SelectMany(l => l.Files.Where(f => !f.IsProjector).Select(f => (l.Console, File: f)))
             .GroupBy(x => x.File.FileName, StringComparer.OrdinalIgnoreCase)
-            .Select(g => new PoolModel(
+            .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase);
+        foreach (var g in groups)
+        {
+            var holders = g.Select(x => x.Console.Id).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+            // Nothing to copy when every reachable console has it, so no source is needed.
+            var hasSource = holders.Count >= listings.Count
+                || await FindSourceAsync(g.Select(x => (x.Console, x.File)).ToList(), cancellationToken) is not null;
+            models.Add(new PoolModel(
                 g.First().File.FileName,
                 g.Max(x => x.File.SizeBytes),
-                g.Select(x => x.Console.Id).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
-                g.Any(x => ModelNames.MatchesConfigured(x.File.AppPath, pool.Model))))
-            .OrderBy(m => m.FileName, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+                holders,
+                g.Any(x => ModelNames.MatchesConfigured(x.File.AppPath, pool.Model)),
+                hasSource));
+        }
+
         return new PoolModelsResult(PoolSyncStatus.Ok, models);
     }
 

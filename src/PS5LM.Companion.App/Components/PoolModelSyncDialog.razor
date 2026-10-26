@@ -19,10 +19,10 @@
                 @foreach (var model in _models)
                 {
                     var complete = model.Holders.Count >= _total;
-                    <MudListItem T="string" Value="@model.FileName" Disabled="@complete">
+                    <MudListItem T="string" Value="@model.FileName" Disabled="@(complete || !model.HasSource)">
                         <div style="overflow-wrap:anywhere;">@model.FileName</div>
                         <MudText Typo="Typo.caption" Color="Color.Secondary">
-                            @Size(model.SizeBytes) - on @string.Join(", ", model.Holders) (@model.Holders.Count of @_total)@(model.IsPoolModel ? " - pool model" : "")
+                            @Size(model.SizeBytes) - on @string.Join(", ", model.Holders) (@model.Holders.Count of @_total)@(model.IsPoolModel ? " - pool model" : "")@(!complete && !model.HasSource ? " - source unknown" : "")
                         </MudText>
                     </MudListItem>
                 }

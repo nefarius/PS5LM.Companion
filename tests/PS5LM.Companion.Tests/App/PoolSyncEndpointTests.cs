@@ -170,6 +170,8 @@ public sealed class PoolSyncEndpointTests
         Assert.True(models["tiny-Q4.gguf"].GetProperty("isPoolModel").GetBoolean());
         Assert.Equal(1, models["other-BF16.gguf"].GetProperty("holders").GetArrayLength());
         Assert.False(models["other-BF16.gguf"].GetProperty("isPoolModel").GetBoolean());
+        Assert.True(models["tiny-Q4.gguf"].GetProperty("hasSource").GetBoolean());
+        Assert.False(models["other-BF16.gguf"].GetProperty("hasSource").GetBoolean());
     }
 
     [Fact]
