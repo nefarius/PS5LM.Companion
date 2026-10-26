@@ -381,7 +381,7 @@ Set model-quality thresholds after baseline measurement: repeated-run task succe
 | --- | --- |
 | Source | Registered repositories at exact commits; dirty snapshots later. |
 | Execution | Dedicated Linux sandbox workers for compatible web builds. |
-| Persistence | Existing durable DB plus private artifact storage. |
+| Persistence | Proposed SQLite on a local persistent volume for a single coordinator, plus private artifact storage. |
 | Inference | Native Ollama adapter, qualified pools, conservative reservations. |
 | Delegation | Single agent; optional independent review afterward. |
 | Integration | Patch and report; no automatic push/merge. |
@@ -569,3 +569,13 @@ Consulted 26 October 2026. Recheck version-sensitive details when pinning depend
 9. [MCP Security Best Practices](https://modelcontextprotocol.io/docs/2026-07-28/tutorials/security/security_best_practices) — credential, SSRF and deputy concerns.
 10. [Cursor: MCP](https://cursor.com/docs/mcp) — client configuration and tool behavior.
 11. [OpenAI: Custom MCP servers](https://developers.openai.com/api/docs/guides/custom-mcp-server) — hosted-client connection options.
+
+[1]: https://docs.ollama.com/capabilities/tool-calling
+[2]: https://docs.ollama.com/api/tags
+[3]: https://docs.ollama.com/api/ps
+[4]: https://modelcontextprotocol.io/specification/2026-07-28/basic/transports
+[5]: https://modelcontextprotocol.github.io/ext-tasks/specification/2026-07-28/tasks.html
+[6]: https://github.com/modelcontextprotocol/csharp-sdk
+[7]: https://docs.ollama.com/api/chat
+[8]: https://docs.ollama.com/faq
+[9]: https://modelcontextprotocol.io/docs/2026-07-28/tutorials/security/security_best_practices
