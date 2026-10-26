@@ -57,6 +57,11 @@ public sealed partial class InferenceOptionsValidator(IOptions<ConsolesOptions> 
                 failures.Add($"Inference:Pools:{alias}: list at least one console id under Consoles.");
             }
 
+            foreach (var error in InferencePoolRules.Errors(alias, pool.Model, pool.Consoles, _ => true, pool.AlternateNames).Where(e => e.StartsWith("The alternate name", StringComparison.Ordinal)))
+            {
+                failures.Add($"Inference:Pools:{alias}: {error}");
+            }
+
             var seen = new HashSet<string>(StringComparer.Ordinal);
             foreach (var id in pool.Consoles.Select(c => (c ?? string.Empty).ToLowerInvariant()))
             {
@@ -70,6 +75,8 @@ public sealed partial class InferenceOptionsValidator(IOptions<ConsolesOptions> 
                 }
             }
         }
+
+        failures.AddRange(InferencePoolNames.Conflicts(options.Pools.Select(p => (p.Key, (IReadOnlyList<string>)p.Value.AlternateNames))).Select(e => $"Inference:Pools: {e}"));
 
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }

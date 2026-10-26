@@ -21,7 +21,7 @@ public sealed class HybridInferencePools : IInferencePoolSource
         _store = store;
         _warn = warn;
         var pools = options.Pools
-            .Select(pair => new InferencePool(pair.Key.Trim().ToLowerInvariant(), pair.Value.Model, Normalize(pair.Value.Consoles), InferencePoolOrigin.Configuration))
+            .Select(pair => new InferencePool(pair.Key.Trim().ToLowerInvariant(), pair.Value.Model, Normalize(pair.Value.Consoles), InferencePoolOrigin.Configuration, InferencePoolRules.NormalizeNames(pair.Value.AlternateNames)))
             .ToList();
         if (store is not null)
         {
@@ -34,7 +34,16 @@ public sealed class HybridInferencePools : IInferencePoolSource
                     continue;
                 }
 
-                pools.Add(new InferencePool(stored.Alias, stored.Model, stored.Consoles, InferencePoolOrigin.User));
+                var candidate = new InferencePool(stored.Alias, stored.Model, stored.Consoles, InferencePoolOrigin.User, InferencePoolRules.NormalizeNames(stored.AlternateNames));
+                var clashes = InferencePoolNames.Conflicts(pools.Append(candidate).Select(p => (p.Alias, p.Names)));
+                if (clashes.Count > 0)
+                {
+                    warn?.Invoke($"Stored pool '{stored.Alias}' is ignored: {string.Join(" ", clashes)}");
+                    _hidden.Add(stored);
+                    continue;
+                }
+
+                pools.Add(candidate);
             }
         }
 
@@ -67,10 +76,19 @@ public sealed class HybridInferencePools : IInferencePoolSource
         }
     }
 
-    public PoolEditResult Add(string alias, string model, IReadOnlyList<string> consoles) => Edit(alias, model, consoles, replacing: false, newAlias: null);
+    public InferencePool? Resolve(string? model)
+    {
+        lock (_gate)
+        {
+            return _state.Names.Resolve(model) is { } alias && _state.ByAlias.TryGetValue(alias, out var pool) ? pool : null;
+        }
+    }
 
-    public PoolEditResult Update(string alias, string model, IReadOnlyList<string> consoles, string? newAlias = null) =>
-        Edit(alias, model, consoles, replacing: true, newAlias);
+    public PoolEditResult Add(string alias, string model, IReadOnlyList<string> consoles, IReadOnlyList<string>? alternateNames = null) =>
+        Edit(alias, model, consoles, replacing: false, newAlias: null, alternateNames);
+
+    public PoolEditResult Update(string alias, string model, IReadOnlyList<string> consoles, string? newAlias = null, IReadOnlyList<string>? alternateNames = null) =>
+        Edit(alias, model, consoles, replacing: true, newAlias, alternateNames);
 
     public PoolEditResult Remove(string alias)
     {
@@ -111,20 +129,21 @@ public sealed class HybridInferencePools : IInferencePoolSource
         return new PoolEditResult(PoolEditStatus.Ok, null, removed);
     }
 
-    private PoolEditResult Edit(string alias, string model, IReadOnlyList<string> consoles, bool replacing, string? newAlias)
+    private PoolEditResult Edit(string alias, string model, IReadOnlyList<string> consoles, bool replacing, string? newAlias, IReadOnlyList<string>? alternateNames)
     {
         var key = alias?.Trim().ToLowerInvariant() ?? "";
         var target = newAlias is null ? key : newAlias.Trim().ToLowerInvariant();
-        var errors = InferencePoolRules.Errors(target, model, consoles, id => _consoles.Find(id) is not null);
+        var errors = InferencePoolRules.Errors(target, model, consoles, id => _consoles.Find(id) is not null, alternateNames);
         if (errors.Count > 0)
         {
             return new PoolEditResult(PoolEditStatus.Invalid, string.Join(" ", errors));
         }
 
-        var pool = new InferencePool(target, model.Trim(), Normalize(consoles), InferencePoolOrigin.User);
         lock (_gate)
         {
             _state.ByAlias.TryGetValue(key, out var previous);
+            var names = alternateNames is null && previous is not null ? previous.Names.ToList() : InferencePoolRules.NormalizeNames(alternateNames);
+            var pool = new InferencePool(target, model.Trim(), Normalize(consoles), InferencePoolOrigin.User, names);
             if (!replacing && previous is not null)
             {
                 return new PoolEditResult(PoolEditStatus.Conflict, $"A pool with alias '{key}' already exists.");
@@ -145,10 +164,23 @@ public sealed class HybridInferencePools : IInferencePoolSource
                 return new PoolEditResult(PoolEditStatus.Conflict, $"A pool with alias '{target}' already exists.");
             }
 
+            // Names kept from the previous pool were checked against the old alias. A rename must not keep the new alias.
+            var nameErrors = InferencePoolRules.Errors(target, model, consoles, id => _consoles.Find(id) is not null, names);
+            if (nameErrors.Count > 0)
+            {
+                return new PoolEditResult(PoolEditStatus.Invalid, string.Join(" ", nameErrors));
+            }
+
+            var kept = _state.All.Where(item => !string.Equals(item.Alias, key, StringComparison.OrdinalIgnoreCase)).ToList();
+            var clashes = InferencePoolNames.Conflicts(kept.Append(pool).Select(p => (p.Alias, p.Names)));
+            if (clashes.Count > 0)
+            {
+                return new PoolEditResult(PoolEditStatus.Conflict, string.Join(" ", clashes));
+            }
+
             var backup = _state;
             try
             {
-                var kept = _state.All.Where(item => !string.Equals(item.Alias, key, StringComparison.OrdinalIgnoreCase));
                 _state = State.From(kept.Append(pool));
                 Persist();
             }
@@ -160,7 +192,7 @@ public sealed class HybridInferencePools : IInferencePoolSource
         }
 
         Changed?.Invoke();
-        return new PoolEditResult(PoolEditStatus.Ok, null, pool);
+        return new PoolEditResult(PoolEditStatus.Ok, null, Find(target));
     }
 
     private static List<string> Normalize(IReadOnlyList<string> consoles) =>
@@ -175,7 +207,7 @@ public sealed class HybridInferencePools : IInferencePoolSource
 
         var pools = _state.All
             .Where(pool => pool.Origin == InferencePoolOrigin.User)
-            .Select(pool => new StoredInferencePool(pool.Alias, pool.Model, pool.Consoles))
+            .Select(pool => new StoredInferencePool(pool.Alias, pool.Model, pool.Consoles, pool.Names))
             .ToList();
         foreach (var hidden in _hidden)
         {
@@ -196,6 +228,8 @@ public sealed class HybridInferencePools : IInferencePoolSource
 
         public required Dictionary<string, InferencePool> ByAlias { get; init; }
 
+        public required InferencePoolNames Names { get; init; }
+
         public static State From(IEnumerable<InferencePool> pools)
         {
             var ordered = pools.OrderBy(pool => pool.Alias, StringComparer.OrdinalIgnoreCase).ToList();
@@ -203,6 +237,7 @@ public sealed class HybridInferencePools : IInferencePoolSource
             {
                 All = ordered,
                 ByAlias = ordered.ToDictionary(pool => pool.Alias, StringComparer.OrdinalIgnoreCase),
+                Names = new InferencePoolNames(ordered.Select(pool => (pool.Alias, pool.Names))),
             };
         }
     }

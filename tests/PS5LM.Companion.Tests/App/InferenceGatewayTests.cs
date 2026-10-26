@@ -109,6 +109,20 @@ public sealed class InferenceGatewayTests
         Assert.Equal("a", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("upstream").GetString());
     }
 
+    [Fact]
+    public async Task An_alternate_name_reaches_the_pool_and_stays_out_of_the_model_list()
+    {
+        await using var cluster = await Cluster.StartAsync(["a"], new Dictionary<string, string> { ["Inference:Pools:chat:AlternateNames:0"] = "claude-*" });
+        using var client = cluster.Factory.CreateClient();
+
+        using var response = await client.PostAsync("/v1/chat/completions", Json("""{"model":"claude-sonnet-4-5","messages":[]}"""));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("chat", response.Headers.GetValues("X-PS5LM-Pool").Single());
+        var models = await client.GetFromJsonAsync<JsonElement>("/v1/models");
+        Assert.Equal("chat", Assert.Single(models.GetProperty("data").EnumerateArray()).GetProperty("id").GetString());
+    }
+
     [Theory]
     [InlineData("/v1/completions")]
     [InlineData("/v1/responses")]

@@ -59,6 +59,16 @@ else
                 <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Speed" Class="ml-2" Disabled="@(running || pool.EligibleReplicas == 0)"
                            OnClick="@(() => RunAsync(pool.Alias, SelfTestKind.Benchmark))">Benchmark</MudButton>
             </MudStack>
+            @if (pool.AlternateNames is { Count: > 0 })
+            {
+                <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="1" Class="mb-2">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Also answers to</MudText>
+                    @foreach (var name in pool.AlternateNames)
+                    {
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@name</MudChip>
+                    }
+                </MudStack>
+            }
 
             @if (running)
             {

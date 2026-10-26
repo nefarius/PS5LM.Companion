@@ -104,10 +104,12 @@ public sealed record InferencePoolBody
     public string Model { get; set; } = string.Empty;
 
     public List<string> Consoles { get; set; } = [];
+
+    public List<string>? AlternateNames { get; set; }
 }
 
 /// <summary>A new <c>Alias</c> different from the route alias renames the pool.</summary>
-public sealed record InferencePoolSettings(string Model, List<string> Consoles, [property: System.Text.Json.Serialization.JsonPropertyName("alias")] string? NewAlias = null);
+public sealed record InferencePoolSettings(string Model, List<string> Consoles, [property: System.Text.Json.Serialization.JsonPropertyName("alias")] string? NewAlias = null, List<string>? AlternateNames = null);
 
 public sealed class CreateInferencePoolEndpoint(IInferencePoolSource pools) : Endpoint<InferencePoolBody>
 {
@@ -119,7 +121,7 @@ public sealed class CreateInferencePoolEndpoint(IInferencePoolSource pools) : En
     }
 
     public override async Task HandleAsync(InferencePoolBody request, CancellationToken ct) =>
-        await Send.ResultAsync(PoolEdits.From(pools.Add(request.Alias, request.Model, request.Consoles), created: true));
+        await Send.ResultAsync(PoolEdits.From(pools.Add(request.Alias, request.Model, request.Consoles, request.AlternateNames), created: true));
 }
 
 public sealed class UpdateInferencePoolEndpoint(IInferencePoolSource pools) : Endpoint<InferencePoolSettings>
@@ -132,7 +134,7 @@ public sealed class UpdateInferencePoolEndpoint(IInferencePoolSource pools) : En
     }
 
     public override async Task HandleAsync(InferencePoolSettings request, CancellationToken ct) =>
-        await Send.ResultAsync(PoolEdits.From(pools.Update(Route<string>("alias") ?? "", request.Model, request.Consoles, request.NewAlias)));
+        await Send.ResultAsync(PoolEdits.From(pools.Update(Route<string>("alias") ?? "", request.Model, request.Consoles, request.NewAlias, request.AlternateNames)));
 }
 
 public sealed class DeleteInferencePoolEndpoint(IInferencePoolSource pools) : EndpointWithoutRequest

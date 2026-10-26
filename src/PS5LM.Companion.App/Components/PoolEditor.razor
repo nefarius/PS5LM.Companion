@@ -9,6 +9,7 @@
             <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3">@string.Join(" ", _errors)</MudAlert>
         }
         <MudTextField @bind-Value="_alias" Label="Alias" HelperText="@(_adding ? "The model name clients send." : "The model name clients send. Changing it renames the pool; clients must use the new name.")" Class="mb-2" />
+        <MudTextField @bind-Value="_names" Label="Alternate model names" Lines="2" Class="mb-2" HelperText="Other model names clients may send, one per line or comma-separated. A trailing * matches a prefix, e.g. claude-*." />
         <MudTextField @bind-Value="_model" Label="Model" Class="mb-2" HelperText="A file name such as qwen.gguf, or the path llama-server reports." />
         @if (_suggestions.Count > 0)
         {
@@ -42,6 +43,7 @@
     private string _alias = string.Empty;
     private string _originalAlias = string.Empty;
     private string _model = string.Empty;
+    private string _names = string.Empty;
     private IReadOnlyCollection<string> _selected = [];
 
     [CascadingParameter]
@@ -71,6 +73,7 @@
         _alias = pool.Alias;
         _originalAlias = pool.Alias;
         _model = pool.Model;
+        _names = string.Join(Environment.NewLine, pool.Names);
         _selected = pool.Consoles.ToList();
         await SuggestAsync();
     }
@@ -128,11 +131,12 @@
     {
         _errors.Clear();
         PoolEditResult result;
+        var names = _names.Split(['\n', '\r', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
         try
         {
             result = _adding
-                ? Pools.Add(_alias, _model, _selected.ToList())
-                : Pools.Update(_originalAlias, _model, _selected.ToList(), _alias);
+                ? Pools.Add(_alias, _model, _selected.ToList(), names)
+                : Pools.Update(_originalAlias, _model, _selected.ToList(), _alias, names);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
