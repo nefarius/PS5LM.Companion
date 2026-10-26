@@ -119,8 +119,8 @@ public sealed class PoolSyncService(IInferencePoolSource pools, IConsoleRegistry
         {
             var holders = g.Select(x => x.Console.Id).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
-            // Nothing to copy when every reachable console has it, so no source is needed.
-            var hasSource = holders.Count >= listings.Count
+            // Nothing to copy when every configured console has it, so no source is needed.
+            var hasSource = holders.Count >= pool.Consoles.Count
                 || await FindSourceAsync(g.Select(x => (x.Console, x.File)).ToList(), cancellationToken) is not null;
             models.Add(new PoolModel(
                 g.First().File.FileName,
