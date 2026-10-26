@@ -69,7 +69,7 @@ A text-only MCP host may need a download or companion for integration. Explicitl
 
 ## 4. MCP contract
 
-Expose authenticated Streamable HTTP from the web project. Pin SDK and protocol versions, then test exact installed clients. Current MCP transport and Tasks behavior differs from earlier revisions; do not assume the newest spec is implemented everywhere [4][5].
+Expose authenticated Streamable HTTP from the web project. Pin SDK and protocol versions, then test exact installed clients. Current MCP transport and Tasks behavior differs from earlier revisions; do not assume the newest spec is implemented everywhere [4], [5].
 
 | Tool | Purpose | Constraints |
 | --- | --- | --- |
@@ -191,7 +191,7 @@ Record exit status, timeout/cancellation reason, duration, cwd, toolchain, outpu
 
 ### Inventory and qualification
 
-Poll administratively registered endpoints. Use `/api/tags` for available model digests/details and `/api/ps` for loaded-model observations [2][3]. Record Ollama version, model digest, quantization, configured context, qualification results and measured latency. Tags alone are not immutable identities.
+Poll administratively registered endpoints. Use `/api/tags` for available model digests/details and `/api/ps` for loaded-model observations [2], [3]. Record Ollama version, model digest, quantization, configured context, qualification results and measured latency. Tags alone are not immutable identities.
 
 For the existing PS5 backends, start with an OpenAI-compatible chat adapter behind a provider-neutral interface and preserve shared gateway admission. For additional native Ollama endpoints, use `/api/chat`, which supplies tools, runtime options, formats and metrics [7]. This MCP design does not require Ollama to implement the Responses API.
 
