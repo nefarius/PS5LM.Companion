@@ -37,4 +37,21 @@ public static class DriveSpaceLocator
 
         return drive is { TotalBytes: > 0 } ? drive.FreeBytes : null;
     }
+
+    /// <summary>
+    /// The filesystem that holds <c>/data</c>. ps5-exporter lists that directory as its own nullfs mount;
+    /// when the mount is absent, <c>/user</c> is the same partition (<c>/data</c> is <c>/user/data</c>).
+    /// </summary>
+    public static DriveSpace? DataMount(ConsoleSensors? sensors)
+    {
+        if (sensors is null)
+        {
+            return null;
+        }
+
+        return Mount(sensors, "/data") ?? Mount(sensors, "/user");
+    }
+
+    private static DriveSpace? Mount(ConsoleSensors sensors, string mountPoint) =>
+        sensors.Drives.FirstOrDefault(drive => drive.MountPoint == mountPoint && drive.TotalBytes > 0);
 }

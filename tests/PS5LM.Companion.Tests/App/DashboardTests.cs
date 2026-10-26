@@ -122,7 +122,11 @@ public sealed class DashboardTests
             Variant = PS5Variant.PS5LM,
             LoadedModel = "qwen.gguf",
             Telemetry = new TelemetrySnapshot(10, 4, 0, 12.5, 40, checkedAt),
-            Sensors = new ConsoleSensors(61.2, null, null, null, [new DriveSpace("/data", 1000, 250)]),
+            Sensors = new ConsoleSensors(61.2, null, null, null,
+            [
+                new DriveSpace("/system_tmp", 2_000_000, 804 * 1024),
+                new DriveSpace("/data", 1000, 250),
+            ]),
             UpdatedAt = checkedAt,
             PayloadManagerAvailable = false,
             Dependencies =
@@ -149,9 +153,10 @@ public sealed class DashboardTests
         Assert.Contains("den", html);
         Assert.Contains("room", html);
         Assert.Contains("qwen.gguf", html);
-        Assert.Contains("12.5 tokens/s", html);
-        Assert.Contains("61.2", html);
+        Assert.Matches(@"12[.,]5 tokens/s", html);
+        Assert.Matches(@"61[.,]2", html);
         Assert.Contains("250 B free", html);
+        Assert.DoesNotContain("804 KiB", html);
         Assert.Contains("Unload the model on den", html);
         Assert.Contains("Payload Manager unreachable", html);
         Assert.Contains("Required payloads missing", html);

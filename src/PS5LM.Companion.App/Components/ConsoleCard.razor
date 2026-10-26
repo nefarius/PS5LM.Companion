@@ -8,7 +8,7 @@
     var transfers = Transfers.Snapshot(Console.Id);
     var running = transfers.FirstOrDefault(transfer => transfer.IsActive && transfer.State != TransferState.Queued);
     var queued = transfers.Count(transfer => transfer.State == TransferState.Queued);
-    var space = LowestFree(status);
+    var space = DriveSpaceLocator.DataMount(status.Sensors);
 }
 
 <MudPaper Class="pa-4" Elevation="1">
@@ -98,9 +98,6 @@
 
         return parts.Count == 0 ? null : string.Join(". ", parts) + ".";
     }
-
-    private static DriveSpace? LowestFree(CompanionStatus status) =>
-        status.Sensors?.Drives.Where(drive => drive.TotalBytes > 0).OrderBy(drive => drive.FreeBytes).FirstOrDefault();
 
     private async Task UnloadAsync()
     {
