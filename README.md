@@ -1,5 +1,7 @@
 # PS5LM Companion
 
+<img src="src/PS5LM.Companion.App/wwwroot/logo.png" alt="PS5LM Companion" width="64" height="64" />
+
 Headless web dashboard that manages models and monitors a PS5 running PS5LM or PS5LM Plus, from any browser on your network.
 
 ## About

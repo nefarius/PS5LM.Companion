@@ -22,6 +22,9 @@ public sealed class DashboardTests
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("PS5LM Companion", html);
+        Assert.Contains("app-brand", html);
+        Assert.Contains("rel=\"icon\"", html);
+        Assert.Contains("apple-touch-icon", html);
         Assert.Contains("_content/MudBlazor/MudBlazor.min.js", html);
         Assert.Contains("_framework/blazor.web.js", html);
         Assert.Contains("<h1", html);
