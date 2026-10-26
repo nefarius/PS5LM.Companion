@@ -33,6 +33,10 @@ public enum PoolSyncOutcome
 
 public sealed record PoolSyncEntry(string ConsoleId, PoolSyncOutcome Outcome, string? Message);
 
+public sealed record PoolModel(string FileName, long SizeBytes, IReadOnlyList<string> Holders, bool IsPoolModel);
+
+public sealed record PoolModelsResult(PoolSyncStatus Status, IReadOnlyList<PoolModel> Models);
+
 public sealed record PoolSyncResult(PoolSyncStatus Status, string? Message, ModelSource? Source, IReadOnlyList<PoolSyncEntry> Consoles);
 
 /// <summary>
@@ -41,7 +45,7 @@ public sealed record PoolSyncResult(PoolSyncStatus Status, string? Message, Mode
 /// </summary>
 public sealed class PoolSyncService(IInferencePoolSource pools, IConsoleRegistry consoles, TransferService transfers)
 {
-    public async Task<PoolSyncResult> SyncAsync(string alias, CancellationToken cancellationToken)
+    public async Task<PoolSyncResult> SyncAsync(string alias, string? model, CancellationToken cancellationToken)
     {
         var pool = pools.Find(alias);
         if (pool is null)
@@ -49,9 +53,82 @@ public sealed class PoolSyncService(IInferencePoolSource pools, IConsoleRegistry
             return new PoolSyncResult(PoolSyncStatus.NotFound, "That pool does not exist.", null, []);
         }
 
-        var entries = new Dictionary<string, PoolSyncEntry>(StringComparer.OrdinalIgnoreCase);
+        var wanted = string.IsNullOrWhiteSpace(model) ? pool.Model : model.Trim();
+        var (entries, listings) = await ScanAsync(pool, cancellationToken);
         var holders = new List<(ConsoleRuntime Console, ModelFile File)>();
         var missing = new List<ConsoleRuntime>();
+
+        foreach (var (runtime, files) in listings)
+        {
+            var match = files.FirstOrDefault(m => !m.IsProjector && ModelNames.MatchesConfigured(m.AppPath, wanted));
+            if (match is null)
+            {
+                missing.Add(runtime);
+            }
+            else
+            {
+                holders.Add((runtime, match));
+                entries[runtime.Id] = new PoolSyncEntry(runtime.Id, PoolSyncOutcome.AlreadyThere, null);
+            }
+        }
+
+        if (holders.Count == 0)
+        {
+            return new PoolSyncResult(PoolSyncStatus.NoModel, $"No console in this pool has {wanted}, so there is nothing to copy.", null, Ordered(pool, entries));
+        }
+
+        if (missing.Count == 0)
+        {
+            return new PoolSyncResult(PoolSyncStatus.Ok, null, null, Ordered(pool, entries));
+        }
+
+        var source = await FindSourceAsync(holders, cancellationToken);
+        if (source is null)
+        {
+            return new PoolSyncResult(
+                PoolSyncStatus.NoSource,
+                $"Where {holders[0].File.FileName} came from is not recorded. Download it once through the companion or PS5LM's own download list, then try again.",
+                null,
+                Ordered(pool, entries));
+        }
+
+        foreach (var runtime in missing)
+        {
+            entries[runtime.Id] = await QueueAsync(runtime, source, wanted, cancellationToken);
+        }
+
+        return new PoolSyncResult(PoolSyncStatus.Ok, null, source, Ordered(pool, entries));
+    }
+
+    /// <summary>Lists every model file found on the pool's reachable consoles, grouped by file name.</summary>
+    public async Task<PoolModelsResult> ListAsync(string alias, CancellationToken cancellationToken)
+    {
+        var pool = pools.Find(alias);
+        if (pool is null)
+        {
+            return new PoolModelsResult(PoolSyncStatus.NotFound, []);
+        }
+
+        var (_, listings) = await ScanAsync(pool, cancellationToken);
+        var models = listings
+            .SelectMany(l => l.Files.Where(f => !f.IsProjector).Select(f => (l.Console, File: f)))
+            .GroupBy(x => x.File.FileName, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new PoolModel(
+                g.First().File.FileName,
+                g.Max(x => x.File.SizeBytes),
+                g.Select(x => x.Console.Id).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+                g.Any(x => ModelNames.MatchesConfigured(x.File.AppPath, pool.Model))))
+            .OrderBy(m => m.FileName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        return new PoolModelsResult(PoolSyncStatus.Ok, models);
+    }
+
+    private async Task<(Dictionary<string, PoolSyncEntry> Failures, List<(ConsoleRuntime Console, IReadOnlyList<ModelFile> Files)> Listings)> ScanAsync(
+        InferencePool pool,
+        CancellationToken cancellationToken)
+    {
+        var entries = new Dictionary<string, PoolSyncEntry>(StringComparer.OrdinalIgnoreCase);
+        var listings = new List<(ConsoleRuntime, IReadOnlyList<ModelFile>)>();
 
         foreach (var id in pool.Consoles)
         {
@@ -72,16 +149,7 @@ public sealed class PoolSyncService(IInferencePoolSource pools, IConsoleRegistry
                 }
 
                 var models = await runtime.Models.ListAsync(installation, runtime.Store.Current.LoadedModel, cancellationToken);
-                var match = models.FirstOrDefault(m => !m.IsProjector && ModelNames.MatchesConfigured(m.AppPath, pool.Model));
-                if (match is null)
-                {
-                    missing.Add(runtime);
-                }
-                else
-                {
-                    holders.Add((runtime, match));
-                    entries[id] = new PoolSyncEntry(id, PoolSyncOutcome.AlreadyThere, null);
-                }
+                listings.Add((runtime, models));
             }
             catch (ConsoleUnreachableException ex)
             {
@@ -89,32 +157,7 @@ public sealed class PoolSyncService(IInferencePoolSource pools, IConsoleRegistry
             }
         }
 
-        if (holders.Count == 0)
-        {
-            return new PoolSyncResult(PoolSyncStatus.NoModel, $"No console in this pool has {pool.Model}, so there is nothing to copy.", null, Ordered(pool, entries));
-        }
-
-        if (missing.Count == 0)
-        {
-            return new PoolSyncResult(PoolSyncStatus.Ok, null, null, Ordered(pool, entries));
-        }
-
-        var source = await FindSourceAsync(holders, cancellationToken);
-        if (source is null)
-        {
-            return new PoolSyncResult(
-                PoolSyncStatus.NoSource,
-                $"Where {holders[0].File.FileName} came from is not recorded. Download it once through the companion or PS5LM's own download list, then try again.",
-                null,
-                Ordered(pool, entries));
-        }
-
-        foreach (var runtime in missing)
-        {
-            entries[runtime.Id] = await QueueAsync(runtime, source, pool.Model, cancellationToken);
-        }
-
-        return new PoolSyncResult(PoolSyncStatus.Ok, null, source, Ordered(pool, entries));
+        return (entries, listings);
     }
 
     private async Task<ModelSource?> FindSourceAsync(List<(ConsoleRuntime Console, ModelFile File)> holders, CancellationToken cancellationToken)
