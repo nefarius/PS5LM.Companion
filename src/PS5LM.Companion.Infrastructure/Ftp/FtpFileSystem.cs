@@ -26,7 +26,7 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
     private static readonly TimeSpan SlowGateWait = TimeSpan.FromSeconds(1);
 
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private (string Name, long Started)? _holder;
+    private Holder? _holder;
 
     public void Dispose() => _gate.Dispose();
 
@@ -227,7 +227,7 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
     private async Task<T> RunAsync<T>(Func<AsyncFtpClient, Task<T>> operation, CancellationToken cancellationToken, [CallerMemberName] string name = "")
     {
         var queued = Stopwatch.GetTimestamp();
-        var holder = _holder;
+        var initialHolder = _holder;
         try
         {
             await _gate.WaitAsync(cancellationToken);
@@ -237,7 +237,7 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
             // The caller (for example the status refresh budget) gave up while another operation held the connection slot.
             logger.LogInformation(
                 "FTP {Operation} on {Host}:{Port} gave up after {WaitedMs} ms waiting behind {Holder}",
-                name, options.Host, options.FtpPort, (long)Stopwatch.GetElapsedTime(queued).TotalMilliseconds, Describe(holder ?? _holder));
+                name, options.Host, options.FtpPort, (long)Stopwatch.GetElapsedTime(queued).TotalMilliseconds, Describe(_holder));
             throw;
         }
 
@@ -245,12 +245,12 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
         if (waited >= SlowGateWait)
         {
             logger.LogInformation(
-                "FTP {Operation} on {Host}:{Port} waited {WaitedMs} ms behind {Holder}",
-                name, options.Host, options.FtpPort, (long)waited.TotalMilliseconds, Describe(holder));
+                "FTP {Operation} on {Host}:{Port} waited {WaitedMs} ms (first behind {Holder})",
+                name, options.Host, options.FtpPort, (long)waited.TotalMilliseconds, initialHolder?.Name ?? "another operation");
         }
 
         var started = Stopwatch.GetTimestamp();
-        _holder = (name, started);
+        _holder = new Holder(name, started);
         try
         {
             await using var client = new AsyncFtpClient(options.Host, "anonymous", "anonymous", options.FtpPort, CreateConfig());
@@ -290,8 +290,11 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
         }
     }
 
-    private static string Describe((string Name, long Started)? holder) =>
-        holder is { } h ? $"{h.Name} (running for {(long)Stopwatch.GetElapsedTime(h.Started).TotalMilliseconds} ms)" : "another operation";
+    /// <summary>The operation that held the slot when it was read. Only call this with the current holder: the running time is measured now.</summary>
+    private static string Describe(Holder? holder) =>
+        holder is null ? "another operation" : $"{holder.Name} (running for {(long)Stopwatch.GetElapsedTime(holder.Started).TotalMilliseconds} ms)";
+
+    private sealed record Holder(string Name, long Started);
 
     private static FtpConfig CreateConfig() => new()
     {
