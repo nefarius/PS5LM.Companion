@@ -62,6 +62,23 @@ public sealed class PoolSyncEndpointTests
     }
 
     [Fact]
+    public async Task Succeeds_without_a_source_when_every_console_has_the_model()
+    {
+        await using var factory = Create("office", "lab");
+        factory.Connectors["office"].FileSystem.AddFile($"{Models}/tiny-Q4.gguf", new byte[3]);
+        factory.Connectors["lab"].FileSystem.AddFile($"{Models}/tiny-Q4.gguf", new byte[3]);
+        using var client = factory.CreateClient();
+        await WaitForStatusAsync(factory);
+
+        using var response = await client.PostAsync("/api/inference/pools/chat/sync", null);
+        var body = await BodyAsync(response);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.All(body.GetProperty("consoles").EnumerateArray(), c => Assert.Equal("AlreadyThere", c.GetProperty("outcome").GetString()));
+        Assert.Empty(factory.Services.GetRequiredService<TransferService>().Snapshot());
+    }
+
+    [Fact]
     public async Task Reports_conflict_when_the_source_is_unknown()
     {
         await using var factory = Create("office", "lab");

@@ -94,6 +94,11 @@ public sealed class PoolSyncService(IInferencePoolSource pools, IConsoleRegistry
             return new PoolSyncResult(PoolSyncStatus.NoModel, $"No console in this pool has {pool.Model}, so there is nothing to copy.", null, Ordered(pool, entries));
         }
 
+        if (missing.Count == 0)
+        {
+            return new PoolSyncResult(PoolSyncStatus.Ok, null, null, Ordered(pool, entries));
+        }
+
         var source = await FindSourceAsync(holders, cancellationToken);
         if (source is null)
         {
@@ -106,7 +111,7 @@ public sealed class PoolSyncService(IInferencePoolSource pools, IConsoleRegistry
 
         foreach (var runtime in missing)
         {
-            entries[runtime.Id] = await QueueAsync(runtime, source, cancellationToken);
+            entries[runtime.Id] = await QueueAsync(runtime, source, pool.Model, cancellationToken);
         }
 
         return new PoolSyncResult(PoolSyncStatus.Ok, null, source, Ordered(pool, entries));
@@ -149,11 +154,25 @@ public sealed class PoolSyncService(IInferencePoolSource pools, IConsoleRegistry
         return null;
     }
 
-    private async Task<PoolSyncEntry> QueueAsync(ConsoleRuntime runtime, ModelSource source, CancellationToken cancellationToken)
+    private async Task<PoolSyncEntry> QueueAsync(ConsoleRuntime runtime, ModelSource source, string configuredModel, CancellationToken cancellationToken)
     {
         try
         {
-            var (result, _) = await transfers.EnqueueAsync(new TransferRequest(runtime.Id, source.Repo, source.FileName, null), cancellationToken);
+            // A model configured with a path must land on the storage root that path points into.
+            string? targetRoot = null;
+            if (configuredModel.Contains('/', StringComparison.Ordinal))
+            {
+                var wanted = configuredModel.Trim().Replace('\\', '/');
+                var installation = runtime.Status.LastInstallation;
+                var targets = installation is null ? [] : await runtime.Models.UploadTargetsAsync(installation, cancellationToken);
+                targetRoot = targets.FirstOrDefault(t => $"{t.AppPath.TrimEnd('/')}/{source.FileName}".Equals(wanted, StringComparison.OrdinalIgnoreCase))?.Name;
+                if (targetRoot is null)
+                {
+                    return new PoolSyncEntry(runtime.Id, PoolSyncOutcome.Failed, "The storage location of the configured model is not available for downloads.");
+                }
+            }
+
+            var (result, _) = await transfers.EnqueueAsync(new TransferRequest(runtime.Id, source.Repo, source.FileName, targetRoot), cancellationToken);
             return result.Outcome switch
             {
                 _ when result.Succeeded => new PoolSyncEntry(runtime.Id, PoolSyncOutcome.Queued, null),
@@ -161,7 +180,7 @@ public sealed class PoolSyncService(IInferencePoolSource pools, IConsoleRegistry
                 _ => new PoolSyncEntry(runtime.Id, PoolSyncOutcome.Failed, result.Message),
             };
         }
-        catch (Exception ex) when (ex is ConsoleUnreachableException or HubUnavailableException)
+        catch (Exception ex) when (ex is ConsoleUnreachableException or HubUnavailableException or IOException or UnauthorizedAccessException)
         {
             return new PoolSyncEntry(runtime.Id, PoolSyncOutcome.Failed, ex.Message);
         }
