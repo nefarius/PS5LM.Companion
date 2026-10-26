@@ -132,6 +132,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ITransferStore, JsonTransferStore>();
         services.AddSingleton<TransferService>();
         services.AddSingleton<ModelDeletionService>();
+        services.AddSingleton<PoolSyncService>();
         return services;
     }
 }
