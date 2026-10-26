@@ -1,0 +1,87 @@
+@using PS5LM.Companion.Core.Inference
+@inject PoolSyncService PoolSync
+@inject IInferencePoolSource Pools
+
+<MudDialog>
+    <DialogContent>
+        @if (_loading)
+        {
+            <MudProgressLinear Indeterminate="true" />
+        }
+        else if (_models.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info">No model files were found on the reachable consoles of this pool.</MudAlert>
+        }
+        else
+        {
+            <MudText Class="mb-2" Color="Color.Secondary">Pick a model to download onto the consoles that lack it. Its source must be known.</MudText>
+            <MudList T="string" SelectedValue="_selected" SelectedValueChanged="OnSelected" Dense="true">
+                @foreach (var model in _models)
+                {
+                    var complete = model.Holders.Count >= _total;
+                    <MudListItem T="string" Value="@model.FileName" Disabled="@(complete || !model.HasSource)">
+                        <div style="overflow-wrap:anywhere;">@model.FileName</div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            @Size(model.SizeBytes) - on @string.Join(", ", model.Holders) (@model.Holders.Count of @_total)@(model.IsPoolModel ? " - pool model" : "")@(!complete && !model.HasSource ? " - source unknown" : "")
+                        </MudText>
+                    </MudListItem>
+                }
+            </MudList>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Disabled="@(_selected is null)" OnClick="Confirm">Download</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private IReadOnlyList<PoolModel> _models = [];
+    private bool _loading = true;
+    private int _total;
+    private string? _selected;
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter]
+    public string Alias { get; set; } = string.Empty;
+
+    /// <summary>Returns the chosen file name, or null when cancelled.</summary>
+    public static async Task<string?> ShowAsync(IDialogService dialogs, string alias)
+    {
+        var parameters = new DialogParameters<PoolModelSyncDialog> { { d => d.Alias, alias } };
+        var dialog = await dialogs.ShowAsync<PoolModelSyncDialog>(
+            "Copy a model to the pool",
+            parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true });
+        var result = await dialog.Result;
+        return result is { Canceled: false, Data: string name } ? name : null;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var result = await PoolSync.ListAsync(Alias, CancellationToken.None);
+            _models = result.Models;
+            _total = Pools.Find(Alias)?.Consoles.Count ?? 0;
+        }
+        catch (Core.Abstractions.ConsoleUnreachableException)
+        {
+            _models = [];
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OnSelected(string? value) => _selected = value;
+
+    private void Confirm() => MudDialog.Close(DialogResult.Ok(_selected));
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private static string Size(long bytes) => $"{bytes / 1024d / 1024d / 1024d:0.00} GB";
+}

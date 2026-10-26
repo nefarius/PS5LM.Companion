@@ -51,7 +51,9 @@ else
                     <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="@(() => RemoveAsync(pool))">Remove</MudButton>
                 }
                 <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.CloudDownload" Disabled="@(_syncing.Contains(pool.Alias) || pool.Replicas.Count < 2)"
-                           OnClick="@(() => SyncAsync(pool.Alias))">Download to missing consoles</MudButton>
+                           OnClick="@(() => SyncAsync(pool.Alias, null))">Download to missing consoles</MudButton>
+                <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.CopyAll" Disabled="@(_syncing.Contains(pool.Alias) || pool.Replicas.Count < 2)"
+                           OnClick="@(() => CopyOtherAsync(pool.Alias))">Copy another model...</MudButton>
                 <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.CheckCircle" Disabled="@(running || pool.EligibleReplicas == 0)"
                            OnClick="@(() => RunAsync(pool.Alias, SelfTestKind.Check))">Test</MudButton>
                 <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Speed" Class="ml-2" Disabled="@(running || pool.EligibleReplicas == 0)"
@@ -186,7 +188,15 @@ else
         await Refresh();
     }
 
-    private async Task SyncAsync(string alias)
+    private async Task CopyOtherAsync(string alias)
+    {
+        if (await PoolModelSyncDialog.ShowAsync(Dialogs, alias) is { } model)
+        {
+            await SyncAsync(alias, model);
+        }
+    }
+
+    private async Task SyncAsync(string alias, string? model)
     {
         if (!_syncing.Add(alias))
         {
@@ -198,7 +208,7 @@ else
             PoolSyncResult result;
             try
             {
-                result = await PoolSync.SyncAsync(alias, CancellationToken.None);
+                result = await PoolSync.SyncAsync(alias, model, CancellationToken.None);
             }
             catch (Exception ex) when (ex is HubUnavailableException or Core.Abstractions.ConsoleUnreachableException)
             {
@@ -221,7 +231,7 @@ else
             }
             else if (failed.Count == 0)
             {
-                parts.Add("Every console in this pool already has the model.");
+                parts.Add($"Every console in this pool already has {model ?? "the model"}.");
             }
 
             if (failed.Count > 0)

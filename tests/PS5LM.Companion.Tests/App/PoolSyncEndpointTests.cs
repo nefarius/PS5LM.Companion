@@ -114,4 +114,74 @@ public sealed class PoolSyncEndpointTests
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
+
+    [Fact]
+    public async Task Queues_an_explicit_model_that_is_not_the_pool_model()
+    {
+        await using var factory = Create("office", "lab");
+        factory.Hub.Files["acme/other-GGUF"] = [new HubFile("other-BF16.gguf", FakeHub.Content.Length, FakeHub.Sha256)];
+        factory.Connectors["office"].FileSystem
+            .AddFile($"{Models}/other-BF16.gguf", new byte[3])
+            .AddFile("/data/PS5LM/downloads.json", """[{"repo":"acme/other-GGUF","file":"other-BF16.gguf","sha256":"","bytes":3,"state":"done","save_as":""}]""");
+        using var client = factory.CreateClient();
+        await WaitForStatusAsync(factory);
+
+        using var response = await client.PostAsync("/api/inference/pools/chat/sync?model=other-BF16.gguf", null);
+        var body = await BodyAsync(response);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("acme/other-GGUF", body.GetProperty("source").GetProperty("repo").GetString());
+        Assert.Contains(factory.Services.GetRequiredService<TransferService>().Snapshot(), t => t.ConsoleId == "lab" && t.FileName == "other-BF16.gguf");
+    }
+
+    [Fact]
+    public async Task Reports_conflict_when_no_console_has_the_explicit_model()
+    {
+        await using var factory = Create("office", "lab");
+        factory.Connectors["office"].FileSystem.AddFile($"{Models}/tiny-Q4.gguf", new byte[3]);
+        using var client = factory.CreateClient();
+        await WaitForStatusAsync(factory);
+
+        using var response = await client.PostAsync("/api/inference/pools/chat/sync?model=missing.gguf", null);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Empty(factory.Services.GetRequiredService<TransferService>().Snapshot());
+    }
+
+    [Fact]
+    public async Task Lists_pool_models_with_their_holders()
+    {
+        await using var factory = Create("office", "lab");
+        factory.Connectors["office"].FileSystem
+            .AddFile($"{Models}/tiny-Q4.gguf", new byte[3])
+            .AddFile($"{Models}/other-BF16.gguf", new byte[5])
+            .AddFile($"{Models}/mmproj-other.gguf", new byte[1]);
+        factory.Connectors["lab"].FileSystem.AddFile($"{Models}/tiny-Q4.gguf", new byte[3]);
+        using var client = factory.CreateClient();
+        await WaitForStatusAsync(factory);
+
+        using var response = await client.GetAsync("/api/inference/pools/chat/models");
+        var body = await BodyAsync(response);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var models = body.EnumerateArray().ToDictionary(m => m.GetProperty("fileName").GetString()!);
+        Assert.Equal(2, models.Count);
+        Assert.Equal(2, models["tiny-Q4.gguf"].GetProperty("holders").GetArrayLength());
+        Assert.True(models["tiny-Q4.gguf"].GetProperty("isPoolModel").GetBoolean());
+        Assert.Equal(1, models["other-BF16.gguf"].GetProperty("holders").GetArrayLength());
+        Assert.False(models["other-BF16.gguf"].GetProperty("isPoolModel").GetBoolean());
+        Assert.True(models["tiny-Q4.gguf"].GetProperty("hasSource").GetBoolean());
+        Assert.False(models["other-BF16.gguf"].GetProperty("hasSource").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Listing_models_of_an_unknown_pool_is_not_found()
+    {
+        await using var factory = Create("office", "lab");
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/api/inference/pools/nope/models");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
 }

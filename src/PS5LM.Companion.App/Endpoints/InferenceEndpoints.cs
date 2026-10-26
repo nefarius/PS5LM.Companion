@@ -148,7 +148,10 @@ public sealed class DeleteInferencePoolEndpoint(IInferencePoolSource pools) : En
         await Send.ResultAsync(PoolEdits.From(pools.Remove(Route<string>("alias") ?? ""), removed: true));
 }
 
-/// <summary>Queues the pool's model download on every console of the pool that lacks it.</summary>
+/// <summary>
+/// Queues a model download on every console of the pool that lacks it. The optional <c>model</c> query
+/// parameter names any file a pool member has; without it the pool's own model is used.
+/// </summary>
 public sealed class SyncInferencePoolEndpoint(PoolSyncService sync) : EndpointWithoutRequest
 {
     public override void Configure()
@@ -160,13 +163,32 @@ public sealed class SyncInferencePoolEndpoint(PoolSyncService sync) : EndpointWi
 
     public override async Task HandleAsync(CancellationToken ct)
     {
-        var result = await sync.SyncAsync(Route<string>("alias") ?? "", ct);
+        var result = await sync.SyncAsync(Route<string>("alias") ?? "", Query<string>("model", isRequired: false), ct);
         await Send.ResultAsync(result.Status switch
         {
             PoolSyncStatus.Ok => Results.Ok(result),
             PoolSyncStatus.NotFound => ApiResults.Error(result.Message ?? "That pool is not configured.", StatusCodes.Status404NotFound),
             _ => ApiResults.Error(result.Message ?? "Nothing to sync.", StatusCodes.Status409Conflict),
         });
+    }
+}
+
+/// <summary>Every model file found on the pool's consoles and which consoles have it.</summary>
+public sealed class ListInferencePoolModelsEndpoint(PoolSyncService sync) : EndpointWithoutRequest
+{
+    public override void Configure()
+    {
+        Get("/inference/pools/{alias}/models");
+        AllowAnonymous();
+        Description(b => b.WithTags("Inference"));
+    }
+
+    public override async Task HandleAsync(CancellationToken ct)
+    {
+        var result = await sync.ListAsync(Route<string>("alias") ?? "", ct);
+        await Send.ResultAsync(result.Status == PoolSyncStatus.NotFound
+            ? ApiResults.Error("That pool is not configured.", StatusCodes.Status404NotFound)
+            : Results.Ok(result.Models));
     }
 }
 
