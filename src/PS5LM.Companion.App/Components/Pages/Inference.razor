@@ -6,6 +6,7 @@
 @inject IInferencePoolSource Pools
 @inject IConsoleRegistry Consoles
 @inject InferenceSelfTest SelfTest
+@inject PoolSyncService PoolSync
 @inject IDialogService Dialogs
 @inject ISnackbar Snackbar
 
@@ -49,6 +50,8 @@ else
                     <MudButton Variant="Variant.Text" OnClick="@(() => EditAsync(pool))">Edit</MudButton>
                     <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="@(() => RemoveAsync(pool))">Remove</MudButton>
                 }
+                <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.CloudDownload" Disabled="@(_syncing.Contains(pool.Alias) || pool.Replicas.Count < 2)"
+                           OnClick="@(() => SyncAsync(pool.Alias))">Download to missing consoles</MudButton>
                 <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.CheckCircle" Disabled="@(running || pool.EligibleReplicas == 0)"
                            OnClick="@(() => RunAsync(pool.Alias, SelfTestKind.Check))">Test</MudButton>
                 <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Speed" Class="ml-2" Disabled="@(running || pool.EligibleReplicas == 0)"
@@ -133,6 +136,7 @@ else
 @code {
     private IReadOnlyList<PoolSnapshot> _pools = [];
     private readonly HashSet<string> _running = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _syncing = new(StringComparer.OrdinalIgnoreCase);
     private Timer? _timer;
 
     protected override void OnInitialized()
@@ -180,6 +184,57 @@ else
 
         Snackbar.Add(result.Succeeded ? $"{pool.Alias} was removed." : result.Message ?? "Could not remove the pool.", result.Succeeded ? Severity.Success : Severity.Error);
         await Refresh();
+    }
+
+    private async Task SyncAsync(string alias)
+    {
+        if (!_syncing.Add(alias))
+        {
+            return;
+        }
+
+        try
+        {
+            PoolSyncResult result;
+            try
+            {
+                result = await PoolSync.SyncAsync(alias, CancellationToken.None);
+            }
+            catch (Exception ex) when (ex is HubUnavailableException or Core.Abstractions.ConsoleUnreachableException)
+            {
+                Snackbar.Add(ex.Message, Severity.Error);
+                return;
+            }
+
+            if (result.Status != PoolSyncStatus.Ok)
+            {
+                Snackbar.Add(result.Message ?? "Nothing to download.", Severity.Warning);
+                return;
+            }
+
+            var queued = result.Consoles.Where(c => c.Outcome == PoolSyncOutcome.Queued).Select(c => c.ConsoleId).ToList();
+            var failed = result.Consoles.Where(c => c.Outcome == PoolSyncOutcome.Failed).ToList();
+            var parts = new List<string>();
+            if (queued.Count > 0)
+            {
+                parts.Add($"Queued {result.Source!.FileName} on {string.Join(", ", queued)}. Progress is on each console's Transfers page.");
+            }
+            else if (failed.Count == 0)
+            {
+                parts.Add("Every console in this pool already has the model.");
+            }
+
+            if (failed.Count > 0)
+            {
+                parts.Add($"Could not queue it on {string.Join(", ", failed.Select(c => $"{c.ConsoleId} ({c.Message})"))}.");
+            }
+
+            Snackbar.Add(string.Join(" ", parts), failed.Count > 0 ? Severity.Warning : Severity.Success);
+        }
+        finally
+        {
+            _syncing.Remove(alias);
+        }
     }
 
     private async Task Refresh()

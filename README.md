@@ -164,6 +164,7 @@ exactly. A console that is loading, unloaded or has another model is never sent 
 | `POST /api/inference/pools` | Add a pool (`alias`, `model`, `consoles`). A configuration alias returns `409` |
 | `PUT /api/inference/pools/{alias}` | Replace a user pool. A configuration pool returns `409` |
 | `DELETE /api/inference/pools/{alias}` | Remove a user pool. A request already admitted finishes |
+| `POST /api/inference/pools/{alias}/sync` | Queue the pool model's download on every pool console that lacks it (see below). `409` when no console has the model or its source is unknown |
 
 Not forwarded: `/props`, `/slots`, `/lora-adapters`, `/metrics`, `/models/*`, the web UI, `/v1/embeddings` and
 `/v1/chat/completions/control` (control needs the console that runs the stream). `GET /health` stays the process
@@ -193,6 +194,10 @@ Behaviour:
   They test each console directly; they do not send traffic through the load balancer.
 - In one measured setup, slow first replies came from prompt processing on the console, not the gateway; see [docs/app-arguments.md](docs/app-arguments.md).
 - Pools from configuration stay read-only. Pools added in the dashboard are stored in `data/inference-pools.json` and apply without a restart. Each alias needs consoles loaded with the same model; this does not load models.
+- **Download to missing consoles:** the button on each pool card (and `POST /api/inference/pools/{alias}/sync`) finds a pool console
+  that has the model and learns where it came from: first the finished entries of PS5LM's `downloads.json` in its state folder
+  (the PS5LM in-app download list; renamed copies are skipped), then the companion's own completed transfers. It then queues the
+  same Hugging Face download on each pool console that lacks the file; progress shows on that console's Transfers page.
 
 ## Build
 

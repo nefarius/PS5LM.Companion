@@ -147,6 +147,28 @@ public sealed class DeleteInferencePoolEndpoint(IInferencePoolSource pools) : En
         await Send.ResultAsync(PoolEdits.From(pools.Remove(Route<string>("alias") ?? ""), removed: true));
 }
 
+/// <summary>Queues the pool's model download on every console of the pool that lacks it.</summary>
+public sealed class SyncInferencePoolEndpoint(PoolSyncService sync) : EndpointWithoutRequest
+{
+    public override void Configure()
+    {
+        Post("/inference/pools/{alias}/sync");
+        AllowAnonymous();
+        Description(b => b.WithTags("Inference"));
+    }
+
+    public override async Task HandleAsync(CancellationToken ct)
+    {
+        var result = await sync.SyncAsync(Route<string>("alias") ?? "", ct);
+        await Send.ResultAsync(result.Status switch
+        {
+            PoolSyncStatus.Ok => Results.Ok(result),
+            PoolSyncStatus.NotFound => ApiResults.Error(result.Message ?? "That pool is not configured.", StatusCodes.Status404NotFound),
+            _ => ApiResults.Error(result.Message ?? "Nothing to sync.", StatusCodes.Status409Conflict),
+        });
+    }
+}
+
 internal static class PoolEdits
 {
     public static IResult From(PoolEditResult result, bool created = false, bool removed = false) => result.Status switch
