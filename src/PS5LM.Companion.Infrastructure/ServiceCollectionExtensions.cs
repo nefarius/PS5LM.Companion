@@ -12,6 +12,7 @@ using PS5LM.Companion.Infrastructure.Hub;
 using PS5LM.Companion.Infrastructure.Persistence;
 
 using Polly;
+using Polly.Telemetry;
 
 using Refit;
 
@@ -30,6 +31,7 @@ public static class ServiceCollectionExtensions
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<ConsolesOptions>, ConsolesOptionsValidator>();
         services.AddSingleton(TimeProvider.System);
+        QuietTimeoutTelemetry(services);
 
         // One pipeline per probe kind; ConsoleConnectorFactory sets the base address for each console.
         services
@@ -100,6 +102,7 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        QuietTimeoutTelemetry(services);
         services.Configure<HuggingFaceOptions>(configuration.GetSection(HuggingFaceOptions.SectionName));
         services.AddSingleton(sp =>
         {
@@ -134,5 +137,22 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ModelDeletionService>();
         services.AddSingleton<PoolSyncService>();
         return services;
+    }
+
+    /// <summary>
+    /// A probe that does not answer in time is the ordinary "not listening" result, and the standard hub
+    /// pipeline times out the same way. Polly records <c>OnTimeout</c> at error with nothing but the event
+    /// name, which fills the log. Debug keeps the event available without printing it at the default level.
+    /// </summary>
+    private static void QuietTimeoutTelemetry(IServiceCollection services)
+    {
+        services.Configure<TelemetryOptions>(options =>
+        {
+            var previous = options.SeverityProvider;
+            options.SeverityProvider = args =>
+                string.Equals(args.Event.EventName, "OnTimeout", StringComparison.Ordinal)
+                    ? ResilienceEventSeverity.Debug
+                    : previous?.Invoke(args) ?? args.Event.Severity;
+        });
     }
 }

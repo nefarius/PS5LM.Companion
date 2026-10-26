@@ -1,6 +1,8 @@
 using System.Text;
 using System.Text.Json;
 
+using Polly.Timeout;
+
 using PS5LM.Companion.Core.Abstractions;
 
 namespace PS5LM.Companion.Infrastructure.Http;
@@ -85,6 +87,11 @@ public sealed class VoidShellClient(HttpClient http) : IAppControlProvider
                 ? new AppLaunchResult(true, true, "VoidShell queued the title; it does not confirm the launch succeeded.")
                 : new AppLaunchResult(true, false, $"HTTP {(int)response.StatusCode}.");
         }
+        catch (TimeoutRejectedException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            // The POST may already be on the wire. Not dispatched would make the launcher try websrv as well.
+            return new AppLaunchResult(true, false, ex.Message);
+        }
         catch (Exception ex) when (IsTransient(ex, cancellationToken))
         {
             return new AppLaunchResult(false, false, ex.Message);
@@ -116,6 +123,12 @@ public sealed class VoidShellClient(HttpClient http) : IAppControlProvider
         }
     }
 
+    /// <summary>
+    /// Connection failures and probe timeouts. <see cref="TimeoutRejectedException"/> does not derive from
+    /// <see cref="OperationCanceledException"/>, so it has to be named. A cancelled call still propagates:
+    /// Polly only raises the timeout when the caller's token was not already cancelled.
+    /// </summary>
     internal static bool IsTransient(Exception ex, CancellationToken cancellationToken) =>
-        ex is HttpRequestException or IOException or OperationCanceledException && !cancellationToken.IsCancellationRequested;
+        !cancellationToken.IsCancellationRequested
+        && ex is HttpRequestException or IOException or TimeoutRejectedException or OperationCanceledException;
 }

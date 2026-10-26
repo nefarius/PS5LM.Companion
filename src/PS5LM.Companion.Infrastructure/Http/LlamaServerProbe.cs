@@ -48,7 +48,8 @@ public sealed class LlamaServerProbe(ILlamaServerApi api) : ILlamaServerProbe
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
-            // Refused, unreachable or timed out (Polly's TimeoutRejectedException is an OperationCanceledException).
+            // Refused, unreachable or timed out. Polly's TimeoutRejectedException does not derive from
+            // OperationCanceledException, so it is caught here; a cancelled probe still propagates.
             return LlamaProbeResult.Closed;
         }
     }

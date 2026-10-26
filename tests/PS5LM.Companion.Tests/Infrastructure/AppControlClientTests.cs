@@ -1,6 +1,8 @@
 using System.Net;
 using System.Text;
 
+using Polly.Timeout;
+
 using PS5LM.Companion.Infrastructure.Http;
 using PS5LM.Companion.Tests.Support;
 
@@ -111,6 +113,25 @@ public sealed class AppControlClientTests
         Assert.False(other.Available);
         Assert.False((await down.ProbeAsync(CancellationToken.None)).Available);
         Assert.False((await down.LaunchAsync("PPSA99575", CancellationToken.None)).Dispatched);
+    }
+
+    [Fact]
+    public async Task VoidShell_timeout_is_unavailable_and_a_cancelled_call_still_propagates()
+    {
+        var timedOut = new VoidShellClient(Client(_ => throw new TimeoutRejectedException("The operation didn't complete within the allowed timeout of '00:00:03'."), out _));
+
+        var snapshot = await timedOut.ProbeAsync(CancellationToken.None);
+        var launch = await timedOut.LaunchAsync("PPSA99575", CancellationToken.None);
+
+        Assert.False(snapshot.Available);
+        Assert.Contains("timeout", snapshot.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.True(launch.Dispatched);
+        Assert.False(launch.Accepted);
+
+        using var cancelled = new CancellationTokenSource();
+        await cancelled.CancelAsync();
+        await Assert.ThrowsAsync<TimeoutRejectedException>(() => timedOut.ProbeAsync(cancelled.Token));
+        await Assert.ThrowsAsync<TimeoutRejectedException>(() => timedOut.LaunchAsync("PPSA99575", cancelled.Token));
     }
 
     private static HttpResponseMessage Websrv(HttpRequestMessage request) => request.RequestUri!.AbsolutePath switch
