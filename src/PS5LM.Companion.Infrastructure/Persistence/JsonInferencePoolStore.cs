@@ -81,8 +81,6 @@ public sealed partial class JsonInferencePoolStore(string path, ILogger<JsonInfe
             Directory.CreateDirectory(directory);
             var aliases = new HashSet<string>(pools.Select(pool => pool.Alias), StringComparer.OrdinalIgnoreCase);
             var kept = _withheld.Where(entry => entry.Alias is null || !aliases.Contains(entry.Alias.Trim())).ToList();
-            _withheld.Clear();
-            _withheld.AddRange(kept);
             var document = pools
                 .Select(pool => new Entry(pool.Alias, pool.Model, pool.Consoles.ToList()))
                 .Concat(kept)
@@ -90,6 +88,8 @@ public sealed partial class JsonInferencePoolStore(string path, ILogger<JsonInfe
             var temp = path + ".tmp";
             File.WriteAllText(temp, JsonSerializer.Serialize(document, Json));
             File.Move(temp, path, overwrite: true);
+            _withheld.Clear();
+            _withheld.AddRange(kept);
         }
     }
 
