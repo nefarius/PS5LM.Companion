@@ -46,6 +46,22 @@ public sealed class ConsoleConnectionProbeTests
     }
 
     [Fact]
+    public async Task A_websrv_that_does_not_answer_is_skipped_while_VoidShell_works_and_fails_without_it()
+    {
+        var withVoidShell = new FakeConnectorFactory();
+        withVoidShell[ConsoleConnectionProbe.ProbeId].VoidShell.SetUp([]);
+        var without = new FakeConnectorFactory();
+
+        var covered = await new ConsoleConnectionProbe(withVoidShell).TestAsync(new PS5Options { Host = "10.0.0.8" }, CancellationToken.None);
+        var uncovered = await new ConsoleConnectionProbe(without).TestAsync(new PS5Options { Host = "10.0.0.8" }, CancellationToken.None);
+
+        var skipped = covered.Checks.Single(check => check.Name == "websrv");
+        Assert.Equal(ProbeOutcome.Skipped, skipped.Outcome);
+        Assert.Contains("VoidShell", skipped.Detail, StringComparison.Ordinal);
+        Assert.Equal(ProbeOutcome.Fail, uncovered.Checks.Single(check => check.Name == "websrv").Outcome);
+    }
+
+    [Fact]
     public async Task A_host_that_cannot_be_addressed_fails_before_any_connection()
     {
         var probe = new ConsoleConnectionProbe(new ThrowingConnectorFactory());

@@ -27,13 +27,23 @@ public sealed class ConsoleConnectionProbe(IConsoleConnectorFactory factory) : I
 
         try
         {
+            var ftp = await Check("FTP", token => FtpAsync(connectors, options, token), cancellationToken);
+            var payloadManager = await Check("Payload Manager", token => PayloadManagerAsync(connectors, token), cancellationToken);
+            var elfldr = await Check("elfldr", token => ElfldrAsync(connectors, options, token), cancellationToken);
+            var voidShell = await Check("VoidShell", token => AppAsync(connectors, options.VoidShellPort, AppProviderKind.VoidShell, "VoidShell", token), cancellationToken);
+            var websrv = await Check("websrv", token => AppAsync(connectors, options.WebsrvPort, AppProviderKind.Websrv, "websrv", token), cancellationToken);
+            if (websrv.Outcome == ProbeOutcome.Fail && voidShell.Outcome == ProbeOutcome.Pass)
+            {
+                websrv = new ProbeCheck("websrv", ProbeOutcome.Skipped, $"Not needed: VoidShell answers. ({websrv.Detail})");
+            }
+
             return new ConsoleProbeReport(
             [
-                await Check("FTP", token => FtpAsync(connectors, options, token), cancellationToken),
-                await Check("Payload Manager", token => PayloadManagerAsync(connectors, token), cancellationToken),
-                await Check("elfldr", token => ElfldrAsync(connectors, options, token), cancellationToken),
-                await Check("VoidShell", token => AppAsync(connectors, options.VoidShellPort, AppProviderKind.VoidShell, "VoidShell", token), cancellationToken),
-                await Check("websrv", token => AppAsync(connectors, options.WebsrvPort, AppProviderKind.Websrv, "websrv", token), cancellationToken),
+                ftp,
+                payloadManager,
+                elfldr,
+                voidShell,
+                websrv,
                 await Check("ps5-exporter", token => ExporterAsync(connectors, token), cancellationToken),
                 await Check("llama-server", token => LlamaAsync(connectors, token), cancellationToken),
             ]);
