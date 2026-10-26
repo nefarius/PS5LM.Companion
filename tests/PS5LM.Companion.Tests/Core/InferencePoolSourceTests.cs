@@ -55,6 +55,7 @@ public sealed class InferencePoolSourceTests
 
         Assert.Equal(PoolEditStatus.Conflict, pools.Update("one", "a.gguf", ["a"], "two").Status);
         Assert.Equal(PoolEditStatus.Conflict, pools.Update("one", "a.gguf", ["a"], "chat").Status);
+        Assert.Equal(PoolEditStatus.Invalid, pools.Update("one", "a.gguf", ["a"], " ").Status);
         Assert.NotNull(pools.Find("one"));
     }
 

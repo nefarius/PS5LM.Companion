@@ -114,7 +114,7 @@ public sealed class HybridInferencePools : IInferencePoolSource
     private PoolEditResult Edit(string alias, string model, IReadOnlyList<string> consoles, bool replacing, string? newAlias)
     {
         var key = alias?.Trim().ToLowerInvariant() ?? "";
-        var target = string.IsNullOrWhiteSpace(newAlias) ? key : newAlias.Trim().ToLowerInvariant();
+        var target = newAlias is null ? key : newAlias.Trim().ToLowerInvariant();
         var errors = InferencePoolRules.Errors(target, model, consoles, id => _consoles.Find(id) is not null);
         if (errors.Count > 0)
         {

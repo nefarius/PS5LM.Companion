@@ -107,7 +107,7 @@ public sealed record InferencePoolBody
 }
 
 /// <summary>A new <c>Alias</c> different from the route alias renames the pool.</summary>
-public sealed record InferencePoolSettings(string Model, List<string> Consoles, string? Alias = null);
+public sealed record InferencePoolSettings(string Model, List<string> Consoles, [property: System.Text.Json.Serialization.JsonPropertyName("alias")] string? NewAlias = null);
 
 public sealed class CreateInferencePoolEndpoint(IInferencePoolSource pools) : Endpoint<InferencePoolBody>
 {
@@ -132,7 +132,7 @@ public sealed class UpdateInferencePoolEndpoint(IInferencePoolSource pools) : En
     }
 
     public override async Task HandleAsync(InferencePoolSettings request, CancellationToken ct) =>
-        await Send.ResultAsync(PoolEdits.From(pools.Update(Route<string>("alias") ?? "", request.Model, request.Consoles, request.Alias)));
+        await Send.ResultAsync(PoolEdits.From(pools.Update(Route<string>("alias") ?? "", request.Model, request.Consoles, request.NewAlias)));
 }
 
 public sealed class DeleteInferencePoolEndpoint(IInferencePoolSource pools) : EndpointWithoutRequest
