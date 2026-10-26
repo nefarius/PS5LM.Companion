@@ -124,7 +124,7 @@ public sealed class DashboardTests
             Telemetry = new TelemetrySnapshot(10, 4, 0, 12.5, 40, checkedAt),
             Sensors = new ConsoleSensors(61.2, null, null, null,
             [
-                new DriveSpace("/system_tmp", 2_000_000, 804 * 1024),
+                new DriveSpace("/system_tmp", 2_000_000, 100),
                 new DriveSpace("/data", 1000, 250),
             ]),
             UpdatedAt = checkedAt,
@@ -156,7 +156,7 @@ public sealed class DashboardTests
         Assert.Matches(@"12[.,]5 tokens/s", html);
         Assert.Matches(@"61[.,]2", html);
         Assert.Contains("250 B free", html);
-        Assert.DoesNotContain("804 KiB", html);
+        Assert.DoesNotContain("100 B free", html);
         Assert.Contains("Unload the model on den", html);
         Assert.Contains("Payload Manager unreachable", html);
         Assert.Contains("Required payloads missing", html);
