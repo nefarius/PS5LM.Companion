@@ -199,6 +199,14 @@ Behaviour:
   (the PS5LM in-app download list; renamed copies are skipped), then the companion's own completed transfers. It then queues the
   same Hugging Face download on each pool console that lacks the file; progress shows on that console's Transfers page.
 
+## Planned MCP agent runtime
+
+The [MCP agent runtime implementation plan](docs/mcp-agent-runtime-plan.md) describes
+delegating coding tasks from Cursor, Codex, and ChatGPT to the inference cluster.
+It covers isolated execution workers, durable jobs, shared inference admission,
+patch handoff, and NuGet integration choices for this stack. This is a design
+proposal; the agent runtime is not implemented.
+
 ## Build
 
 Prerequisite: .NET SDK 10.0.100 or newer (`global.json`).
