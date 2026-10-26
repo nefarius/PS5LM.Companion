@@ -14,6 +14,9 @@ public sealed class HuggingFaceHub(IHuggingFaceApi api, IHttpClientFactory httpC
 
     private const int BufferSize = 1 << 20;
 
+    /// <summary>The same number of results PS5LM's own model page asks for.</summary>
+    private const int SearchLimit = 30;
+
     /// <summary>How long a download may receive nothing before it is treated as dropped.</summary>
     public TimeSpan IdleTimeout { get; init; } = TimeSpan.FromSeconds(60);
 
@@ -22,7 +25,7 @@ public sealed class HuggingFaceHub(IHuggingFaceApi api, IHttpClientFactory httpC
 
     public async Task<IReadOnlyList<HubRepo>> SearchAsync(string query, CancellationToken cancellationToken)
     {
-        var models = await Hub(() => api.SearchAsync(query, "gguf", "downloads", "-1", 20, cancellationToken));
+        var models = await Hub(() => api.SearchAsync(query, "gguf", "downloads", "-1", SearchLimit, cancellationToken));
         return models
             .Where(m => !string.IsNullOrEmpty(m.Id))
             .Select(m => new HubRepo(m.Id!, m.Downloads))
