@@ -16,6 +16,12 @@
     border-radius: 7px;
 }
 
+.mud-appbar .app-version {
+    margin-inline: 0.25rem 0.5rem;
+    color: inherit;
+    border-color: currentColor;
+}
+
 #blazor-error-ui {
     background: #b32121;
     color: #fff;

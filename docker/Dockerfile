@@ -1,6 +1,10 @@
 # Build stage
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG MINVERVERSIONOVERRIDE
+RUN if [ -z "$MINVERVERSIONOVERRIDE" ]; then \
+      echo "MINVERVERSIONOVERRIDE is required. Calculate it before docker build: dotnet tool restore && dotnet minver --tag-prefix v" >&2; \
+      exit 1; \
+    fi
 ENV MINVERVERSIONOVERRIDE=$MINVERVERSIONOVERRIDE
 WORKDIR /src
 # MSBuild/CPM manifests first so `dotnet restore` resolves versions and caches well
@@ -10,7 +14,7 @@ COPY src/PS5LM.Companion.Infrastructure/PS5LM.Companion.Infrastructure.csproj sr
 COPY src/PS5LM.Companion.App/PS5LM.Companion.App.csproj src/PS5LM.Companion.App/
 RUN dotnet restore src/PS5LM.Companion.App/PS5LM.Companion.App.csproj
 COPY src/ src/
-RUN dotnet publish src/PS5LM.Companion.App/PS5LM.Companion.App.csproj -c Release -o /app/publish /p:UseAppHost=false
+RUN dotnet publish src/PS5LM.Companion.App/PS5LM.Companion.App.csproj -c Release -o /app/publish /p:UseAppHost=false /p:MinVerVersionOverride="$MINVERVERSIONOVERRIDE"
 
 # Runtime
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final

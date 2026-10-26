@@ -16,6 +16,8 @@ concurrency:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.value }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -28,13 +30,24 @@ jobs:
           # Un-pin (use global-json-file: global.json) once newer SDKs download again.
           dotnet-version: 10.0.402
 
+      - name: Restore tools
+        run: dotnet tool restore
+
+      - name: Version
+        id: version
+        run: echo "value=$(dotnet minver --tag-prefix v)" >> "$GITHUB_OUTPUT"
+
       - name: Restore
         run: dotnet restore PS5LM.Companion.slnx
 
       - name: Build
+        env:
+          MINVERVERSIONOVERRIDE: ${{ steps.version.outputs.value }}
         run: dotnet build PS5LM.Companion.slnx --no-restore -c Release
 
       - name: Test
+        env:
+          MINVERVERSIONOVERRIDE: ${{ steps.version.outputs.value }}
         run: dotnet test PS5LM.Companion.slnx --no-build -c Release --verbosity normal
 
       - name: Vulnerability scan
@@ -62,4 +75,15 @@ jobs:
           fetch-depth: 0
 
       - name: Build image
-        run: docker build -f docker/Dockerfile -t ps5lm-companion:ci .
+        run: docker build -f docker/Dockerfile --build-arg MINVERVERSIONOVERRIDE="${{ needs.build-and-test.outputs.version }}" -t ps5lm-companion:ci .
+
+      - name: Check image version
+        run: |
+          set -euo pipefail
+          expected="${{ needs.build-and-test.outputs.version }}"
+          label="$(docker inspect --format '{{ index .Config.Labels "org.opencontainers.image.version" }}' ps5lm-companion:ci)"
+          test "$label" = "$expected"
+          id="$(docker create ps5lm-companion:ci)"
+          trap 'docker rm "$id" >/dev/null' EXIT
+          docker cp "$id:/app/PS5LM.Companion.App.dll" "$RUNNER_TEMP/PS5LM.Companion.App.dll"
+          grep -a -F -q "$expected" "$RUNNER_TEMP/PS5LM.Companion.App.dll"

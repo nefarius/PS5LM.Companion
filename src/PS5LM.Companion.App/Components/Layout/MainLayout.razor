@@ -1,5 +1,6 @@
 @inherits LayoutComponentBase
 @implements IDisposable
+@using System.Reflection
 @inject NavigationManager Navigation
 @inject IConsoleRegistry Registry
 
@@ -17,6 +18,14 @@
         </a>
         <MudSpacer />
         <StatusChip Console="@_current" />
+        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Class="app-version" aria-label="@($"Version {VersionText}")">@VersionText</MudChip>
+        <MudIconButton Href="https://github.com/nefarius/PS5LM.Companion/"
+                       Target="_blank"
+                       Rel="noopener noreferrer"
+                       Icon="@Icons.Custom.Brands.GitHub"
+                       Color="Color.Inherit"
+                       aria-label="PS5LM Companion on GitHub"
+                       title="PS5LM Companion on GitHub" />
         <MudIconButton Icon="@(_dark ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
                        Color="Color.Inherit" aria-label="@(_dark ? "Switch to light theme" : "Switch to dark theme")"
                        OnClick="@(() => _dark = !_dark)" />
@@ -60,10 +69,19 @@
 </div>
 
 @code {
+    private static readonly string VersionText = FormatVersion();
     private readonly Dictionary<string, bool> _open = new(StringComparer.Ordinal);
     private ConsoleRuntime? _current;
     private bool _drawerOpen = true;
     private bool _dark = true;
+
+    private static string FormatVersion()
+    {
+        var version = typeof(PS5LM.Companion.App.Program).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion;
+        return string.IsNullOrWhiteSpace(version) ? "unknown" : "v" + version;
+    }
 
     protected override void OnInitialized()
     {
