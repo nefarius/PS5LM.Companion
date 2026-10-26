@@ -1,4 +1,5 @@
 using PS5LM.Companion.Core.Consoles;
+using PS5LM.Companion.Core.Domain;
 
 namespace PS5LM.Companion.App.Monitoring;
 
@@ -96,13 +97,17 @@ public sealed partial class StatusMonitor(IConsoleRegistry consoles, ILogger<Sta
     {
         using var scope = logger.BeginScope("Console {ConsoleId}", console.Id);
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(console.Options.PollIntervalSeconds));
+        CompanionLifecycle? previous = null;
         try
         {
             do
             {
                 try
                 {
-                    console.Store.Publish(await console.Status.RefreshAsync(loop.Token));
+                    var status = await console.Status.RefreshAsync(loop.Token);
+                    console.Store.Publish(status);
+                    LogTransition(console, previous, status);
+                    previous = status.Lifecycle;
                 }
                 catch (OperationCanceledException) when (loop.IsCancellationRequested)
                 {
@@ -120,6 +125,30 @@ public sealed partial class StatusMonitor(IConsoleRegistry consoles, ILogger<Sta
             loop.Dispose();
         }
     }
+
+    /// <summary>Logs the moments the console drops out and comes back, with the reason the status gives.</summary>
+    private void LogTransition(ConsoleRuntime console, CompanionLifecycle? previous, CompanionStatus status)
+    {
+        if (previous == status.Lifecycle)
+        {
+            return;
+        }
+
+        if (status.Lifecycle == CompanionLifecycle.Disconnected)
+        {
+            LogDisconnected(console.Id, console.Host, previous?.ToString() ?? "unknown", status.Message ?? "no reason given");
+        }
+        else if (previous == CompanionLifecycle.Disconnected)
+        {
+            LogReconnected(console.Id, console.Host, status.Lifecycle.ToString());
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Console {ConsoleId} ({Host}) is disconnected (was {Previous}): {Reason}")]
+    private partial void LogDisconnected(string consoleId, string host, string previous, string reason);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Console {ConsoleId} ({Host}) is reachable again: {Lifecycle}")]
+    private partial void LogReconnected(string consoleId, string host, string lifecycle);
 
     private static async Task<bool> WaitAsync(PeriodicTimer timer, CancellationToken token)
     {
