@@ -1,0 +1,148 @@
+@using PS5LM.Companion.Core.Inference
+@inject IInferencePoolSource Pools
+@inject IConsoleRegistry Registry
+
+<MudDialog>
+    <DialogContent>
+        @if (_errors.Count > 0)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3">@string.Join(" ", _errors)</MudAlert>
+        }
+        <MudTextField @bind-Value="_alias" Label="Alias" ReadOnly="@(!_adding)" HelperText="The model name clients send." Class="mb-2" />
+        <MudTextField @bind-Value="_model" Label="Model" Class="mb-2" HelperText="A file name such as qwen.gguf, or the path llama-server reports." />
+        @if (_suggestions.Count > 0)
+        {
+            <MudStack Row="true" Spacing="1" Class="mb-2">
+                @foreach (var name in _suggestions)
+                {
+                    <MudChip T="string" Size="Size.Small" OnClick="@(() => _model = name)">@name</MudChip>
+                }
+            </MudStack>
+        }
+        <MudSelect T="string" Label="Consoles" MultiSelection="true" SelectedValues="_selected" SelectedValuesChanged="SelectedChanged">
+            @foreach (var console in Registry.All)
+            {
+                <MudSelectItem T="string" Value="@console.Id">@console.Name (@console.Host)</MudSelectItem>
+            }
+        </MudSelect>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private readonly List<string> _errors = [];
+    private readonly List<string> _suggestions = [];
+    private int _suggestGeneration;
+    private bool _adding = true;
+    private string _alias = string.Empty;
+    private string _model = string.Empty;
+    private IReadOnlyCollection<string> _selected = [];
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter]
+    public string? Alias { get; set; }
+
+    public static async Task<bool> ShowAsync(IDialogService dialogs, string? alias)
+    {
+        var parameters = new DialogParameters<PoolEditor> { { editor => editor.Alias, alias } };
+        var dialog = await dialogs.ShowAsync<PoolEditor>(
+            alias is null ? "Add a pool" : "Edit pool",
+            parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true });
+        return (await dialog.Result) is { Canceled: false };
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Alias is null || Pools.Find(Alias) is not { } pool)
+        {
+            return;
+        }
+
+        _adding = false;
+        _alias = pool.Alias;
+        _model = pool.Model;
+        _selected = pool.Consoles.ToList();
+        await SuggestAsync();
+    }
+
+    private async Task SelectedChanged(IReadOnlyCollection<string> values)
+    {
+        _selected = values.ToList();
+        await SuggestAsync();
+    }
+
+    private async Task SuggestAsync()
+    {
+        var generation = ++_suggestGeneration;
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var id in _selected)
+        {
+            if (Registry.Find(id) is not { } console)
+            {
+                continue;
+            }
+
+            if (Path.GetFileName(console.Store.Current.LoadedModel) is { Length: > 0 } loaded)
+            {
+                names.Add(loaded);
+            }
+
+            if (console.Status.LastInstallation is not { } installation)
+            {
+                continue;
+            }
+
+            try
+            {
+                foreach (var model in await console.Models.ListAsync(installation, console.Store.Current.LoadedModel, CancellationToken.None))
+                {
+                    names.Add(model.FileName);
+                }
+            }
+            catch (Core.Abstractions.ConsoleUnreachableException)
+            {
+                // Suggestions are optional.
+            }
+        }
+
+        if (generation != _suggestGeneration)
+        {
+            return;
+        }
+
+        _suggestions.Clear();
+        _suggestions.AddRange(names.Order(StringComparer.OrdinalIgnoreCase));
+    }
+
+    private void Save()
+    {
+        _errors.Clear();
+        PoolEditResult result;
+        try
+        {
+            result = _adding
+                ? Pools.Add(_alias, _model, _selected.ToList())
+                : Pools.Update(_alias, _model, _selected.ToList());
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _errors.Add("Could not save the pool. The pool file could not be written.");
+            return;
+        }
+        if (!result.Succeeded)
+        {
+            _errors.Add(result.Message ?? "Could not save the pool.");
+            return;
+        }
+
+        MudDialog.Close(DialogResult.Ok(true));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

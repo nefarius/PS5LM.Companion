@@ -139,8 +139,8 @@ SHA-256, upload as `name.gguf.part`, then rename. The apps never see a half-copi
 ## Inference gateway
 
 Opt-in. The companion can serve the OpenAI, Anthropic and System One APIs on its own port and spread requests over
-consoles that run the same model, so clients get one base URL (`http://<companion>:8080/v1`). It is off until you
-configure a pool. Forwarding uses [YARP](https://github.com/dotnet/yarp) and streams request and response bodies.
+consoles that run the same model, so clients get one base URL (`http://<companion>:8080/v1`). It is off until a
+pool exists. A pool added in the dashboard starts serving without a restart. Forwarding uses [YARP](https://github.com/dotnet/yarp) and streams request and response bodies.
 
 Each public alias (the `model` clients send) names a loaded model and the consoles allowed to serve it:
 
@@ -161,6 +161,9 @@ exactly. A console that is loading, unloaded or has another model is never sent 
 | `POST /v1/chat/completions/input_tokens`, `/v1/responses/input_tokens`, `/v1/messages/count_tokens` | Forwarded the same way |
 | `GET /v1/models` | The configured aliases with `replicas` and `ready` counts; not forwarded |
 | `GET /api/inference/pools` | Per alias and console: lifecycle, loaded model, active requests, and why a console is excluded |
+| `POST /api/inference/pools` | Add a pool (`alias`, `model`, `consoles`). A configuration alias returns `409` |
+| `PUT /api/inference/pools/{alias}` | Replace a user pool. A configuration pool returns `409` |
+| `DELETE /api/inference/pools/{alias}` | Remove a user pool. A request already admitted finishes |
 
 Not forwarded: `/props`, `/slots`, `/lora-adapters`, `/metrics`, `/models/*`, the web UI, `/v1/embeddings` and
 `/v1/chat/completions/control` (control needs the console that runs the stream). `GET /health` stays the process
@@ -189,7 +192,7 @@ Behaviour:
   live requests for the console's slot, run one at a time per alias (`409` otherwise), and are not kept across restarts.
   They test each console directly; they do not send traffic through the load balancer.
 - In one measured setup, slow first replies came from prompt processing on the console, not the gateway; see [docs/app-arguments.md](docs/app-arguments.md).
-- Pool settings are read at startup, and each alias needs consoles loaded with the same model; this does not load models.
+- Pools from configuration stay read-only. Pools added in the dashboard are stored in `data/inference-pools.json` and apply without a restart. Each alias needs consoles loaded with the same model; this does not load models.
 
 ## Build
 

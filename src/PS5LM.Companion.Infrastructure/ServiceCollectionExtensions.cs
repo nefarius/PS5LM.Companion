@@ -74,9 +74,24 @@ public static class ServiceCollectionExtensions
             .Bind(configuration.GetSection(InferenceOptions.SectionName))
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<InferenceOptions>, InferenceOptionsValidator>();
+        services.AddSingleton<IInferencePoolSource>(sp =>
+        {
+            var dataDirectory = sp.GetRequiredService<IConfiguration>()["Companion:DataDirectory"] ?? "data";
+            var consoles = sp.GetRequiredService<IConsoleRegistry>();
+            var store = new JsonInferencePoolStore(
+                Path.Combine(dataDirectory, "inference-pools.json"),
+                sp.GetRequiredService<ILogger<JsonInferencePoolStore>>(),
+                consoles);
+            return new HybridInferencePools(
+                sp.GetRequiredService<IOptions<InferenceOptions>>().Value,
+                consoles,
+                store,
+                message => sp.GetRequiredService<ILogger<HybridInferencePools>>().LogWarning("{Message}", message));
+        });
         services.AddSingleton(sp => new InferenceRouter(
             sp.GetRequiredService<IConsoleRegistry>(),
-            sp.GetRequiredService<IOptions<InferenceOptions>>().Value));
+            sp.GetRequiredService<IOptions<InferenceOptions>>().Value,
+            sp.GetRequiredService<IInferencePoolSource>()));
         return services;
     }
 
