@@ -7,7 +7,7 @@ Standalone .NET 10 / ASP.NET Core companion with a MudBlazor dashboard for PS5LM
 - `Core` has no third-party dependencies; FluentFTP and Refit types stay in `Infrastructure`.
 - Package versions live in `Directory.Packages.props`; warnings are errors.
 - Multiple consoles: `PS5:Consoles:{id}` options, one isolated `ConsoleRuntime` each (`IConsoleRegistry`); REST is `/api/consoles/{consoleId}/...`; one transfer queue per console.
-- Optional inference gateway (`Inference:Pools`): `InferenceRouter` in `Core` picks a console that reports the pool's model; `App/Inference` forwards `/v1/...` with YARP's `IHttpForwarder`. YARP stays in `App`.
+- Optional inference gateway (`Inference:Pools`): `InferenceRouter` in `Core` picks a console that reports the pool's model; `App/Inference` forwards `/v1/...` with YARP's `IHttpForwarder`. Pools may list `AlternateNames` (exact or `prefix*`) resolved by `InferencePoolNames`. YARP stays in `App`.
 - The PS5 app only listens on port 8081 once a model is loaded: discovery and control are FTP-first.
 - App check/launch: `IAppControlProvider` in `Core` (VoidShell first, websrv fallback); HTTP clients in `Infrastructure/Http`; REST `/api/consoles/{id}/apps`.
 - `setup` command (`App/Setup`, `Core/Setup`, `Infrastructure/Setup`): one-shot console preparation from the pinned `setup-manifest.json`; see `docs/setup.md`.

@@ -57,6 +57,7 @@ internal sealed class GatewayTransformer : HttpTransformer
 internal static class InferenceGateway
 {
     internal const string ConsoleHeader = "X-PS5LM-Console";
+    internal const string PoolHeader = "X-PS5LM-Pool";
 
     private static readonly string[] ForwardedPaths =
     [
@@ -141,6 +142,11 @@ internal static class InferenceGateway
             var console = lease.Console;
             var destination = new UriBuilder(Uri.UriSchemeHttp, console.Host, console.Options.LlamaPort).Uri.ToString();
             context.Response.Headers[ConsoleHeader] = console.Id;
+            if (admission.Pool is { } poolAlias)
+            {
+                context.Response.Headers[PoolHeader] = poolAlias;
+            }
+
 
             var error = await forwarder.SendAsync(
                 context,

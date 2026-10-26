@@ -35,6 +35,21 @@ public sealed class InferencePoolEndpointTests
     }
 
     [Fact]
+    public async Task A_put_without_alternate_names_keeps_them()
+    {
+        await using var factory = new CompanionFactory();
+        using var client = factory.CreateClient();
+
+        using var created = await client.PostAsJsonAsync("/api/inference/pools", new { alias = "extra", model = "a.gguf", consoles = new[] { "ps5" }, alternateNames = new[] { "claude-*" } });
+        using var kept = await client.PutAsJsonAsync("/api/inference/pools/extra", new { model = "b.gguf", consoles = new[] { "ps5" } });
+        var listed = await client.GetFromJsonAsync<JsonElement>("/api/inference/pools");
+
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, kept.StatusCode);
+        Assert.Equal("claude-*", listed.GetProperty("pools")[0].GetProperty("alternateNames")[0].GetString());
+    }
+
+    [Fact]
     public async Task An_explicit_null_alias_or_console_is_a_bad_request()
     {
         await using var factory = new CompanionFactory();

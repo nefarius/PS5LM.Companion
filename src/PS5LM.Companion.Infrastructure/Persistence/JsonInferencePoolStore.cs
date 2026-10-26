@@ -54,7 +54,7 @@ public sealed partial class JsonInferencePoolStore(string path, ILogger<JsonInfe
         {
             var alias = entry.Alias?.Trim().ToLowerInvariant() ?? "";
             var consoleIds = entry.Consoles ?? [];
-            var errors = InferencePoolRules.Errors(alias, entry.Model, consoleIds, id => consoles.Find(id) is not null);
+            var errors = InferencePoolRules.Errors(alias, entry.Model, consoleIds, id => consoles.Find(id) is not null, entry.AlternateNames);
             if (errors.Count > 0)
             {
                 LogSkipped(alias.Length == 0 ? "(missing alias)" : alias, string.Join(" ", errors));
@@ -68,7 +68,7 @@ public sealed partial class JsonInferencePoolStore(string path, ILogger<JsonInfe
                 continue;
             }
 
-            pools.Add(new StoredInferencePool(alias, entry.Model!.Trim(), consoleIds.Select(id => id.Trim().ToLowerInvariant()).Distinct(StringComparer.Ordinal).ToList()));
+            pools.Add(new StoredInferencePool(alias, entry.Model!.Trim(), consoleIds.Select(id => id.Trim().ToLowerInvariant()).Distinct(StringComparer.Ordinal).ToList(), InferencePoolRules.NormalizeNames(entry.AlternateNames)));
         }
 
         lock (_gate)
@@ -89,7 +89,7 @@ public sealed partial class JsonInferencePoolStore(string path, ILogger<JsonInfe
             var aliases = new HashSet<string>(pools.Select(pool => pool.Alias), StringComparer.OrdinalIgnoreCase);
             var kept = _withheld.Where(entry => entry.Alias is null || !aliases.Contains(entry.Alias.Trim())).ToList();
             var document = pools
-                .Select(pool => new Entry(pool.Alias, pool.Model, pool.Consoles.ToList()))
+                .Select(pool => new Entry(pool.Alias, pool.Model, pool.Consoles.ToList(), pool.AlternateNames?.ToList()))
                 .Concat(kept)
                 .ToList();
             var temp = path + ".tmp";
@@ -118,5 +118,5 @@ public sealed partial class JsonInferencePoolStore(string path, ILogger<JsonInfe
     [LoggerMessage(Level = LogLevel.Warning, Message = "Stored inference pool {Alias} was skipped: {Reason}")]
     private partial void LogSkipped(string alias, string reason);
 
-    private sealed record Entry(string? Alias, string? Model, List<string>? Consoles);
+    private sealed record Entry(string? Alias, string? Model, List<string>? Consoles, List<string>? AlternateNames = null);
 }

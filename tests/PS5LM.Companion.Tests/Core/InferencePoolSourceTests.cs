@@ -124,6 +124,37 @@ public sealed class InferencePoolSourceTests
         return new HybridInferencePools(options, Registry(), store, warnings.Add);
     }
 
+    [Fact]
+    public void Alternate_names_resolve_conflict_and_survive_an_update_without_names()
+    {
+        var store = new MemoryPoolStore();
+        var pools = Source(store, [], configured: true);
+
+        Assert.True(pools.Add("extra", "b.gguf", ["a"], ["claude-*"]).Succeeded);
+        Assert.Equal("extra", pools.Resolve("claude-sonnet")!.Alias);
+        Assert.Equal("chat", pools.Resolve("chat")!.Alias);
+        Assert.Null(pools.Find("claude-sonnet"));
+        Assert.Equal(PoolEditStatus.Conflict, pools.Add("other", "c.gguf", ["a"], ["claude-*"]).Status);
+        Assert.Equal(PoolEditStatus.Conflict, pools.Add("other", "c.gguf", ["a"], ["chat"]).Status);
+
+        Assert.True(pools.Update("extra", "b2.gguf", ["a"]).Succeeded);
+        Assert.Equal(["claude-*"], pools.Find("extra")!.Names);
+        Assert.Equal(["claude-*"], Assert.Single(store.Pools).AlternateNames);
+        Assert.True(pools.Update("extra", "b2.gguf", ["a"], alternateNames: []).Succeeded);
+        Assert.Empty(pools.Find("extra")!.Names);
+    }
+
+    [Fact]
+    public void A_stored_pool_whose_names_clash_with_configuration_is_hidden()
+    {
+        var warnings = new List<string>();
+        var store = new MemoryPoolStore { Pools = [new StoredInferencePool("extra", "b.gguf", ["a"], ["chat"])] };
+        var pools = Source(store, warnings, configured: true);
+
+        Assert.Null(pools.Find("extra"));
+        Assert.Single(warnings);
+    }
+
     private static ConsoleRegistry Registry()
     {
         var consoles = new ConsolesOptions();

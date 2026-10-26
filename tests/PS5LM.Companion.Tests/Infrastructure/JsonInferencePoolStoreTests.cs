@@ -30,6 +30,23 @@ public sealed class JsonInferencePoolStoreTests
     }
 
     [Fact]
+    public void Alternate_names_round_trip_and_older_files_load_without_them()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "ps5lm-tests", Guid.NewGuid().ToString("N"), "inference-pools.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, """[ { "alias": "old", "model": "qwen.gguf", "consoles": ["a"] } ]""");
+        var store = new JsonInferencePoolStore(path, NullLogger<JsonInferencePoolStore>.Instance, OneConsole());
+
+        var old = Assert.Single(store.Load());
+        Assert.Empty(old.AlternateNames ?? []);
+
+        store.Save([old, new StoredInferencePool("new", "x.gguf", ["a"], ["claude-*"])]);
+        var loaded = store.Load();
+
+        Assert.Equal(["claude-*"], loaded.Single(p => p.Alias == "new").AlternateNames);
+    }
+
+    [Fact]
     public void A_pool_whose_console_is_missing_is_kept_when_another_pool_is_saved()
     {
         var path = Path.Combine(Path.GetTempPath(), "ps5lm-tests", Guid.NewGuid().ToString("N"), "inference-pools.json");

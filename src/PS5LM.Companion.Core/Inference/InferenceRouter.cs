@@ -22,7 +22,7 @@ public enum AdmissionFailure
 }
 
 /// <summary>The outcome of asking for a replica: a lease on one console, or the reason there is none.</summary>
-public sealed record InferenceAdmission(InferenceLease? Lease, AdmissionFailure Failure, string? Message)
+public sealed record InferenceAdmission(InferenceLease? Lease, AdmissionFailure Failure, string? Message, string? Pool = null)
 {
     public static InferenceAdmission Fail(AdmissionFailure failure, string message) => new(null, failure, message);
 }
@@ -54,7 +54,7 @@ public sealed class InferenceLease
 public sealed record ReplicaSnapshot(string ConsoleId, CompanionLifecycle Lifecycle, string? LoadedModel, int ActiveRequests, bool Eligible, string Reason);
 
 /// <summary>One public model alias with its replicas.</summary>
-public sealed record PoolSnapshot(string Alias, string Model, int EligibleReplicas, IReadOnlyList<ReplicaSnapshot> Replicas, InferencePoolOrigin Origin = InferencePoolOrigin.Configuration);
+public sealed record PoolSnapshot(string Alias, string Model, int EligibleReplicas, IReadOnlyList<ReplicaSnapshot> Replicas, InferencePoolOrigin Origin = InferencePoolOrigin.Configuration, IReadOnlyList<string>? AlternateNames = null);
 
 /// <summary>
 /// Chooses which console serves a request. A console is a candidate only while it reports the pool's model as
@@ -88,7 +88,8 @@ public sealed class InferenceRouter
     /// <summary>The configured aliases, in alphabetical order.</summary>
     public IReadOnlyList<string> Aliases => PoolPairs().Select(pair => pair.Key).Order(StringComparer.OrdinalIgnoreCase).ToList();
 
-    public bool HasAlias(string alias) => TryGetPool(alias, out _);
+    public bool HasAlias(string alias) =>
+        _pools is null ? _options.Pools.ContainsKey(alias) : _pools.Find(alias) is not null;
 
     /// <summary>The only alias when exactly one pool exists; used when a request names no model.</summary>
     public string? SoleAlias
@@ -101,12 +102,16 @@ public sealed class InferenceRouter
     }
 
     /// <param name="onlyConsole">Restricts the choice to one console of the pool, for tests that must reach a specific replica.</param>
+    /// <param name="alias">A pool alias, or any alternate name or prefix that resolves to one.</param>
     public async Task<InferenceAdmission> AcquireAsync(string alias, CancellationToken cancellationToken, string? onlyConsole = null)
     {
-        if (!TryGetPool(alias, out var pool))
+        var requested = alias;
+        if (!TryGetPool(alias, out var pool, out var resolved))
         {
-            return InferenceAdmission.Fail(AdmissionFailure.UnknownModel, $"The model '{alias}' is not served by this gateway.");
+            return InferenceAdmission.Fail(AdmissionFailure.UnknownModel, $"The model '{requested}' is not served by this gateway.");
         }
+
+        alias = resolved;
 
         Waiter waiter;
         LinkedListNode<Waiter> node;
@@ -120,7 +125,7 @@ public sealed class InferenceRouter
 
             if (TryPick(eligible) is { } picked)
             {
-                return new InferenceAdmission(Take(picked), AdmissionFailure.None, null);
+                return new InferenceAdmission(Take(picked), AdmissionFailure.None, null, alias);
             }
 
             if (_waiters.Count >= _options.MaxQueuedRequests)
@@ -191,7 +196,7 @@ public sealed class InferenceRouter
                             ? Describe(console, p.Value)
                             : new ReplicaSnapshot(id, CompanionLifecycle.Disconnected, null, 0, false, "Console is not configured."))
                         .ToList();
-                    return new PoolSnapshot(p.Key, p.Value.Model, replicas.Count(r => r.Eligible), replicas, p.Origin);
+                    return new PoolSnapshot(p.Key, p.Value.Model, replicas.Count(r => r.Eligible), replicas, p.Origin, p.Value.AlternateNames);
                 })
                 .ToList();
         }
@@ -273,7 +278,7 @@ public sealed class InferenceRouter
             else if (TryPick(eligible) is { } picked)
             {
                 _waiters.Remove(node);
-                waiter.Completion.TrySetResult(new InferenceAdmission(Take(picked), AdmissionFailure.None, null));
+                waiter.Completion.TrySetResult(new InferenceAdmission(Take(picked), AdmissionFailure.None, null, waiter.Alias));
             }
 
             node = next;
@@ -288,21 +293,33 @@ public sealed class InferenceRouter
         }
     }
 
-    private bool TryGetPool(string alias, out InferencePoolOptions pool)
+    private bool TryGetPool(string alias, out InferencePoolOptions pool) => TryGetPool(alias, out pool, out _);
+
+    private bool TryGetPool(string alias, out InferencePoolOptions pool, out string resolved)
     {
+        resolved = alias;
         if (_pools is null)
         {
-            return _options.Pools.TryGetValue(alias, out pool!);
+            var names = new InferencePoolNames(_options.Pools.Select(p => (p.Key, (IReadOnlyList<string>)p.Value.AlternateNames)));
+            if (names.Resolve(alias) is { } key && _options.Pools.TryGetValue(key, out pool!))
+            {
+                resolved = key;
+                return true;
+            }
+
+            pool = null!;
+            return false;
         }
 
-        var found = _pools.Find(alias);
+        var found = _pools.Resolve(alias);
         if (found is null)
         {
             pool = null!;
             return false;
         }
 
-        pool = new InferencePoolOptions { Model = found.Model, Consoles = found.Consoles.ToList() };
+        pool = new InferencePoolOptions { Model = found.Model, Consoles = found.Consoles.ToList(), AlternateNames = found.Names.ToList() };
+        resolved = found.Alias;
         return true;
     }
 
@@ -315,7 +332,7 @@ public sealed class InferenceRouter
 
         return _pools.All.Select(pool => (
             pool.Alias,
-            new InferencePoolOptions { Model = pool.Model, Consoles = pool.Consoles.ToList() },
+            new InferencePoolOptions { Model = pool.Model, Consoles = pool.Consoles.ToList(), AlternateNames = pool.Names.ToList() },
             pool.Origin));
     }
 

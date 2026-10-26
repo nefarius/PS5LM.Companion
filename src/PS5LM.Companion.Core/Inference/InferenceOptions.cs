@@ -43,4 +43,7 @@ public sealed class InferencePoolOptions
 
     /// <summary>Console ids that may serve this alias.</summary>
     public List<string> Consoles { get; set; } = [];
+
+    /// <summary>Other <c>model</c> names clients may send: exact names, or prefixes ending in <c>*</c> such as <c>claude-*</c>.</summary>
+    public List<string> AlternateNames { get; set; } = [];
 }

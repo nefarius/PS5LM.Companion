@@ -59,6 +59,7 @@ stored in `data/consoles.json` and apply without a restart. A stored console who
 | `Companion:DataDirectory` | `data` | Download cache, transfer list and `consoles.json` (`/data` in the Docker image; mount a volume) |
 | `HuggingFace:Token` | none | Access token, only for gated or private repositories |
 | `Inference:Pools:{alias}:Model` / `Consoles:{n}` | none | Opt-in [inference gateway](#inference-gateway): the model and the consoles that serve it |
+| `Inference:Pools:{alias}:AlternateNames:{n}` | none | Extra `model` names (exact, or a prefix ending in `*`) that reach the pool |
 
 The companion refuses to start on a non-loopback address without `Companion:AccessToken`, unless
 `Companion:AllowAnonymous` is set. The check covers `urls`/`ASPNETCORE_URLS`, `HTTP_PORTS`, `HTTPS_PORTS` and
@@ -154,6 +155,16 @@ PS5LM answers with whatever model is loaded and ignores the `model` field, so th
 candidate for an alias only while its lifecycle is `Ready` or `Generating` and the model it reports as loaded matches
 `Model`: a bare file name matches that file in any folder, a full path (as in `GET /v1/models` on the console) matches
 exactly. A console that is loading, unloaded or has another model is never sent that alias's requests.
+
+**Alternate model names.** Clients that hard-code their own model names (Claude Code sends `claude-*` names) can still
+reach a pool: list them under `AlternateNames` (or in the pool editor). An entry is an exact name or a prefix ending in `*`
+(`*` alone catches everything else). A request's `model` is matched, ignoring case, first against aliases, then exact
+names, then the longest prefix. The same name or prefix cannot belong to two pools. `GET /v1/models` lists only aliases,
+and the `X-PS5LM-Pool` response header names the pool that answered.
+
+```sh
+-e Inference__Pools__qwen__AlternateNames__0=claude-*
+```
 
 | Route | Behaviour |
 |---|---|
