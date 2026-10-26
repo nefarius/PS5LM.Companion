@@ -12,10 +12,12 @@
         <MudTextField @bind-Value="_model" Label="Model" Class="mb-2" HelperText="A file name such as qwen.gguf, or the path llama-server reports." />
         @if (_suggestions.Count > 0)
         {
-            <MudStack Row="true" Spacing="1" Class="mb-2">
+            <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="1" Class="mb-2">
                 @foreach (var name in _suggestions)
                 {
-                    <MudChip T="string" Size="Size.Small" OnClick="@(() => _model = name)">@name</MudChip>
+                    <MudChip T="string" Size="Size.Small" OnClick="@(() => _model = name)" Style="height:auto;max-width:100%;">
+                        <span style="white-space:normal;overflow-wrap:anywhere;">@name</span>
+                    </MudChip>
                 }
             </MudStack>
         }
