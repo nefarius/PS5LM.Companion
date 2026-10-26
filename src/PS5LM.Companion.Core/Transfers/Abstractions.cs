@@ -13,7 +13,16 @@ public enum TransferState
 
 /// <summary>A model file on a hub repository.</summary>
 /// <param name="Sha256">The LFS object id, which is the file's SHA-256, when the hub provides it.</param>
-public sealed record HubFile(string Name, long SizeBytes, string? Sha256);
+public sealed record HubFile(string Name, long SizeBytes, string? Sha256)
+{
+    /// <summary>
+    /// False for vision projectors (<c>mmproj-*</c>) and importance matrices (<c>imatrix*</c>): they sit beside
+    /// the models in a repository but cannot be loaded on their own.
+    /// </summary>
+    public bool IsLoadableModel =>
+        !Name.StartsWith("mmproj", StringComparison.OrdinalIgnoreCase)
+        && !Name.StartsWith("imatrix", StringComparison.OrdinalIgnoreCase);
+}
 
 public sealed record HubRepo(string Id, long Downloads);
 

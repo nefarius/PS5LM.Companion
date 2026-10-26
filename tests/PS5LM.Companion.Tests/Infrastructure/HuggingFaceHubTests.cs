@@ -36,7 +36,17 @@ public sealed class HuggingFaceHubTests : IDisposable
         Assert.Contains("search=qwen", query);
         Assert.Contains("filter=gguf", query);
         Assert.Contains("sort=downloads", query);
+        Assert.Contains("limit=30", query);
     }
+
+    [Theory]
+    [InlineData("Qwen3.8-27B-UD-Q2_K_XL.gguf", true)]
+    [InlineData("model-00001-of-00003.gguf", true)]
+    [InlineData("mmproj-F16.gguf", false)]
+    [InlineData("MMPROJ-model.gguf", false)]
+    [InlineData("imatrix_unsloth.gguf", false)]
+    public void Projectors_and_importance_matrices_are_not_loadable_models(string name, bool loadable) =>
+        Assert.Equal(loadable, new HubFile(name, 1, null).IsLoadableModel);
 
     [Fact]
     public async Task Listing_keeps_top_level_gguf_files_with_their_lfs_size_and_hash()

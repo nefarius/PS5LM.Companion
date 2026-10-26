@@ -51,7 +51,7 @@ else
         <MudSimpleTable Dense="true" Hover="true">
             <thead><tr><th>File</th><th>Size</th><th></th></tr></thead>
             <tbody>
-                @foreach (var file in _files)
+                @foreach (var file in _files.Where(f => f.IsLoadableModel))
                 {
                     <tr>
                         <td>@file.Name</td>
@@ -60,12 +60,16 @@ else
                                        OnClick="@(() => EnqueueAsync(file))" Disabled="@_enqueuing.Contains(file.Name)">Download to console</MudButton></td>
                     </tr>
                 }
-                @if (_files.Count == 0)
+                @if (_files.Count(f => f.IsLoadableModel) == 0)
                 {
-                    <tr><td colspan="3">This repository has no top-level .gguf files.</td></tr>
+                    <tr><td colspan="3">This repository has no top-level model .gguf files.</td></tr>
                 }
             </tbody>
         </MudSimpleTable>
+        @if (_files.Count(f => !f.IsLoadableModel) is > 0 and var hidden)
+        {
+            <MudText Typo="Typo.caption" Color="Color.Secondary">@hidden vision projector or imatrix @(hidden == 1 ? "file is" : "files are") not listed: they cannot be loaded on their own.</MudText>
+        }
     }
 </MudPaper>
 
