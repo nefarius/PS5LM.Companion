@@ -194,6 +194,14 @@ Behaviour:
 - In one measured setup, slow first replies came from prompt processing on the console, not the gateway; see [docs/app-arguments.md](docs/app-arguments.md).
 - Pools from configuration stay read-only. Pools added in the dashboard are stored in `data/inference-pools.json` and apply without a restart. Each alias needs consoles loaded with the same model; this does not load models.
 
+## Planned MCP agent runtime
+
+The [MCP agent runtime implementation plan](docs/mcp-agent-runtime-plan.md) describes
+delegating coding tasks from Cursor, Codex, and ChatGPT to the inference cluster.
+It covers isolated execution workers, durable jobs, shared inference admission,
+patch handoff, and NuGet integration choices for this stack. This is a design
+proposal; the agent runtime is not implemented.
+
 ## Build
 
 Prerequisite: .NET SDK 10.0.100 or newer (`global.json`).
