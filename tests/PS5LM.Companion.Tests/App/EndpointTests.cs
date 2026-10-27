@@ -78,6 +78,7 @@ public sealed class EndpointTests
         Assert.Equal(HttpStatusCode.Redirect, redirect.StatusCode);
         Assert.Equal("/login", redirect.Headers.Location?.OriginalString);
         Assert.Equal(HttpStatusCode.Unauthorized, rejected.StatusCode);
+        Assert.Contains("<title>PS5LM Companion - Sign in</title>", await rejected.Content.ReadAsStringAsync());
         Assert.Equal(HttpStatusCode.Redirect, accepted.StatusCode);
         Assert.Contains(accepted.Headers.GetValues("Set-Cookie"), c => c.StartsWith("ps5lm_token=", StringComparison.Ordinal) && c.Contains("httponly", StringComparison.OrdinalIgnoreCase));
     }

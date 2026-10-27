@@ -88,6 +88,35 @@ public sealed class DashboardTests
     }
 
     [Theory]
+    [InlineData("/consoles/ps5", "PS5LM Companion - Status - ps5")]
+    [InlineData("/consoles/ps5/models", "PS5LM Companion - Models - ps5")]
+    [InlineData("/consoles/ps5/downloads", "PS5LM Companion - Downloads - ps5")]
+    [InlineData("/inference", "PS5LM Companion - Inference gateway")]
+    [InlineData("/settings/consoles", "PS5LM Companion - Consoles")]
+    [InlineData("/consoles/missing", "PS5LM Companion - Console not found")]
+    public async Task Every_page_title_is_prefixed_with_the_app_name(string path, string title)
+    {
+        await using var factory = new CompanionFactory();
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync(path);
+        var html = await response.Content.ReadAsStringAsync();
+
+        Assert.Contains($"<title>{title}</title>", html);
+    }
+
+    [Fact]
+    public async Task The_overview_title_is_prefixed_with_the_app_name()
+    {
+        await using var factory = new CompanionFactory { ConsoleIds = ["den", "room"] };
+        using var client = factory.CreateClient();
+
+        var html = await client.GetStringAsync("/");
+
+        Assert.Contains("<title>PS5LM Companion - Overview</title>", html);
+    }
+
+    [Theory]
     [InlineData("/models")]
     [InlineData("/transfers")]
     public async Task The_old_pages_are_gone(string path)

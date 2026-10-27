@@ -1,0 +1,8 @@
+<PageTitle>@(Prefix + Page)</PageTitle>
+
+@code {
+    public const string Prefix = "PS5LM Companion - ";
+
+    [Parameter, EditorRequired]
+    public string Page { get; set; } = "";
+}

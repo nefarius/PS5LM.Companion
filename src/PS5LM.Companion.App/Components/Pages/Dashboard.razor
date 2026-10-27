@@ -3,7 +3,7 @@
 @inject ISnackbar Snackbar
 @inject IDialogService Dialogs
 
-<PageTitle>@(Target is null ? "Console not found" : $"Status - {Target.Name}")</PageTitle>
+<AppPageTitle Page='@(Target is null ? "Console not found" : $"Status - {Target.Name}")' />
 
 @if (Target is null)
 {

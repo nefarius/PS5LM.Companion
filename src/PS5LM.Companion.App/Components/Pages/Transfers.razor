@@ -3,7 +3,7 @@
 @inject IModelHub Hub
 @inject ISnackbar Snackbar
 
-<PageTitle>@(Target is null ? "Console not found" : $"Downloads - {Target.Name}")</PageTitle>
+<AppPageTitle Page='@(Target is null ? "Console not found" : $"Downloads - {Target.Name}")' />
 
 @if (Target is null)
 {

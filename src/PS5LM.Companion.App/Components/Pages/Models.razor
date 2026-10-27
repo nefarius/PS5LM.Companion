@@ -4,7 +4,7 @@
 @inject IDialogService Dialogs
 @inject ModelDeletionService Deletion
 
-<PageTitle>@(Target is null ? "Console not found" : $"Models - {Target.Name}")</PageTitle>
+<AppPageTitle Page='@(Target is null ? "Console not found" : $"Models - {Target.Name}")' />
 
 @if (Target is null)
 {

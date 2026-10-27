@@ -2,6 +2,8 @@ using System.Net;
 
 using Microsoft.Extensions.Options;
 
+using PS5LM.Companion.App.Components;
+
 namespace PS5LM.Companion.App.Security;
 
 internal static class LoginEndpoints
@@ -36,7 +38,7 @@ internal static class LoginEndpoints
 
     private static string Page(bool error) => $$"""
         <!DOCTYPE html>
-        <html lang="en"><head><meta charset="utf-8"><title>PS5LM Companion</title>
+        <html lang="en"><head><meta charset="utf-8"><title>{{AppPageTitle.Prefix}}Sign in</title>
         <meta name="viewport" content="width=device-width, initial-scale=1"></head>
         <body style="font-family:sans-serif;max-width:22rem;margin:4rem auto">
         <h1>PS5LM Companion</h1>
