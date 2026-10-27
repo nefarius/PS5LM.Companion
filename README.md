@@ -69,7 +69,7 @@ stored in `data/consoles.json` and apply without a restart. A stored console who
 | `HuggingFace:Token` | none | Access token, only for gated or private repositories |
 | `Inference:Pools:{alias}:Model` / `Consoles:{n}` | none | Opt-in [inference gateway](#inference-gateway): the model and the consoles that serve it |
 | `Inference:Pools:{alias}:AlternateNames:{n}` | none | Extra `model` names (exact, or a prefix ending in `*`) that reach the pool |
-| `Inference:MaxConcurrentPerConsole` / `MaxQueuedRequests` / `QueueTimeoutSeconds` | 1 / 16 / 30 | Per-console slots, waiting requests, and how long a request waits (see [Inference gateway](#inference-gateway)) |
+| `Inference:MaxConcurrentPerConsole` / `MaxQueuedRequests` / `QueueTimeoutSeconds` | 1 / 16 / 30 | Requests per console at once; waiting requests across all pools; how long a request waits (see [Inference gateway](#inference-gateway)) |
 | `Inference:UpstreamTimeoutSeconds` / `MaxRequestBodyMegabytes` | 900 / 32 | Silence timeout for a forwarded request; body size read to find the model |
 
 The companion refuses to start on a non-loopback address without `Companion:AccessToken`, unless
@@ -127,7 +127,7 @@ Console-scoped routes live under `/api/consoles/{consoleId}`; an unknown id retu
 | `GET /api/consoles/{consoleId}/status` | Normalised console status, including payload dependencies |
 | `GET /api/consoles/{consoleId}/dependencies` | Payload installation and health from the latest status check |
 | `POST /api/consoles/{consoleId}/dependencies/{id}/launch` | Launch an installed payload by its stable id (`kstuff-lite`, `etahen`, `shadowmountplus`, `ftpsrv`) |
-| `GET /api/consoles/{consoleId}/apps` | Whether PS5LM and PS5LM Plus are installed and in the foreground (VoidShell or websrv) |
+| `GET /api/consoles/{consoleId}/apps` | Whether PS5LM and PS5LM Plus are installed (VoidShell or websrv) and, with VoidShell only, which one is in the foreground; with websrv the run state is `Unknown` |
 | `POST /api/consoles/{consoleId}/apps/{ps5lm\|ps5lmplus}/launch` | Launch the app; `.../close` asks it to quit through its `quit` command file |
 | `GET /api/consoles/{consoleId}/models` | Models on the console and the storage locations that accept uploads |
 | `POST /api/consoles/{consoleId}/models/load` | `{ "path": "<appPath from models>" }`; only known model paths are accepted |
@@ -190,7 +190,7 @@ and the `X-PS5LM-Pool` response header names the pool that answered.
 | `POST /api/inference/pools` | Add a pool (`alias`, `model`, `consoles`). A configuration alias returns `409` |
 | `PUT /api/inference/pools/{alias}` | Replace a user pool; an optional `alias` in the body renames it. A configuration pool or an existing target alias returns `409` |
 | `DELETE /api/inference/pools/{alias}` | Remove a user pool. A request already admitted finishes |
-| `GET /api/inference/pools/{alias}/models` | Every model file found on the pool's consoles and which consoles have it |
+| `GET /api/inference/pools/{alias}/models` | Every model file found on the pool's consoles (projector files named `mmproj*` are left out) and which consoles have it |
 | `POST /api/inference/pools/{alias}/test`, `/benchmark`; `GET .../results` | Self-test, benchmark and their latest results (see below) |
 | `POST /api/inference/pools/{alias}/sync` | Queue the pool model's download on every pool console that lacks it (see below). `409` when no console has the model or its source is unknown |
 
