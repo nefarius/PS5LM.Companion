@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using FastEndpoints;
 
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Diagnostics;
 
 using MudBlazor.Services;
 
@@ -82,6 +83,21 @@ public sealed class Program
 
             app.UseSerilogRequestLogging(options => options.GetLevel = RequestLogLevel);
             app.UseMiddleware<AccessTokenMiddleware>();
+            // Unknown pages have no endpoint, so the router's NotFoundPage is reached by re-executing /not-found.
+            app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
+            app.Use(async (context, next) =>
+            {
+                if (IsServicePath(context.Request.Path))
+                {
+                    var pages = context.Features.Get<IStatusCodePagesFeature>();
+                    if (pages is not null)
+                    {
+                        pages.Enabled = false;
+                    }
+                }
+
+                await next(context);
+            });
             app.UseAntiforgery();
             app.MapStaticAssets();
             app.MapHealthChecks("/health");
@@ -109,6 +125,12 @@ public sealed class Program
             await Log.CloseAndFlushAsync();
         }
     }
+
+    private static bool IsServicePath(PathString path) =>
+        path.StartsWithSegments("/api", StringComparison.Ordinal)
+        || path.StartsWithSegments("/v1", StringComparison.Ordinal)
+        || path.StartsWithSegments("/_blazor", StringComparison.Ordinal)
+        || path.StartsWithSegments("/health", StringComparison.Ordinal);
 
     /// <summary>
     /// Container probes hit <c>/health</c> every few seconds. Successful probes stay below the default

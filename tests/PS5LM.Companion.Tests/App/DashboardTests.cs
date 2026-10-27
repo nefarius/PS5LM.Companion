@@ -116,6 +116,21 @@ public sealed class DashboardTests
         Assert.Contains("<title>PS5LM Companion - Overview</title>", html);
     }
 
+    [Fact]
+    public async Task An_unknown_address_renders_the_not_found_page()
+    {
+        await using var factory = new CompanionFactory();
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/no-such-page");
+        var html = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Contains("<title>PS5LM Companion - Page not found</title>", html);
+        Assert.Contains("This page does not exist.", html);
+        Assert.Contains("app-brand", html);
+    }
+
     [Theory]
     [InlineData("/models")]
     [InlineData("/transfers")]

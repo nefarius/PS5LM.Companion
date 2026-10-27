@@ -61,6 +61,7 @@ public sealed class EndpointTests
         using var rightResponse = await client.SendAsync(right);
 
         Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+        Assert.DoesNotContain("Page not found", await anonymous.Content.ReadAsStringAsync());
         Assert.Equal(HttpStatusCode.Unauthorized, wrongResponse.StatusCode);
         Assert.Equal(HttpStatusCode.OK, rightResponse.StatusCode);
     }
