@@ -98,10 +98,20 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
+      # persist-credentials is false, so git fetch cannot authenticate to this private repo.
+      # "ahead" means master contains the tag; "identical" means the tag is master's tip.
       - name: Require tagged commit on master
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          git fetch origin master
-          git merge-base --is-ancestor "$GITHUB_SHA" origin/master
+          status="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${GITHUB_SHA}...master" --jq .status)"
+          case "$status" in
+            identical|ahead) ;;
+            *)
+              echo "::error::Tagged commit ${GITHUB_SHA} is not on master (compare status: ${status})"
+              exit 1
+              ;;
+          esac
 
       - name: Validate tag version
         env:
