@@ -33,24 +33,24 @@ Start the companion with `PS5__Consoles__<id>__Host=<console>` and open the dash
 8. **Plus sandbox**: on a sandboxed PS5LM Plus, loading a model from `/app0/models` works and uploads land in the
    sandbox folder.
 9. **Both installed**: with both apps present and `PS5:Consoles:{id}:Variant` unset, the dashboard explains how to choose.
-15. **App check**: with VoidShell on port 7007, the *PS5LM app* card lists both titles as installed and marks the
+10. **App check**: with VoidShell on port 7007, the *PS5LM app* card lists both titles as installed and marks the
     foreground one as running (VoidShell V1.1 truncates the foreground ID to 8 characters).
-16. **App launch**: stop PS5LM, press Launch on its row. The app opens on the TV; launching again while it runs is accepted.
+11. **App launch**: stop PS5LM, press Launch on its row. The app opens on the TV; launching again while it runs is accepted.
     With VoidShell stopped and websrv running, Launch still works and the running column reads *Unknown*.
-17. **App close**: with PS5LM running, press Close. The `quit` file disappears within a few seconds, the app exits to the
+12. **App close**: with PS5LM running, press Close. The `quit` file disappears within a few seconds, the app exits to the
     home screen and the row reads *Not running*. With the app stopped, Close is not offered.
 
 ## Two consoles
 
 Configure two consoles (`PS5__Consoles__a__Host`, `PS5__Consoles__b__Host`) and repeat the relevant steps:
 
-10. **Navigation**: the drawer lists both consoles with status, models and downloads. Opening a console puts its id
+13. **Navigation**: the drawer lists both consoles with status, models and downloads. Opening a console puts its id
     in the address (`/consoles/<id>`), the top bar names that console, and the other console keeps updating (power
     one off: only its entry turns disconnected).
-11. **Isolation**: load a model on console A; console B's status and model list do not change.
-12. **Parallel downloads**: queue a file to both consoles. Both transfers progress at the same time; a second file
+14. **Isolation**: load a model on console A; console B's status and model list do not change.
+15. **Parallel downloads**: queue a file to both consoles. Both transfers progress at the same time; a second file
     to the same console waits until the first finishes.
-13. **Unreachable console**: with console B off, transfers and commands for A still work and B's calls return `503`.
-14. **Restart**: restart the companion mid-transfer on both consoles; each resumes on its own console.
+16. **Unreachable console**: with console B off, transfers and commands for A still work and B's calls return `503`.
+17. **Restart**: restart the companion mid-transfer on both consoles; each resumes on its own console.
 
 Record any difference (especially in ftpsrv listings, rename behaviour and command-file timing) as a test fixture.
