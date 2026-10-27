@@ -132,6 +132,26 @@ public sealed class DashboardTests
     }
 
     [Theory]
+    [InlineData("POST", "/no-such-page", HttpStatusCode.MethodNotAllowed)]
+    [InlineData("HEAD", "/no-such-page", HttpStatusCode.NotFound)]
+    [InlineData("GET", "/API/missing", HttpStatusCode.NotFound)]
+    [InlineData("GET", "/V1/missing", HttpStatusCode.NotFound)]
+    [InlineData("GET", "/_Blazor/missing", HttpStatusCode.NotFound)]
+    [InlineData("GET", "/Health/missing", HttpStatusCode.NotFound)]
+    public async Task Non_get_and_mixed_case_service_misses_are_not_the_not_found_page(string method, string path, HttpStatusCode status)
+    {
+        await using var factory = new CompanionFactory();
+        using var client = factory.CreateClient();
+
+        using var response = await client.SendAsync(new HttpRequestMessage(new HttpMethod(method), path));
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(status, response.StatusCode);
+        Assert.DoesNotContain("Page not found", body);
+        Assert.NotEqual("text/html", response.Content.Headers.ContentType?.MediaType);
+    }
+
+    [Theory]
     [InlineData("/models")]
     [InlineData("/transfers")]
     public async Task The_old_pages_are_gone(string path)
