@@ -110,9 +110,8 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push image
-        env:
-          VERSION: ${{ needs.build-and-test.outputs.version }}
         run: |
+          VERSION="${GITHUB_REF_NAME#v}"
           IMAGE="containinger/ps5lm-companion"
           tags=(-t "${IMAGE}:${VERSION}")
           # Prereleases (e.g. 1.2.0-rc.1) do not move latest.
