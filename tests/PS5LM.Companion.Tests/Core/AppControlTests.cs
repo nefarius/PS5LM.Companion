@@ -18,6 +18,33 @@ public sealed class AppControlTests
         new(kind, true, "v", installed, known, active, null);
 
     [Fact]
+    public void Serving_llama_overrides_home_screen_focus_for_the_managed_variant()
+    {
+        var status = AppControlEvaluator.Evaluate([Snap(AppProviderKind.VoidShell, [Lm, Plus], true, "NPXS4003")], LlamaServerState.Serving, PS5Variant.PS5LM);
+
+        Assert.Equal(AppRunState.Running, status.Apps.Single(a => a.TitleId == Lm).State);
+        Assert.Equal(AppRunState.NotRunning, status.Apps.Single(a => a.TitleId == Plus).State);
+    }
+
+    [Fact]
+    public void Serving_llama_without_a_managed_variant_is_ambiguous_between_installed_variants()
+    {
+        var status = AppControlEvaluator.Evaluate([Snap(AppProviderKind.VoidShell, [Lm, Plus], true, null)], LlamaServerState.Loading, null);
+
+        Assert.All(status.Apps, app => Assert.Equal(AppRunState.RunningVariantUnknown, app.State));
+    }
+
+    [Fact]
+    public void Serving_llama_marks_the_app_running_even_when_no_service_answers()
+    {
+        var status = AppControlEvaluator.Evaluate([AppProviderSnapshot.Unavailable(AppProviderKind.VoidShell)], LlamaServerState.Serving, PS5Variant.PS5LMPlus);
+
+        Assert.False(status.Available);
+        Assert.Equal(AppRunState.Running, status.Apps.Single(a => a.TitleId == Plus).State);
+        Assert.Equal(AppRunState.NotRunning, status.Apps.Single(a => a.TitleId == Lm).State);
+    }
+
+    [Fact]
     public void Nothing_answering_reports_unavailable_rows()
     {
         var status = AppControlEvaluator.Evaluate([AppProviderSnapshot.Unavailable(AppProviderKind.VoidShell), AppProviderSnapshot.Unavailable(AppProviderKind.Websrv)]);

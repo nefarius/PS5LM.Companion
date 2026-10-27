@@ -4,10 +4,40 @@ using PS5LM.Companion.Core.Domain;
 
 namespace PS5LM.Companion.Core.Status;
 
-/// <summary>Merges the app-control services' snapshots into one per-variant view. VoidShell wins over websrv.</summary>
+/// <summary>
+/// Merges the app-control services' snapshots into one per-variant view. VoidShell wins over websrv. A live
+/// llama-server is proof the app runs, whatever has focus, so it overrides the services' running state.
+/// </summary>
 public static class AppControlEvaluator
 {
-    public static AppControlStatus Evaluate(IReadOnlyList<AppProviderSnapshot> snapshots)
+    /// <param name="snapshots">What each service reported.</param>
+    /// <param name="llama">The llama-server state; serving or loading means the managed app runs.</param>
+    /// <param name="managedVariant">The variant the companion manages, or null/Unknown when it cannot tell.</param>
+    public static AppControlStatus Evaluate(
+        IReadOnlyList<AppProviderSnapshot> snapshots,
+        LlamaServerState llama = LlamaServerState.Closed,
+        PS5Variant? managedVariant = null)
+    {
+        var status = EvaluateServices(snapshots);
+        return llama is LlamaServerState.Serving or LlamaServerState.Loading ? WithLlamaProof(status, managedVariant) : status;
+    }
+
+    private static AppControlStatus WithLlamaProof(AppControlStatus status, PS5Variant? managedVariant)
+    {
+        var known = managedVariant is { } v && v != PS5Variant.Unknown && status.Apps.Any(a => a.Variant == v);
+        var apps = status.Apps.Select(a => a with
+        {
+            State = known
+                ? (a.Variant == managedVariant ? AppRunState.Running : AppRunState.NotRunning)
+                : AppRunState.RunningVariantUnknown,
+        }).ToList();
+
+        // Service notes ("cannot report which app runs", ambiguous title) are settled by llama-server.
+        var note = status.Available ? null : status.Message;
+        return status with { Apps = apps, Message = note };
+    }
+
+    private static AppControlStatus EvaluateServices(IReadOnlyList<AppProviderSnapshot> snapshots)
     {
         var available = snapshots.Where(s => s.Available).OrderBy(s => s.Kind).ToList();
         if (available.Count == 0)
