@@ -7,6 +7,16 @@ Headless web dashboard that manages models and monitors a PS5 running PS5LM or P
 > [!NOTE]
 > Ahoy, traveler! 👋 This project has been "vibe-coded", meaning that the vast majority of the code has been written with the assistance of AI coding agents. I use my own work in production and value stability and security. Bear in mind, though, that the code you browse might not be an accurate reflection of my personal "style" or taste. The primary goal was to make a useful product, quickly, rather than focus on the development process itself. With that out of the way, if you find it useful, feel free to get inspired by it 😁
 
+<p align="center">
+  <img src="assets/screenshots/msedge_eJ19bRgB1q.png" width="49%" alt="Overview: two consoles, both ready, with the loaded model">
+  <img src="assets/screenshots/msedge_UwjvgRkSjN.png" width="49%" alt="Status: the PS5LM app and the payload checks">
+  <img src="assets/screenshots/msedge_2fgpuASzZH.png" width="49%" alt="Status: sensors, generation and storage">
+  <img src="assets/screenshots/msedge_vNaQqqDb5e.png" width="49%" alt="Models: load, unload and delete">
+  <img src="assets/screenshots/msedge_bZcXZkHj5t.png" width="49%" alt="Downloads: Hugging Face search and completed transfers">
+  <img src="assets/screenshots/msedge_x756rKPw9g.png" width="49%" alt="Inference: pools and which consoles serve each alias">
+  <br><sub>Overview, Status, Models, Downloads and Inference.</sub>
+</p>
+
 ## About
 
 PS5LM and PS5LM Plus only serve their API on port 8081 once a model is on disk and loaded, and their own UI is on the TV.
