@@ -88,6 +88,70 @@ public sealed class DashboardTests
     }
 
     [Theory]
+    [InlineData("/consoles/ps5", "PS5LM Companion - Status - ps5")]
+    [InlineData("/consoles/ps5/models", "PS5LM Companion - Models - ps5")]
+    [InlineData("/consoles/ps5/downloads", "PS5LM Companion - Downloads - ps5")]
+    [InlineData("/inference", "PS5LM Companion - Inference gateway")]
+    [InlineData("/settings/consoles", "PS5LM Companion - Consoles")]
+    [InlineData("/consoles/missing", "PS5LM Companion - Console not found")]
+    public async Task Every_page_title_is_prefixed_with_the_app_name(string path, string title)
+    {
+        await using var factory = new CompanionFactory();
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync(path);
+        var html = await response.Content.ReadAsStringAsync();
+
+        Assert.Contains($"<title>{title}</title>", html);
+    }
+
+    [Fact]
+    public async Task The_overview_title_is_prefixed_with_the_app_name()
+    {
+        await using var factory = new CompanionFactory { ConsoleIds = ["den", "room"] };
+        using var client = factory.CreateClient();
+
+        var html = await client.GetStringAsync("/");
+
+        Assert.Contains("<title>PS5LM Companion - Overview</title>", html);
+    }
+
+    [Fact]
+    public async Task An_unknown_address_renders_the_not_found_page()
+    {
+        await using var factory = new CompanionFactory();
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/no-such-page");
+        var html = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Contains("<title>PS5LM Companion - Page not found</title>", html);
+        Assert.Contains("This page does not exist.", html);
+        Assert.Contains("app-brand", html);
+    }
+
+    [Theory]
+    [InlineData("POST", "/no-such-page", HttpStatusCode.MethodNotAllowed)]
+    [InlineData("HEAD", "/no-such-page", HttpStatusCode.NotFound)]
+    [InlineData("GET", "/API/missing", HttpStatusCode.NotFound)]
+    [InlineData("GET", "/V1/missing", HttpStatusCode.NotFound)]
+    [InlineData("GET", "/_Blazor/missing", HttpStatusCode.NotFound)]
+    [InlineData("GET", "/Health/missing", HttpStatusCode.NotFound)]
+    public async Task Non_get_and_mixed_case_service_misses_are_not_the_not_found_page(string method, string path, HttpStatusCode status)
+    {
+        await using var factory = new CompanionFactory();
+        using var client = factory.CreateClient();
+
+        using var response = await client.SendAsync(new HttpRequestMessage(new HttpMethod(method), path));
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(status, response.StatusCode);
+        Assert.DoesNotContain("Page not found", body);
+        Assert.NotEqual("text/html", response.Content.Headers.ContentType?.MediaType);
+    }
+
+    [Theory]
     [InlineData("/models")]
     [InlineData("/transfers")]
     public async Task The_old_pages_are_gone(string path)

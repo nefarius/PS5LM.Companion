@@ -61,6 +61,7 @@ public sealed class EndpointTests
         using var rightResponse = await client.SendAsync(right);
 
         Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+        Assert.DoesNotContain("Page not found", await anonymous.Content.ReadAsStringAsync());
         Assert.Equal(HttpStatusCode.Unauthorized, wrongResponse.StatusCode);
         Assert.Equal(HttpStatusCode.OK, rightResponse.StatusCode);
     }
@@ -78,6 +79,7 @@ public sealed class EndpointTests
         Assert.Equal(HttpStatusCode.Redirect, redirect.StatusCode);
         Assert.Equal("/login", redirect.Headers.Location?.OriginalString);
         Assert.Equal(HttpStatusCode.Unauthorized, rejected.StatusCode);
+        Assert.Contains("<title>PS5LM Companion - Sign in</title>", await rejected.Content.ReadAsStringAsync());
         Assert.Equal(HttpStatusCode.Redirect, accepted.StatusCode);
         Assert.Contains(accepted.Headers.GetValues("Set-Cookie"), c => c.StartsWith("ps5lm_token=", StringComparison.Ordinal) && c.Contains("httponly", StringComparison.OrdinalIgnoreCase));
     }
