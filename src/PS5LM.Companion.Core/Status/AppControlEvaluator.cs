@@ -51,11 +51,14 @@ public static class AppControlEvaluator
         var available = snapshots.Where(s => s.Available).OrderBy(s => s.Kind).ToList();
         if (available.Count == 0)
         {
+            var websrvTried = snapshots.Any(snapshot => snapshot.Kind == AppProviderKind.Websrv);
             return new AppControlStatus(
                 false,
                 null,
                 null,
-                "The fixed VoidShell fork did not answer, and websrv (legacy fallback) did not answer either, so the companion cannot check or launch PS5LM.",
+                websrvTried
+                    ? "The fixed VoidShell fork did not answer, and websrv (legacy fallback) did not answer either, so the companion cannot check or launch PS5LM."
+                    : "The fixed VoidShell fork did not answer, so the companion cannot check or launch PS5LM.",
                 VariantProfile.All.Select(p => new AppVariantStatus(p.Variant, p.TitleId, p.DisplayName, false, AppRunState.Unknown, false)).ToList());
         }
 

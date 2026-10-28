@@ -65,7 +65,11 @@ public sealed class AppLaunchService(
 
             return reachable
                 ? new OperationResult(OperationOutcome.NotFound, $"{profile.DisplayName} ({profile.TitleId}) is not installed on the console.")
-                : new OperationResult(OperationOutcome.Unavailable, "The fixed VoidShell fork is not reachable, and websrv (legacy fallback) is not reachable either.");
+                : new OperationResult(
+                    OperationOutcome.Unavailable,
+                    providers.Any(provider => provider.Kind == AppProviderKind.Websrv)
+                        ? "The fixed VoidShell fork is not reachable, and websrv (legacy fallback) is not reachable either."
+                        : "The fixed VoidShell fork is not reachable.");
         }
         finally
         {

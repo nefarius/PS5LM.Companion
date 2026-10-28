@@ -58,10 +58,14 @@ public sealed class AppControlTests
     [Fact]
     public void Nothing_answering_reports_unavailable_rows()
     {
-        var status = AppControlEvaluator.Evaluate([AppProviderSnapshot.Unavailable(AppProviderKind.VoidShell), AppProviderSnapshot.Unavailable(AppProviderKind.Websrv)]);
+        var both = AppControlEvaluator.Evaluate([AppProviderSnapshot.Unavailable(AppProviderKind.VoidShell), AppProviderSnapshot.Unavailable(AppProviderKind.Websrv)]);
+        var forkOnly = AppControlEvaluator.Evaluate([AppProviderSnapshot.Unavailable(AppProviderKind.VoidShell)]);
 
-        Assert.False(status.Available);
-        Assert.All(status.Apps, app => Assert.False(app.CanLaunch));
+        Assert.False(both.Available);
+        Assert.Contains("legacy fallback", both.Message, StringComparison.Ordinal);
+        Assert.False(forkOnly.Available);
+        Assert.DoesNotContain("websrv", forkOnly.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.All(both.Apps, app => Assert.False(app.CanLaunch));
     }
 
     [Fact]
@@ -205,8 +209,27 @@ public sealed class AppControlTests
     public async Task No_service_means_unavailable_and_unknown_variant_is_invalid()
     {
         var (service, _, _) = Harness();
+        var time = new FakeTimeProvider(new DateTimeOffset(2026, 10, 25, 0, 0, 0, TimeSpan.Zero));
+        var forkOnly = new AppLaunchService(
+            [new FakeAppProvider(AppProviderKind.VoidShell)],
+            new CompanionStatusService(
+                new PS5Options { Host = "ps5" },
+                ConsoleFixtures.PS5LMInstalled(),
+                new FakeLlamaProbe(),
+                new FakeSensorProbe(),
+                new FakePayloadCatalog(),
+                new FakeElfldrProbe(),
+                new LoadTracker(time),
+                time),
+            new CompanionStatusStore());
 
-        Assert.Equal(OperationOutcome.Unavailable, (await service.LaunchAsync(PS5Variant.PS5LM, CancellationToken.None)).Outcome);
+        var unavailable = await service.LaunchAsync(PS5Variant.PS5LM, CancellationToken.None);
+        var withoutFallback = await forkOnly.LaunchAsync(PS5Variant.PS5LM, CancellationToken.None);
+
+        Assert.Equal(OperationOutcome.Unavailable, unavailable.Outcome);
+        Assert.Contains("legacy fallback", unavailable.Message, StringComparison.Ordinal);
+        Assert.Equal(OperationOutcome.Unavailable, withoutFallback.Outcome);
+        Assert.DoesNotContain("websrv", withoutFallback.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(OperationOutcome.Invalid, (await service.LaunchAsync(PS5Variant.Unknown, CancellationToken.None)).Outcome);
     }
 }
