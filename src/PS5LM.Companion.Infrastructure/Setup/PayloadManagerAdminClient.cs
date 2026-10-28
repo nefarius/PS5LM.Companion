@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 
+using Polly.Timeout;
+
 using PS5LM.Companion.Core.Domain;
 using PS5LM.Companion.Core.Setup;
 
@@ -29,7 +31,7 @@ public sealed class PayloadManagerAdminClient(HttpClient http) : IPayloadManager
             var text = (await response.Content.ReadAsStringAsync(cancellationToken)).Trim();
             return PayloadManagerVersion.TryParse(text, out _) ? text : null;
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or TimeoutRejectedException && !cancellationToken.IsCancellationRequested)
         {
             return null;
         }
@@ -240,9 +242,10 @@ public sealed class PayloadManagerAdminClient(HttpClient http) : IPayloadManager
                 throw new IOException($"Payload Manager refused to shut down ({(int)response.StatusCode}).");
             }
         }
-        catch (HttpRequestException)
+        catch (Exception ex) when (ex is HttpRequestException or TimeoutRejectedException && !cancellationToken.IsCancellationRequested)
         {
-            // The manager can drop the connection while it exits; the caller waits for the port to close.
+            // The manager can drop the connection while it exits, and a stuck one trips the client's timeout
+            // (Polly's TimeoutRejectedException). The caller waits for the port to close either way.
         }
     }
 

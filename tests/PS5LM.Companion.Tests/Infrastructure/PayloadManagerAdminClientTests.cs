@@ -1,6 +1,8 @@
 using System.Net;
 using System.Text;
 
+using Polly.Timeout;
+
 using PS5LM.Companion.Infrastructure.Setup;
 using PS5LM.Companion.Tests.Support;
 
@@ -20,6 +22,15 @@ public sealed class PayloadManagerAdminClientTests
         Assert.Equal("0.5.2", await Client(new StubHandler(_ => Text("0.5.2\n"))).GetVersionAsync(CancellationToken.None));
         Assert.Null(await Client(new StubHandler(_ => Text("<!doctype html>"))).GetVersionAsync(CancellationToken.None));
         Assert.Null(await Client(new StubHandler(_ => throw new HttpRequestException("down"))).GetVersionAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task A_pipeline_timeout_is_no_version_and_a_finished_shutdown()
+    {
+        var timeout = new StubHandler(_ => throw new TimeoutRejectedException("stuck"));
+
+        Assert.Null(await Client(timeout).GetVersionAsync(CancellationToken.None));
+        await Client(timeout).ShutdownAsync(CancellationToken.None);
     }
 
     [Fact]
