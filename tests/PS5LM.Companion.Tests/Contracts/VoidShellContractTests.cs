@@ -19,6 +19,7 @@ public sealed class VoidShellContractTests
         var empty = await Probe("library-empty.json", "stats.json");
 
         Assert.Equal(["PPSA99575"], listed.InstalledTitleIds);
+        Assert.True(empty.Available);
         Assert.Empty(empty.InstalledTitleIds);
         Assert.Equal("V1.1", listed.Version);
     }

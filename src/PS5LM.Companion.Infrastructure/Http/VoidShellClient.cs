@@ -32,7 +32,12 @@ public sealed class VoidShellClient(HttpClient http) : IAppControlProvider
             var installed = new List<string>();
             using (var library = await GetJsonAsync("api/library", cancellationToken))
             {
-                if (library is not null && library.RootElement.TryGetProperty("games", out var games) && games.ValueKind == JsonValueKind.Array)
+                if (library is null)
+                {
+                    return AppProviderSnapshot.Unavailable(Kind, "VoidShell's library could not be read.");
+                }
+
+                if (library.RootElement.TryGetProperty("games", out var games) && games.ValueKind == JsonValueKind.Array)
                 {
                     foreach (var game in games.EnumerateArray())
                     {
