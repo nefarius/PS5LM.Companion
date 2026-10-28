@@ -79,6 +79,8 @@ public sealed class AppControlClientTests
     [Theory]
     [InlineData(HttpStatusCode.InternalServerError, """{"games":[]}""")]
     [InlineData(HttpStatusCode.OK, "{")]
+    [InlineData(HttpStatusCode.OK, "{}")]
+    [InlineData(HttpStatusCode.OK, """{"games":{}}""")]
     public async Task A_library_that_cannot_be_read_is_unavailable(HttpStatusCode code, string body)
     {
         var client = new VoidShellClient(Client(

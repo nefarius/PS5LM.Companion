@@ -37,20 +37,22 @@ public sealed class VoidShellClient(HttpClient http) : IAppControlProvider
                     return AppProviderSnapshot.Unavailable(Kind, "VoidShell's library could not be read.");
                 }
 
-                if (library.RootElement.TryGetProperty("games", out var games) && games.ValueKind == JsonValueKind.Array)
+                if (!library.RootElement.TryGetProperty("games", out var games) || games.ValueKind != JsonValueKind.Array)
                 {
-                    foreach (var game in games.EnumerateArray())
-                    {
-                        if (game.ValueKind != JsonValueKind.Object)
-                        {
-                            continue;
-                        }
+                    return AppProviderSnapshot.Unavailable(Kind, "VoidShell's library could not be read.");
+                }
 
-                        var exists = !game.TryGetProperty("exists", out var existsElement) || existsElement.ValueKind != JsonValueKind.False;
-                        if (exists && game.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String && id.GetString() is { Length: > 0 } value)
-                        {
-                            installed.Add(value);
-                        }
+                foreach (var game in games.EnumerateArray())
+                {
+                    if (game.ValueKind != JsonValueKind.Object)
+                    {
+                        continue;
+                    }
+
+                    var exists = !game.TryGetProperty("exists", out var existsElement) || existsElement.ValueKind != JsonValueKind.False;
+                    if (exists && game.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String && id.GetString() is { Length: > 0 } value)
+                    {
+                        installed.Add(value);
                     }
                 }
             }
