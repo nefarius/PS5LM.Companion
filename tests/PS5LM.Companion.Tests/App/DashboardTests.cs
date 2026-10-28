@@ -34,6 +34,8 @@ public sealed class DashboardTests
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
             ?.InformationalVersion;
         Assert.False(string.IsNullOrWhiteSpace(version));
+        Assert.Contains("app-version", html);
+        Assert.Contains("mud-tooltip-root", html);
         Assert.Contains($"aria-label=\"Version v{version}\"", html);
         Assert.Contains($"v{version}", html);
         Assert.Contains("href=\"https://github.com/nefarius/PS5LM.Companion/\"", html);

@@ -11,6 +11,7 @@ using PS5LM.Companion.App.Inference;
 using PS5LM.Companion.App.Monitoring;
 using PS5LM.Companion.App.Security;
 using PS5LM.Companion.App.Setup;
+using PS5LM.Companion.App.Updates;
 using PS5LM.Companion.Infrastructure;
 
 using Serilog;
@@ -68,6 +69,7 @@ public sealed class Program
             builder.Services.AddRazorComponents().AddInteractiveServerComponents();
             builder.Services.AddMudServices();
             builder.Services.AddPS5Connectivity(builder.Configuration);
+            builder.Services.AddUpdateCheck();
             builder.Services.AddModelManagement(builder.Configuration);
             builder.Services.AddInferenceRouting(builder.Configuration);
             builder.Services.AddHttpForwarder();
