@@ -163,6 +163,26 @@ public sealed class UpdateRunnerTests
         Assert.Contains(report.Lines, l => l.Component == "VoidShell" && l.Status == SetupStatus.Warn && l.Message.Contains("another copy", StringComparison.Ordinal));
     }
 
+    [Theory]
+    [InlineData("/data/pldmgr/payloads/../../homebrew/PPSA99581/eboot.bin")]
+    [InlineData("/data/homebrew/PPSA99581/eboot.bin")]
+    [InlineData("/etc/passwd")]
+    [InlineData("/data/pldmgr/payloads//x.elf")]
+    public async Task Stored_path_outside_payload_storage_is_neither_read_nor_replaced(string path)
+    {
+        using var harness = await PreparedAsync();
+        var index = harness.Stored.FindIndex(s => s.FileName == "voidshell.elf");
+        harness.Stored[index] = harness.Stored[index] with { Path = path };
+        harness.Files.AddFile(path, "keep me");
+        harness.UploadFails.Add("voidshell.elf");
+
+        var report = await Runner(harness).RunAsync(CancellationToken.None);
+
+        Assert.Equal("keep me", harness.Files.Text(path));
+        Assert.Empty(harness.Events);
+        Assert.Contains(report.Lines, l => l.Component == "VoidShell" && l.Status == SetupStatus.Warn && l.Message.Contains("outside", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task Payload_that_is_not_stored_is_reported_not_installed()
     {

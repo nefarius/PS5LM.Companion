@@ -16,6 +16,7 @@ public sealed class UpdateRunner
 {
     private const int MaxPayloadBytes = 256 * 1024 * 1024;
     private const int MaxTextBytes = 4 * 1024 * 1024;
+    private const string PayloadStorageRoot = "/data/pldmgr/payloads/";
     private const string ParamSuffix = "sce_sys/param.json";
 
     private readonly SetupManifest _manifest;
@@ -117,6 +118,12 @@ public sealed class UpdateRunner
             if (string.IsNullOrEmpty(stored.Path))
             {
                 Add(payload.Name, SetupStatus.Warn, "Payload Manager does not report where the file is stored, so it cannot be compared.");
+                continue;
+            }
+
+            if (!IsPayloadStoragePath(stored.Path))
+            {
+                Add(payload.Name, SetupStatus.Warn, $"Payload Manager reports '{stored.Path}', which is outside {PayloadStorageRoot}. It was not compared or replaced.");
                 continue;
             }
 
@@ -400,6 +407,13 @@ public sealed class UpdateRunner
         Add(component, SetupStatus.Fail, $"ftpsrv is not answering on port {_options.FtpPort}, so nothing could be compared.");
         return false;
     }
+
+    // The path is data from the console's HTTP service; only ever write under Payload Manager's own storage.
+    private static bool IsPayloadStoragePath(string path) =>
+        path.StartsWith(PayloadStorageRoot, StringComparison.Ordinal)
+        && path.Length > PayloadStorageRoot.Length
+        && !path.EndsWith('/')
+        && path[PayloadStorageRoot.Length..].Split('/').All(segment => segment.Length > 0 && segment is not "." and not "..");
 
     private static bool HashEquals(byte[] remote, string localPath)
     {
