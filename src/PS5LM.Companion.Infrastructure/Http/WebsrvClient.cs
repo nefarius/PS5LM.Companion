@@ -5,7 +5,7 @@ using PS5LM.Companion.Core.Abstractions;
 namespace PS5LM.Companion.Infrastructure.Http;
 
 /// <summary>
-/// ps5-payload-dev websrv (port 8080): <c>/version</c> identifies it, <c>/fs/user/app/?fmt=json</c> lists installed
+/// Legacy ps5-payload-dev websrv fallback (port 8080): <c>/version</c> identifies it, <c>/fs/user/app/?fmt=json</c> lists installed
 /// titles and <c>/launch?titleId=</c> starts one. It has no foreground-title API, so running state is unknown.
 /// </summary>
 public sealed class WebsrvClient(HttpClient http) : IAppControlProvider

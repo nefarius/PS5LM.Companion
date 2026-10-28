@@ -97,6 +97,11 @@
             parts.Add("Required payloads not running");
         }
 
+        if (status.Dependencies.FirstOrDefault(dependency => dependency.Id == PayloadDependencies.VoidShell) is { Health: DependencyHealth.Unknown })
+        {
+            parts.Add("VoidShell is not answering");
+        }
+
         return parts.Count == 0 ? null : string.Join(". ", parts) + ".";
     }
 

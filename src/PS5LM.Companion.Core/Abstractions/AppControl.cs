@@ -5,10 +5,10 @@ namespace PS5LM.Companion.Core.Abstractions;
 /// <summary>The services that can list and launch the console's titles.</summary>
 public enum AppProviderKind
 {
-    /// <summary>VoidShell: title library, foreground title and launching on port 7007.</summary>
+    /// <summary>Required nefarius VoidShell fork: title library, running title, firmware and launching. Setup uses port 7007.</summary>
     VoidShell = 0,
 
-    /// <summary>ps5-payload-dev websrv: title launching on port 8080; no foreground-title API.</summary>
+    /// <summary>Legacy ps5-payload-dev websrv fallback: title launching on port 8080. It cannot report the running title.</summary>
     Websrv = 1,
 }
 
@@ -40,7 +40,7 @@ public sealed record AppProviderSnapshot(
 /// <param name="Accepted">Whether the service accepted it. For VoidShell this only means the title was queued.</param>
 public sealed record AppLaunchResult(bool Dispatched, bool Accepted, string Message);
 
-/// <summary>Lists and launches titles through VoidShell or websrv.</summary>
+/// <summary>Lists and launches titles through the required VoidShell fork, or websrv when that fork does not answer.</summary>
 public interface IAppControlProvider
 {
     AppProviderKind Kind { get; }

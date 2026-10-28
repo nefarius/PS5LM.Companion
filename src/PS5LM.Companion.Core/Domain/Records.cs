@@ -74,7 +74,7 @@ public sealed record ConsoleSensors(
     double? FanDuty,
     IReadOnlyList<DriveSpace> Drives);
 
-/// <summary>One PS5LM Plus payload as the dashboard and REST API present it.</summary>
+/// <summary>One console dependency as the dashboard and REST API present it.</summary>
 /// <param name="Id">Stable Payload Manager id, such as <c>etahen</c>.</param>
 /// <param name="Name">Text shown to the user.</param>
 /// <param name="Requirement">Required, recommended or bundled.</param>
@@ -135,9 +135,9 @@ public sealed record CompanionStatus(
 /// <param name="CanLaunch">Whether a Launch action can be offered.</param>
 public sealed record AppVariantStatus(PS5Variant Variant, string TitleId, string Name, bool Installed, AppRunState State, bool CanLaunch);
 
-/// <summary>What VoidShell or websrv reported about the PS5LM apps on a console.</summary>
-/// <param name="Available">Whether VoidShell or websrv answered.</param>
-/// <param name="Provider">The service used for status and launching (VoidShell is preferred), or <see langword="null"/>.</param>
+/// <summary>What the required VoidShell fork, or the websrv legacy fallback, reported about the PS5LM apps.</summary>
+/// <param name="Available">Whether VoidShell or the websrv fallback answered.</param>
+/// <param name="Provider">The service used for status and launching (VoidShell wins), or <see langword="null"/>.</param>
 /// <param name="Version">The provider's version text, when it reports one.</param>
 /// <param name="Message">Why nothing is available, or a caveat about the state.</param>
 /// <param name="Apps">One row per PS5LM variant.</param>

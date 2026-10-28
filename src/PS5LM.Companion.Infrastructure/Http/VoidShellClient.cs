@@ -8,8 +8,9 @@ using PS5LM.Companion.Core.Abstractions;
 namespace PS5LM.Companion.Infrastructure.Http;
 
 /// <summary>
-/// VoidShell's REST API (port 7007): <c>/api/version</c>, <c>/api/library</c>, <c>/api/stats</c> (<c>running_app</c> in the nefarius fork) and
-/// <c>POST /api/launch</c> with the title ID as a plain-text body. Transport failures are an unavailable snapshot.
+/// REST API of the required nefarius VoidShell fork (port 7007 by default): <c>/api/version</c>, <c>/api/library</c>,
+/// <c>/api/stats</c> (<c>running_app</c> and <c>firmware</c>) and <c>POST /api/launch</c> with the title ID as plain text.
+/// The reported version stays <c>V1.1</c>, so upstream-shaped stats are still accepted. Transport failures are an unavailable snapshot.
 /// </summary>
 public sealed class VoidShellClient(HttpClient http) : IAppControlProvider
 {
@@ -31,20 +32,27 @@ public sealed class VoidShellClient(HttpClient http) : IAppControlProvider
             var installed = new List<string>();
             using (var library = await GetJsonAsync("api/library", cancellationToken))
             {
-                if (library is not null && library.RootElement.TryGetProperty("games", out var games) && games.ValueKind == JsonValueKind.Array)
+                if (library is null)
                 {
-                    foreach (var game in games.EnumerateArray())
-                    {
-                        if (game.ValueKind != JsonValueKind.Object)
-                        {
-                            continue;
-                        }
+                    return AppProviderSnapshot.Unavailable(Kind, "VoidShell's library could not be read.");
+                }
 
-                        var exists = !game.TryGetProperty("exists", out var existsElement) || existsElement.ValueKind != JsonValueKind.False;
-                        if (exists && game.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String && id.GetString() is { Length: > 0 } value)
-                        {
-                            installed.Add(value);
-                        }
+                if (!library.RootElement.TryGetProperty("games", out var games) || games.ValueKind != JsonValueKind.Array)
+                {
+                    return AppProviderSnapshot.Unavailable(Kind, "VoidShell's library could not be read.");
+                }
+
+                foreach (var game in games.EnumerateArray())
+                {
+                    if (game.ValueKind != JsonValueKind.Object)
+                    {
+                        continue;
+                    }
+
+                    var exists = !game.TryGetProperty("exists", out var existsElement) || existsElement.ValueKind != JsonValueKind.False;
+                    if (exists && game.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String && id.GetString() is { Length: > 0 } value)
+                    {
+                        installed.Add(value);
                     }
                 }
             }

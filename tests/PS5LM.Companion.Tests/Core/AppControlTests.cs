@@ -58,10 +58,14 @@ public sealed class AppControlTests
     [Fact]
     public void Nothing_answering_reports_unavailable_rows()
     {
-        var status = AppControlEvaluator.Evaluate([AppProviderSnapshot.Unavailable(AppProviderKind.VoidShell), AppProviderSnapshot.Unavailable(AppProviderKind.Websrv)]);
+        var both = AppControlEvaluator.Evaluate([AppProviderSnapshot.Unavailable(AppProviderKind.VoidShell), AppProviderSnapshot.Unavailable(AppProviderKind.Websrv)]);
+        var forkOnly = AppControlEvaluator.Evaluate([AppProviderSnapshot.Unavailable(AppProviderKind.VoidShell)]);
 
-        Assert.False(status.Available);
-        Assert.All(status.Apps, app => Assert.False(app.CanLaunch));
+        Assert.False(both.Available);
+        Assert.Contains("legacy fallback", both.Message, StringComparison.Ordinal);
+        Assert.False(forkOnly.Available);
+        Assert.DoesNotContain("websrv", forkOnly.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.All(both.Apps, app => Assert.False(app.CanLaunch));
     }
 
     [Fact]
@@ -73,6 +77,43 @@ public sealed class AppControlTests
         Assert.Equal(AppRunState.Running, status.Apps.Single(a => a.TitleId == Lm).State);
         Assert.Equal(AppRunState.NotRunning, status.Apps.Single(a => a.TitleId == Plus).State);
         Assert.All(status.Apps, app => Assert.True(app.Installed));
+    }
+
+    [Fact]
+    public void An_available_VoidShell_library_is_not_extended_by_websrv()
+    {
+        var status = AppControlEvaluator.Evaluate([Snap(AppProviderKind.Websrv, [Lm, Plus], false, null), Snap(AppProviderKind.VoidShell, [Lm], true, null)]);
+
+        Assert.Equal("VoidShell", status.Provider);
+        Assert.True(status.Apps.Single(a => a.TitleId == Lm).Installed);
+        Assert.False(status.Apps.Single(a => a.TitleId == Plus).Installed);
+        Assert.All(status.Apps, app => Assert.Equal(AppRunState.NotRunning, app.State));
+    }
+
+    [Fact]
+    public void A_VoidShell_that_does_not_know_the_running_title_still_accepts_a_later_report()
+    {
+        var status = AppControlEvaluator.Evaluate([Snap(AppProviderKind.VoidShell, [Lm], false, null), Snap(AppProviderKind.Websrv, [Plus], true, Plus)]);
+
+        Assert.Equal("VoidShell", status.Provider);
+        Assert.True(status.Apps.Single(a => a.TitleId == Lm).Installed);
+        Assert.False(status.Apps.Single(a => a.TitleId == Plus).Installed);
+        Assert.Equal(AppRunState.NotRunning, status.Apps.Single(a => a.TitleId == Lm).State);
+        Assert.Equal(AppRunState.Running, status.Apps.Single(a => a.TitleId == Plus).State);
+        Assert.Null(status.Message);
+    }
+
+    [Fact]
+    public void A_fallback_truncated_id_is_not_assigned_from_the_primary_library_alone()
+    {
+        var status = AppControlEvaluator.Evaluate([Snap(AppProviderKind.VoidShell, [Lm], false, null), Snap(AppProviderKind.Websrv, [Plus], true, "PPSA99")]);
+
+        Assert.Equal("VoidShell", status.Provider);
+        Assert.True(status.Apps.Single(a => a.TitleId == Lm).Installed);
+        Assert.False(status.Apps.Single(a => a.TitleId == Plus).Installed);
+        Assert.False(status.Apps.Single(a => a.TitleId == Plus).CanLaunch);
+        Assert.All(status.Apps, app => Assert.Equal(AppRunState.RunningVariantUnknown, app.State));
+        Assert.Contains("PPSA99", status.Message);
     }
 
     [Fact]
@@ -157,6 +198,7 @@ public sealed class AppControlTests
         var result = await service.LaunchAsync(PS5Variant.PS5LM, CancellationToken.None);
 
         Assert.True(result.Succeeded);
+        Assert.Contains("legacy fallback", result.Message, StringComparison.Ordinal);
         Assert.Equal([Lm], websrv.Launched);
     }
 
@@ -201,11 +243,44 @@ public sealed class AppControlTests
     }
 
     [Fact]
+    public async Task An_available_VoidShell_that_omits_a_title_does_not_fall_back_to_websrv()
+    {
+        var (service, voidShell, websrv) = Harness();
+        voidShell.SetUp([Lm]);
+        websrv.SetUp([Plus], runningKnown: false);
+
+        var result = await service.LaunchAsync(PS5Variant.PS5LMPlus, CancellationToken.None);
+
+        Assert.Equal(OperationOutcome.NotFound, result.Outcome);
+        Assert.Empty(voidShell.Launched);
+        Assert.Empty(websrv.Launched);
+    }
+
+    [Fact]
     public async Task No_service_means_unavailable_and_unknown_variant_is_invalid()
     {
         var (service, _, _) = Harness();
+        var time = new FakeTimeProvider(new DateTimeOffset(2026, 10, 25, 0, 0, 0, TimeSpan.Zero));
+        var forkOnly = new AppLaunchService(
+            [new FakeAppProvider(AppProviderKind.VoidShell)],
+            new CompanionStatusService(
+                new PS5Options { Host = "ps5" },
+                ConsoleFixtures.PS5LMInstalled(),
+                new FakeLlamaProbe(),
+                new FakeSensorProbe(),
+                new FakePayloadCatalog(),
+                new FakeElfldrProbe(),
+                new LoadTracker(time),
+                time),
+            new CompanionStatusStore());
 
-        Assert.Equal(OperationOutcome.Unavailable, (await service.LaunchAsync(PS5Variant.PS5LM, CancellationToken.None)).Outcome);
+        var unavailable = await service.LaunchAsync(PS5Variant.PS5LM, CancellationToken.None);
+        var withoutFallback = await forkOnly.LaunchAsync(PS5Variant.PS5LM, CancellationToken.None);
+
+        Assert.Equal(OperationOutcome.Unavailable, unavailable.Outcome);
+        Assert.Contains("legacy fallback", unavailable.Message, StringComparison.Ordinal);
+        Assert.Equal(OperationOutcome.Unavailable, withoutFallback.Outcome);
+        Assert.DoesNotContain("websrv", withoutFallback.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(OperationOutcome.Invalid, (await service.LaunchAsync(PS5Variant.Unknown, CancellationToken.None)).Outcome);
     }
 }

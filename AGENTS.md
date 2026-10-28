@@ -9,7 +9,7 @@ Standalone .NET 10 / ASP.NET Core companion with a MudBlazor dashboard for PS5LM
 - Multiple consoles: `PS5:Consoles:{id}` options, one isolated `ConsoleRuntime` each (`IConsoleRegistry`); REST is `/api/consoles/{consoleId}/...`; one transfer queue per console.
 - Optional inference gateway (`Inference:Pools`): `InferenceRouter` in `Core` picks a console that reports the pool's model; `App/Inference` forwards `/v1/...` with YARP's `IHttpForwarder`. Pools may list `AlternateNames` (exact or `prefix*`) resolved by `InferencePoolNames`. YARP stays in `App`.
 - The PS5 app only listens on port 8081 once a model is loaded: discovery and control are FTP-first.
-- App check/launch: `IAppControlProvider` in `Core` (VoidShell first, websrv fallback); HTTP clients in `Infrastructure/Http`; REST `/api/consoles/{id}/apps`.
+- App check/launch: required pinned `nefarius/voidshell` fork via `IAppControlProvider` in `Core` (VoidShell first). websrv is a legacy fallback and does not satisfy that dependency. HTTP clients in `Infrastructure/Http`; REST `/api/consoles/{id}/apps`.
 - `setup` command (`App/Setup`, `Core/Setup`, `Infrastructure/Setup`): one-shot console preparation from the pinned `setup-manifest.json`; see `docs/setup.md`.
 - `update` command (`App/Setup/UpdateCommand`, `Core/Setup/UpdateRunner`): compares a prepared console with the pinned manifest by hash and replaces only stale payloads, extra files and (`--apps`) the installed app; `--check` only reports; see `docs/update.md`.
 - Workflow rules: `.cursor/rules/feature-workflow.mdc`.

@@ -5,7 +5,7 @@ using PS5LM.Companion.Core.Domain;
 
 namespace PS5LM.Companion.App.Endpoints;
 
-/// <summary>PS5LM and PS5LM Plus as VoidShell or websrv reported them in the latest status check.</summary>
+/// <summary>PS5LM and PS5LM Plus as the required VoidShell fork, or the websrv legacy fallback, reported them.</summary>
 public sealed class GetAppsEndpoint(IConsoleRegistry registry) : EndpointWithoutRequest<AppControlStatus>
 {
     public override void Configure()
@@ -27,7 +27,7 @@ public sealed class GetAppsEndpoint(IConsoleRegistry registry) : EndpointWithout
     }
 }
 
-/// <summary>Launches <c>ps5lm</c> or <c>ps5lmplus</c> through VoidShell (preferred) or websrv.</summary>
+/// <summary>Launches <c>ps5lm</c> or <c>ps5lmplus</c> through the required VoidShell fork, or websrv if that fork does not answer.</summary>
 public sealed class LaunchAppEndpoint(IConsoleRegistry registry) : EndpointWithoutRequest
 {
     public override void Configure()

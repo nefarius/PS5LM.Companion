@@ -34,7 +34,7 @@ public sealed class ConsoleConnectionProbe(IConsoleConnectorFactory factory) : I
             var websrv = await Check("websrv", token => AppAsync(connectors, options.WebsrvPort, AppProviderKind.Websrv, "websrv", token), cancellationToken);
             if (websrv.Outcome == ProbeOutcome.Fail && voidShell.Outcome == ProbeOutcome.Pass)
             {
-                websrv = new ProbeCheck("websrv", ProbeOutcome.Skipped, $"Not needed: VoidShell answers. ({websrv.Detail})");
+                websrv = new ProbeCheck("websrv", ProbeOutcome.Skipped, $"Not needed: VoidShell answers. websrv is only a legacy fallback. ({websrv.Detail})");
             }
 
             return new ConsoleProbeReport(
@@ -92,7 +92,9 @@ public sealed class ConsoleConnectionProbe(IConsoleConnectorFactory factory) : I
     {
         if (port <= 0)
         {
-            return new ProbeCheck(name, ProbeOutcome.Skipped, $"{name} is disabled.");
+            return kind == AppProviderKind.VoidShell
+                ? new ProbeCheck(name, ProbeOutcome.Fail, "The fixed VoidShell fork is required.")
+                : new ProbeCheck(name, ProbeOutcome.Skipped, $"{name} is disabled.");
         }
 
         var provider = connectors.AppControl?.FirstOrDefault(item => item.Kind == kind);

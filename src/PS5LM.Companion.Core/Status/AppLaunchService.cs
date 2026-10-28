@@ -6,8 +6,9 @@ using PS5LM.Companion.Core.Models;
 namespace PS5LM.Companion.Core.Status;
 
 /// <summary>
-/// Launches PS5LM or PS5LM Plus through VoidShell, or websrv when VoidShell does not answer. Only a title the
-/// service lists as installed is launched, and a second request while one runs is refused.
+/// Launches PS5LM or PS5LM Plus through the required VoidShell fork, or through websrv when that fork does not
+/// answer. A VoidShell answer that omits the title is final. Only a title the chosen service lists as installed is
+/// launched, and a second request while one runs is refused.
 /// </summary>
 public sealed class AppLaunchService(
     IReadOnlyList<IAppControlProvider> providers,
@@ -42,6 +43,11 @@ public sealed class AppLaunchService(
                 reachable = true;
                 if (!snapshot.InstalledTitleIds.Contains(profile.TitleId, StringComparer.OrdinalIgnoreCase))
                 {
+                    if (provider.Kind == AppProviderKind.VoidShell)
+                    {
+                        return new OperationResult(OperationOutcome.NotFound, $"{profile.DisplayName} ({profile.TitleId}) is not installed on the console.");
+                    }
+
                     continue;
                 }
 
@@ -54,22 +60,32 @@ public sealed class AppLaunchService(
 
                 if (!result.Accepted)
                 {
-                    return new OperationResult(OperationOutcome.Unavailable, $"{provider.Kind} could not launch {profile.DisplayName}: {result.Message}");
+                    return new OperationResult(OperationOutcome.Unavailable, $"{ProviderLabel(provider.Kind)} could not launch {profile.DisplayName}: {result.Message}");
                 }
 
                 store.Publish(await status.RefreshAsync(cancellationToken));
                 return new OperationResult(
                     OperationOutcome.Accepted,
-                    $"{provider.Kind} accepted the launch of {profile.DisplayName} ({profile.TitleId}). {result.Message}".TrimEnd());
+                    $"{ProviderLabel(provider.Kind)} accepted the launch of {profile.DisplayName} ({profile.TitleId}). {result.Message}".TrimEnd());
             }
 
             return reachable
                 ? new OperationResult(OperationOutcome.NotFound, $"{profile.DisplayName} ({profile.TitleId}) is not installed on the console.")
-                : new OperationResult(OperationOutcome.Unavailable, "Neither VoidShell nor websrv is reachable on the console.");
+                : new OperationResult(
+                    OperationOutcome.Unavailable,
+                    providers.Any(provider => provider.Kind == AppProviderKind.Websrv)
+                        ? "The fixed VoidShell fork is not reachable, and websrv (legacy fallback) is not reachable either."
+                        : "The fixed VoidShell fork is not reachable.");
         }
         finally
         {
             _gate.Release();
         }
     }
+
+    private static string ProviderLabel(AppProviderKind kind) => kind switch
+    {
+        AppProviderKind.Websrv => "websrv (legacy fallback)",
+        _ => kind.ToString(),
+    };
 }

@@ -76,6 +76,36 @@ public sealed class AppControlClientTests
         Assert.Equal(["PPSA99575"], snapshot.InstalledTitleIds);
     }
 
+    [Theory]
+    [InlineData(HttpStatusCode.InternalServerError, """{"games":[]}""")]
+    [InlineData(HttpStatusCode.OK, "{")]
+    [InlineData(HttpStatusCode.OK, "{}")]
+    [InlineData(HttpStatusCode.OK, """{"games":{}}""")]
+    public async Task A_library_that_cannot_be_read_is_unavailable(HttpStatusCode code, string body)
+    {
+        var client = new VoidShellClient(Client(
+            r => r.RequestUri!.AbsolutePath == "/api/library" ? Json(body, code) : VoidShell(r),
+            out _));
+
+        var snapshot = await client.ProbeAsync(CancellationToken.None);
+
+        Assert.False(snapshot.Available);
+        Assert.Contains("library", snapshot.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task An_empty_library_stays_available()
+    {
+        var client = new VoidShellClient(Client(
+            r => r.RequestUri!.AbsolutePath == "/api/library" ? Json("""{"games":[]}""") : VoidShell(r),
+            out _));
+
+        var snapshot = await client.ProbeAsync(CancellationToken.None);
+
+        Assert.True(snapshot.Available);
+        Assert.Empty(snapshot.InstalledTitleIds);
+    }
+
     [Fact]
     public async Task Websrv_with_unexpected_json_shapes_is_tolerated()
     {

@@ -37,8 +37,9 @@ public sealed record PayloadCatalogSnapshot(
 public sealed record PayloadLaunchResult(bool Accepted, int? StatusCode, string Message);
 
 /// <summary>
-/// The PS5LM Plus payloads the companion watches. Ids match Payload Manager's catalog slugs,
-/// and <c>ps5-exporter</c> is observed through its port because the app bundles it.
+/// Console dependencies the companion watches. Payload ids match Payload Manager's catalog slugs.
+/// <c>ps5-exporter</c> is observed through its port because the app bundles it. VoidShell is the pinned
+/// nefarius fork and is observed through its own API, not Payload Manager.
 /// </summary>
 public static class PayloadDependencies
 {
@@ -46,6 +47,7 @@ public static class PayloadDependencies
     public const string EtaHen = "etahen";
     public const string OnionHen = "onionhen";
     public const string ShadowMountPlus = "shadowmountplus";
+    public const string VoidShell = "voidshell";
     public const string Elfldr = "elfldr";
     public const string FtpSrv = "ftpsrv";
     public const string Exporter = "ps5-exporter";
@@ -63,15 +65,24 @@ public static class PayloadDependencies
         new(Exporter, "ps5-exporter", DependencyRequirement.Bundled, Verification.Exporter, false, []),
     ];
 
-    /// <summary>Turns a catalog read and the port checks into the rows the dashboard shows.</summary>
+    /// <summary>
+    /// Turns a catalog read and the port checks into the rows the dashboard shows.
+    /// <paramref name="voidShellAnswering"/> is null before the VoidShell probe, true when its API answered,
+    /// and false when the required fork is missing or unreachable. A websrv answer does not count.
+    /// </summary>
     public static IReadOnlyList<DependencyStatus> Evaluate(
         PayloadCatalogSnapshot catalog,
         bool ftpReachable,
         bool exporterReachable,
         bool elfldrListening,
-        int elfldrPort)
+        int elfldrPort,
+        bool? voidShellAnswering = null,
+        string? voidShellDetail = null)
     {
-        return Definitions.Select(definition => EvaluateOne(definition, catalog, ftpReachable, exporterReachable, elfldrListening, elfldrPort)).ToList();
+        var rows = Definitions.Select(definition => EvaluateOne(definition, catalog, ftpReachable, exporterReachable, elfldrListening, elfldrPort)).ToList();
+        var afterShadowMount = rows.FindIndex(row => row.Id == ShadowMountPlus);
+        rows.Insert(afterShadowMount + 1, DescribeVoidShell(voidShellAnswering, voidShellDetail));
+        return rows;
     }
 
     /// <summary>The display name of a payload the companion is willing to launch, or false for unknown, bundled and elfldr ids.</summary>
@@ -93,6 +104,35 @@ public static class PayloadDependencies
     {
         var definition = Definitions.FirstOrDefault(item => item.Id.Equals(dependencyId, StringComparison.OrdinalIgnoreCase));
         return definition is not null && definition.Accepts(installedId);
+    }
+
+    private static DependencyStatus DescribeVoidShell(bool? answering, string? detail)
+    {
+        if (answering is null)
+        {
+            return new(VoidShell, "VoidShell", DependencyRequirement.Required, DependencyPresence.Unknown, DependencyHealth.Unavailable, false, "Not checked yet.");
+        }
+
+        if (answering.Value)
+        {
+            return new(
+                VoidShell,
+                "VoidShell",
+                DependencyRequirement.Required,
+                DependencyPresence.Installed,
+                DependencyHealth.Verified,
+                false,
+                string.IsNullOrWhiteSpace(detail) ? "VoidShell is answering." : detail);
+        }
+
+        return new(
+            VoidShell,
+            "VoidShell",
+            DependencyRequirement.Required,
+            DependencyPresence.Unknown,
+            DependencyHealth.Unknown,
+            false,
+            string.IsNullOrWhiteSpace(detail) ? "The required VoidShell fork did not answer." : detail);
     }
 
     /// <summary>Why elfldr has to be loaded before Payload Manager can launch anything.</summary>

@@ -40,7 +40,9 @@ public sealed class ConsoleConnectionProbeTests
         var report = await probe.TestAsync(new PS5Options { Host = "10.0.0.9", VoidShellPort = 0, WebsrvPort = 0 }, CancellationToken.None);
 
         Assert.Equal(ProbeOutcome.Fail, report.Checks.Single(check => check.Name == "FTP").Outcome);
-        Assert.Equal(ProbeOutcome.Skipped, report.Checks.Single(check => check.Name == "VoidShell").Outcome);
+        var voidShell = report.Checks.Single(check => check.Name == "VoidShell");
+        Assert.Equal(ProbeOutcome.Fail, voidShell.Outcome);
+        Assert.Contains("required", voidShell.Detail, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(ProbeOutcome.Skipped, report.Checks.Single(check => check.Name == "websrv").Outcome);
         Assert.Equal(ProbeOutcome.Skipped, report.Checks.Single(check => check.Name == "llama-server").Outcome);
     }

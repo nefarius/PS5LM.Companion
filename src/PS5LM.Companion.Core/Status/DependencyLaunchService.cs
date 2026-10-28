@@ -36,6 +36,11 @@ public sealed class DependencyLaunchService(
             return new OperationResult(OperationOutcome.Invalid, PayloadDependencies.ElfldrBootstrap(options.ElfldrPort));
         }
 
+        if (string.Equals(id, PayloadDependencies.VoidShell, StringComparison.OrdinalIgnoreCase))
+        {
+            return new OperationResult(OperationOutcome.Invalid, "VoidShell is installed by setup and is not launched from this list.");
+        }
+
         if (!PayloadDependencies.TryGetLaunchable(id, out var name))
         {
             return new OperationResult(OperationOutcome.NotFound, "That payload is not one of the dependencies the companion can launch.");

@@ -95,7 +95,10 @@ public sealed class EndpointTests
         var dependencies = await client.GetFromJsonAsync<JsonElement>($"{Base}/dependencies");
 
         Assert.False(status.GetProperty("payloadManagerAvailable").GetBoolean());
-        Assert.Equal(6, status.GetProperty("dependencies").GetArrayLength());
+        Assert.Equal(7, status.GetProperty("dependencies").GetArrayLength());
+        var voidShell = dependencies.GetProperty("dependencies").EnumerateArray().Single(row => row.GetProperty("id").GetString() == "voidshell");
+        Assert.Equal("Required", voidShell.GetProperty("requirement").GetString());
+        Assert.False(voidShell.GetProperty("canLaunch").GetBoolean());
         Assert.Equal("kstuff-lite", dependencies.GetProperty("dependencies")[0].GetProperty("id").GetString());
         Assert.Equal("Required", dependencies.GetProperty("dependencies")[0].GetProperty("requirement").GetString());
         Assert.False(dependencies.GetProperty("dependencies")[0].GetProperty("canLaunch").GetBoolean());

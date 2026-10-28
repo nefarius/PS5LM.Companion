@@ -5,8 +5,10 @@ using PS5LM.Companion.Core.Domain;
 namespace PS5LM.Companion.Core.Status;
 
 /// <summary>
-/// Merges the app-control services' snapshots into one per-variant view. VoidShell wins over websrv. A live
-/// llama-server is proof the app runs, whatever has focus, so it overrides the services' running state.
+/// Builds one per-variant view from the app-control services. The first service that answered (the VoidShell fork,
+/// when it is up) supplies the installed titles and, when it knows, the running title. A later service supplies the
+/// running title only when that primary service does not know it. A live llama-server proves that an app runs, so it
+/// overrides the reported running state.
 /// </summary>
 public static class AppControlEvaluator
 {
@@ -51,19 +53,23 @@ public static class AppControlEvaluator
         var available = snapshots.Where(s => s.Available).OrderBy(s => s.Kind).ToList();
         if (available.Count == 0)
         {
+            var websrvTried = snapshots.Any(snapshot => snapshot.Kind == AppProviderKind.Websrv);
             return new AppControlStatus(
                 false,
                 null,
                 null,
-                "Neither VoidShell nor websrv answered, so the companion cannot check or launch PS5LM.",
+                websrvTried
+                    ? "The fixed VoidShell fork did not answer, and websrv (legacy fallback) did not answer either, so the companion cannot check or launch PS5LM."
+                    : "The fixed VoidShell fork did not answer, so the companion cannot check or launch PS5LM.",
                 VariantProfile.All.Select(p => new AppVariantStatus(p.Variant, p.TitleId, p.DisplayName, false, AppRunState.Unknown, false)).ToList());
         }
 
         var primary = available[0];
-        var installed = available.SelectMany(s => s.InstalledTitleIds).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var running = available.FirstOrDefault(s => s.RunningKnown);
+        var installed = primary.InstalledTitleIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var running = primary.RunningKnown ? primary : available.FirstOrDefault(snapshot => snapshot.RunningKnown);
 
         var installedProfiles = VariantProfile.All.Where(p => installed.Contains(p.TitleId)).ToList();
+        var runningScope = running is null || ReferenceEquals(running, primary) ? installedProfiles : VariantProfile.All;
         string? note = null;
         var apps = new List<AppVariantStatus>();
         foreach (var profile in VariantProfile.All)
@@ -72,17 +78,21 @@ public static class AppControlEvaluator
             var state = AppRunState.Unknown;
             if (running is not null)
             {
-                state = RunState(profile, running.ActiveTitleId, installedProfiles, out var truncated);
+                state = RunState(profile, running.ActiveTitleId, runningScope, out var truncated);
                 if (truncated)
                 {
-                    note = $"{running.Kind} reported the foreground title as '{running.ActiveTitleId}', which fits more than one PS5LM variant.";
+                    note = $"{running.Kind} reported the running title as '{running.ActiveTitleId}', which fits more than one PS5LM variant.";
                 }
             }
 
             apps.Add(new AppVariantStatus(profile.Variant, profile.TitleId, profile.DisplayName, isInstalled, state, isInstalled));
         }
 
-        note ??= running is null ? $"{primary.Kind} cannot report which app is running." : null;
+        note ??= running is null
+            ? primary.Kind == AppProviderKind.Websrv
+                ? "websrv is a legacy fallback and cannot report which app is running. The fixed VoidShell fork did not answer."
+                : $"{primary.Kind} cannot report which app is running."
+            : null;
         return new AppControlStatus(true, primary.Kind.ToString(), primary.Version, note, apps);
     }
 

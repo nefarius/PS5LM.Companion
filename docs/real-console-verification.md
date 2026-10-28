@@ -33,11 +33,12 @@ Start the companion with `PS5__Consoles__<id>__Host=<console>` and open the dash
 8. **Plus sandbox**: on a sandboxed PS5LM Plus, loading a model from `/app0/models` works and uploads land in the
    sandbox folder.
 9. **Both installed**: with both apps present and `PS5:Consoles:{id}:Variant` unset, the dashboard explains how to choose.
-10. **App check**: with VoidShell on port 7007, the *PS5LM app* card lists both titles as installed and marks the
-    running one as running (fork `v1.1.1-nefarius.2` and later report `running_app` even while the home screen has focus;
-    upstream V1.1 only reports the focused title, truncated to 8 characters, so a live llama-server is what marks it running).
+10. **App check**: the pinned fork `v1.1.1-nefarius.3` on port 7007 is required. The *PS5LM app* card lists both titles
+    as installed and marks the running one as running (`running_app`, including while the home screen has focus). The
+    VoidShell payload row is Verified. `/api/version` stays `V1.1` and does not by itself prove the fork tag.
 11. **App launch**: stop PS5LM, press Launch on its row. The app opens on the TV; launching again while it runs is accepted.
-    With VoidShell stopped and websrv running, Launch still works and the running column reads *Unknown*.
+    With the fork stopped and websrv running, Launch still works through the legacy fallback and the running column reads
+    *Unknown*, while the VoidShell payload row stays unhealthy.
 12. **App close**: with PS5LM running, press Close. The `quit` file disappears within a few seconds, the app exits to the
     home screen and the row reads *Not running*. With the app stopped, Close is not offered.
 
