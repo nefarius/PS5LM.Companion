@@ -70,6 +70,9 @@ internal sealed class FakeFileSystem : IPS5FileSystem
     public Task<string?> ReadTextAsync(string path, int maxBytes, CancellationToken cancellationToken) =>
         Run(() => _files.TryGetValue(path, out var bytes) && bytes.Length <= maxBytes ? Encoding.UTF8.GetString(bytes) : null);
 
+    public Task<byte[]?> ReadBytesAsync(string path, int maxBytes, CancellationToken cancellationToken) =>
+        Run(() => _files.TryGetValue(path, out var bytes) && bytes.Length <= maxBytes ? bytes : null);
+
     public Task WriteTextAsync(string path, string content, CancellationToken cancellationToken) =>
         Run(() =>
         {

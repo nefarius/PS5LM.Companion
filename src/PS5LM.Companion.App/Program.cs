@@ -35,6 +35,11 @@ public sealed class Program
             return await SetupCommand.RunAsync(args[1..]);
         }
 
+        if (args.Length > 0 && args[0] == "update")
+        {
+            return await UpdateCommand.RunAsync(args[1..]);
+        }
+
         Log.Logger = new LoggerConfiguration()
             .WriteTo.Console()
             .CreateBootstrapLogger();

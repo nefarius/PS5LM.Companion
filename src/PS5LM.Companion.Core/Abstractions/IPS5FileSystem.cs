@@ -36,6 +36,9 @@ public interface IPS5FileSystem
     /// <summary>Reads a text file of at most <paramref name="maxBytes"/>; <see langword="null"/> when missing or larger.</summary>
     Task<string?> ReadTextAsync(string path, int maxBytes, CancellationToken cancellationToken);
 
+    /// <summary>Reads a binary file of at most <paramref name="maxBytes"/>; <see langword="null"/> when missing or larger.</summary>
+    Task<byte[]?> ReadBytesAsync(string path, int maxBytes, CancellationToken cancellationToken);
+
     /// <summary>Creates or replaces a small text file.</summary>
     Task WriteTextAsync(string path, string content, CancellationToken cancellationToken);
 

@@ -79,6 +79,20 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
             },
             cancellationToken);
 
+    public Task<byte[]?> ReadBytesAsync(string path, int maxBytes, CancellationToken cancellationToken) =>
+        RunAsync<byte[]?>(
+            async client =>
+            {
+                if (await FindAsync(client, path, cancellationToken) is not { Type: FtpObjectType.File } file || file.Size > maxBytes)
+                {
+                    return null;
+                }
+
+                using var stream = new MemoryStream();
+                return await client.DownloadStream(stream, path, token: cancellationToken) ? stream.ToArray() : null;
+            },
+            cancellationToken);
+
     public Task WriteTextAsync(string path, string content, CancellationToken cancellationToken) =>
         RunAsync(
             async client =>

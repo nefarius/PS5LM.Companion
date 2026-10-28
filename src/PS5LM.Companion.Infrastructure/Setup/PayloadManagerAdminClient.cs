@@ -76,7 +76,8 @@ public sealed class PayloadManagerAdminClient(HttpClient http) : IPayloadManager
         using var response = await http.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            throw new IOException($"Payload Manager refused the upload of {fileName} ({(int)response.StatusCode}).");
+            var body = (await response.Content.ReadAsStringAsync(cancellationToken)).Trim();
+            throw new IOException($"Payload Manager refused the upload of {fileName} ({(int)response.StatusCode}){(body.Length == 0 ? string.Empty : ": " + body[..Math.Min(body.Length, 300)])}.");
         }
     }
 
@@ -138,6 +139,56 @@ public sealed class PayloadManagerAdminClient(HttpClient http) : IPayloadManager
         catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
         {
             return null;
+        }
+    }
+
+    public async Task<IReadOnlyDictionary<int, string>?> GetProcessIdsAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await http.GetAsync("processes_list", cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+            if (!document.RootElement.TryGetProperty("processes", out var processes) || processes.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            var result = new Dictionary<int, string>();
+            foreach (var process in processes.EnumerateArray())
+            {
+                if (process.ValueKind == JsonValueKind.Object
+                    && process.TryGetProperty("pid", out var pid) && pid.TryGetInt32(out var id)
+                    && Text(process, "name") is { Length: > 0 } name)
+                {
+                    result[id] = name;
+                }
+            }
+
+            return result;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+    }
+
+    public async Task<bool> KillProcessAsync(int pid, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/process_kill?pid=" + pid.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        request.Headers.Add(Marker, "1");
+        try
+        {
+            using var response = await http.SendAsync(request, cancellationToken);
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            return false;
         }
     }
 

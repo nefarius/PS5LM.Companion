@@ -49,6 +49,17 @@ public sealed class PayloadManagerContractTests
         Assert.Contains("onion_daemon.elf", processes!);
     }
 
+    [Theory]
+    [InlineData("0.6.3", 91)]
+    [InlineData("0.5.2", 90)]
+    public async Task Process_ids_return_bare_elf_names(string version, int pid)
+    {
+        var processes = await Admin(version).GetProcessIdsAsync(CancellationToken.None);
+
+        Assert.NotNull(processes);
+        Assert.Equal("kstuff.elf", processes[pid]);
+    }
+
     [Fact]
     public async Task Version_06_rejects_a_mutating_get_and_accepts_post()
     {

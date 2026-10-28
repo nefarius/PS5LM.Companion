@@ -33,6 +33,12 @@ public interface IPayloadManagerAdmin
     /// <summary>Process names from <c>/processes_list</c>, or <see langword="null"/> when it could not be read.</summary>
     Task<IReadOnlySet<string>?> GetProcessesAsync(CancellationToken cancellationToken);
 
+    /// <summary>Process id to name from <c>/processes_list</c>, or <see langword="null"/> when it could not be read.</summary>
+    Task<IReadOnlyDictionary<int, string>?> GetProcessIdsAsync(CancellationToken cancellationToken);
+
+    /// <summary>Asks the manager to terminate a process (<c>/process_kill</c>); false when it refused.</summary>
+    Task<bool> KillProcessAsync(int pid, CancellationToken cancellationToken);
+
     Task<AutoloadConfig?> GetAutoloadAsync(CancellationToken cancellationToken);
 
     Task SetAutoloadAsync(bool enabled, string list, CancellationToken cancellationToken);
