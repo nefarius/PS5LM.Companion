@@ -11,4 +11,5 @@ Standalone .NET 10 / ASP.NET Core companion with a MudBlazor dashboard for PS5LM
 - The PS5 app only listens on port 8081 once a model is loaded: discovery and control are FTP-first.
 - App check/launch: `IAppControlProvider` in `Core` (VoidShell first, websrv fallback); HTTP clients in `Infrastructure/Http`; REST `/api/consoles/{id}/apps`.
 - `setup` command (`App/Setup`, `Core/Setup`, `Infrastructure/Setup`): one-shot console preparation from the pinned `setup-manifest.json`; see `docs/setup.md`.
+- `update` command (`App/Setup/UpdateCommand`, `Core/Setup/UpdateRunner`): compares a prepared console with the pinned manifest by hash and replaces only stale payloads, extra files and (`--apps`) the installed app; `--check` only reports; see `docs/update.md`.
 - Workflow rules: `.cursor/rules/feature-workflow.mdc`.

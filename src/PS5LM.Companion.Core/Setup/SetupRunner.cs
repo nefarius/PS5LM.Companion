@@ -22,6 +22,8 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
 
     private readonly List<ReportLine> _lines = [];
     private readonly Dictionary<string, string> _notes = new(StringComparer.OrdinalIgnoreCase);
+    internal IReadOnlyList<ReportLine> Lines => _lines;
+
     private ISetupUi Ui => services.Ui;
 
     public async Task<SetupReport> RunAsync(CancellationToken cancellationToken)
@@ -100,7 +102,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
     }
 
     // Step 1 (and 1a): Payload Manager must answer, and be 0.6.x or newer.
-    private async Task<bool> EnsurePayloadManagerAsync(CancellationToken cancellationToken)
+    internal async Task<bool> EnsurePayloadManagerAsync(CancellationToken cancellationToken)
     {
         Ui.Info($"Checking Payload Manager on {options.Host}:{options.PayloadManagerPort}");
         var text = await services.Manager.GetVersionAsync(cancellationToken);
@@ -193,7 +195,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
     }
 
     // Step 5: load in order, skipping what already runs.
-    private async Task LaunchPayloadsAsync(List<(ManifestPayload Payload, ManagedPayload Stored)> resolved, CancellationToken cancellationToken)
+    internal async Task LaunchPayloadsAsync(List<(ManifestPayload Payload, ManagedPayload Stored)> resolved, CancellationToken cancellationToken)
     {
         foreach (var (payload, stored) in resolved)
         {
@@ -312,7 +314,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
     }
 
     // Step 7: copy the app into the folder ShadowMountPlus scans.
-    private async Task<AppInstall> InstallAppAsync(ManifestApp app, CancellationToken cancellationToken)
+    internal async Task<AppInstall> InstallAppAsync(ManifestApp app, CancellationToken cancellationToken)
     {
         if (!await services.Probe.PortOpenAsync(options.FtpPort, cancellationToken))
         {
@@ -416,7 +418,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
     }
 
     // Step 8: ShadowMountPlus scans on a timer; nothing can force it, so wait and look.
-    private async Task<bool> WaitForShadowMountAsync(ManifestApp app, CancellationToken cancellationToken)
+    internal async Task<bool> WaitForShadowMountAsync(ManifestApp app, CancellationToken cancellationToken)
     {
         Ui.Info($"Waiting for ShadowMountPlus to register {app.TitleId}");
         var seen = await WaitForAsync(ct => TitleKnownAsync(app.TitleId, ct), options.Wait(options.AppInstallTimeout), cancellationToken);
@@ -435,7 +437,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         && await services.Probe.PortOpenAsync(options.VoidShellPort, cancellationToken)
         && await services.Probe.PostAsync(options.VoidShellPort, "/api/rescan", cancellationToken);
 
-    private async Task RefreshVoidShellLibraryAsync(ManifestApp app, CancellationToken cancellationToken)
+    internal async Task RefreshVoidShellLibraryAsync(ManifestApp app, CancellationToken cancellationToken)
     {
         if (!await RequestVoidShellRescanAsync(cancellationToken))
         {
@@ -495,7 +497,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
 
     private int _installLogBaseline;
 
-    private enum AppInstall
+    internal enum AppInstall
     {
         Failed,
         Unchanged,
@@ -546,7 +548,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         return ShadowMountLog.CountInstalled(log, titleId) > _installLogBaseline;
     }
 
-    private async Task<bool> IsReadyAsync(ManifestPayload payload, CancellationToken cancellationToken, IReadOnlySet<string>? known = null)
+    internal async Task<bool> IsReadyAsync(ManifestPayload payload, CancellationToken cancellationToken, IReadOnlySet<string>? known = null)
     {
         if (payload.Ready.Port > 0)
         {
@@ -565,7 +567,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         _ => payload.Ready.Port,
     };
 
-    private static ManagedPayload? FindStored(IReadOnlyList<ManagedPayload> inventory, ManifestPayload payload) =>
+    internal static ManagedPayload? FindStored(IReadOnlyList<ManagedPayload> inventory, ManifestPayload payload) =>
         inventory.FirstOrDefault(item =>
             item.FileName.Equals(payload.UploadName, StringComparison.OrdinalIgnoreCase)
             || item.Slot.Equals("local/" + payload.Id, StringComparison.OrdinalIgnoreCase)
@@ -590,7 +592,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         }
     }
 
-    private void Add(string component, SetupStatus status, string message) => _lines.Add(new ReportLine(component, status, message));
+    internal void Add(string component, SetupStatus status, string message) => _lines.Add(new ReportLine(component, status, message));
 
     private void Notify(string message) => Ui.Info(message);
 }

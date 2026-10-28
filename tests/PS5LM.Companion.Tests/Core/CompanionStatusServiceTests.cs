@@ -123,6 +123,8 @@ public sealed class CompanionStatusServiceTests
 
         public Task<string?> ReadTextAsync(string path, int maxBytes, CancellationToken cancellationToken) => HangAsync<string?>(cancellationToken);
 
+        public Task<byte[]?> ReadBytesAsync(string path, int maxBytes, CancellationToken cancellationToken) => HangAsync<byte[]?>(cancellationToken);
+
         public Task WriteTextAsync(string path, string content, CancellationToken cancellationToken) => HangAsync<bool>(cancellationToken);
 
         public Task UploadAsync(Stream content, string path, IProgress<long>? progress, CancellationToken cancellationToken) => HangAsync<bool>(cancellationToken);

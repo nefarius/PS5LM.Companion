@@ -1,0 +1,32 @@
+# Console update
+
+`update` brings a console that `setup` already prepared up to the pinned `setup-manifest.json` of this build. It never looks for
+newer upstream releases; those arrive by [bumping a pin](setup.md#bumping-a-pin).
+
+```sh
+dotnet PS5LM.Companion.App.dll update --host <console> [--apps] [--variant ps5lm|ps5lmplus] [--check] [options]
+```
+
+| Option | Purpose |
+|---|---|
+| `--host` | Console IP or host name (required) |
+| `--apps` | Also update the installed PS5LM / PS5LM Plus app |
+| `--variant` | With `--apps`: only that variant (an explicit variant that is not installed is a warning) |
+| `--check` | Report what is out of date and change nothing |
+| `--upgrade-payload-manager` | Upgrade an older Payload Manager without a prompt |
+| `--payload-manager-url`, `--ftp-port`, `--manifest`, `--cache` | As for `setup` |
+
+Exit codes: 0 current or updated, 1 bad arguments, 2 something failed, 3 `--check` found updates.
+
+## What it does
+
+1. Payload Manager must answer on its port (otherwise run `setup`); an older one is upgraded as in `setup`.
+2. Each pinned payload's stored file is read back over FTP and compared by SHA-256 with the pinned download. A different file is
+   uploaded through Payload Manager into the same slot, so autoload stays valid and is not rewritten. A payload that is not stored
+   is reported ("run setup") and not installed.
+3. A payload that was not running is launched. One that is running keeps the old build until the next autoload or console
+   reboot (Payload Manager cannot stop a single payload); this is a warning.
+4. Extra files (VoidShell `index.html`) are compared by hash and replaced through a `.part` file.
+5. With `--apps`: each installed app whose `param.json` differs from the pinned archive is overwritten in place (`param.json`
+   last), then VoidShell is asked to rescan. An app that is not installed is never installed. A running app (VoidShell
+   `running_app`) is skipped with a warning.

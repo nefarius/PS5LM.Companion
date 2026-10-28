@@ -1,0 +1,169 @@
+using System.Text;
+
+using PS5LM.Companion.Core.Setup;
+using PS5LM.Companion.Tests.Support;
+
+namespace PS5LM.Companion.Tests.Core;
+
+public sealed class UpdateRunnerTests
+{
+    private const string IndexPath = "/data/voidshell/www/index.html";
+    private const string ParamPath = "/data/homebrew/PPSA99581/sce_sys/param.json";
+    private const string OldParam = "{\"titleId\":\"PPSA99581\",\"v\":0}";
+
+    /// <summary>A console that setup has finished, with the stored payload files holding the pinned bytes.</summary>
+    private static async Task<SetupHarness> PreparedAsync()
+    {
+        var harness = new SetupHarness();
+        harness.VoidShell.SetUp([SetupHarness.TitleId]);
+        harness.Files.AddFile("/data/OnionHEN/config.ini", "[app_jailbreak]\nexact_title_ids = PPSA00001\n");
+        await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
+        foreach (var payload in harness.Manifest.Payloads)
+        {
+            var local = await harness.Artifacts.FetchAsync(payload.Url, payload.Sha256, CancellationToken.None);
+            var stored = harness.Stored.Single(s => s.FileName == payload.UploadName);
+            harness.Files.AddFile(stored.Path!, await File.ReadAllBytesAsync(local));
+        }
+
+        harness.Events.Clear();
+        return harness;
+    }
+
+    private static UpdateRunner Runner(SetupHarness h, bool apps = false, bool check = false, string? variant = null) => new(
+        h.Manifest,
+        new UpdateOptions("ps5.test", variant) { IncludeApps = apps, CheckOnly = check, WaitOverride = TimeSpan.FromMilliseconds(2) },
+        new SetupServices(h.Manager, h.Artifacts, h.Files, h.Probe, h.Elfldr, h.VoidShell, new SetupHarness.FakeUi(h), TimeProvider.System));
+
+    private static void Stale(SetupHarness h, string fileName) =>
+        h.Files.AddFile(h.Stored.Single(s => s.FileName == fileName).Path!, "old build");
+
+    [Fact]
+    public async Task Current_console_changes_nothing()
+    {
+        using var harness = await PreparedAsync();
+
+        var report = await Runner(harness, apps: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal(0, report.ExitCode);
+        Assert.Empty(harness.Events);
+        Assert.DoesNotContain(report.Lines, l => l.Status != SetupStatus.Ok && l.Component != "PS5LM");
+    }
+
+    [Fact]
+    public async Task Stale_payload_that_is_not_running_is_uploaded_and_launched()
+    {
+        using var harness = await PreparedAsync();
+        Stale(harness, "shadowmountplus.elf");
+        harness.Processes.Remove("shadowmountplus.elf");
+
+        var report = await Runner(harness).RunAsync(CancellationToken.None);
+
+        Assert.Equal(0, report.ExitCode);
+        Assert.Equal(["upload:shadowmountplus.elf", "load:shadowmountplus.elf"], harness.Events);
+        Assert.Contains(report.Lines, l => l.Component == "ShadowMountPlus" && l.Status == SetupStatus.Ok && l.Message.StartsWith("Updated", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Stale_payload_that_is_running_is_uploaded_with_a_reboot_warning()
+    {
+        using var harness = await PreparedAsync();
+        Stale(harness, "kstuff-lite.elf");
+
+        var report = await Runner(harness).RunAsync(CancellationToken.None);
+
+        Assert.Equal(["upload:kstuff-lite.elf"], harness.Events);
+        Assert.Contains(report.Lines, l => l.Component == "kstuff-lite" && l.Status == SetupStatus.Warn);
+        Assert.Equal(0, report.ExitCode);
+    }
+
+    [Fact]
+    public async Task Payload_that_is_not_stored_is_reported_not_installed()
+    {
+        using var harness = await PreparedAsync();
+        harness.Stored.RemoveAll(s => s.FileName == "voidshell.elf");
+
+        var report = await Runner(harness).RunAsync(CancellationToken.None);
+
+        Assert.Empty(harness.Events);
+        Assert.Contains(report.Lines, l => l.Component == "VoidShell" && l.Status == SetupStatus.Warn && l.Message.Contains("run setup", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task Stale_dashboard_page_is_replaced()
+    {
+        using var harness = await PreparedAsync();
+        harness.Files.AddFile(IndexPath, "old page");
+
+        await Runner(harness).RunAsync(CancellationToken.None);
+
+        Assert.Equal(Encoding.UTF8.GetString(SetupHarness.FakeStore.DashboardBytes), harness.Files.Text(IndexPath));
+        Assert.DoesNotContain(IndexPath + ".part", harness.Files.Files.Keys);
+    }
+
+    [Fact]
+    public async Task Check_reports_updates_with_exit_code_3_and_writes_nothing()
+    {
+        using var harness = await PreparedAsync();
+        Stale(harness, "kstuff-lite.elf");
+        harness.Files.AddFile(IndexPath, "old page");
+        harness.Files.AddFile(ParamPath, OldParam);
+
+        var report = await Runner(harness, apps: true, check: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal(3, report.ExitCode);
+        Assert.Equal(3, report.Pending);
+        Assert.Empty(harness.Events);
+        Assert.Equal("old page", harness.Files.Text(IndexPath));
+        Assert.Equal(OldParam, harness.Files.Text(ParamPath));
+    }
+
+    [Fact]
+    public async Task App_is_left_alone_without_the_apps_option()
+    {
+        using var harness = await PreparedAsync();
+        harness.Files.AddFile(ParamPath, OldParam);
+
+        await Runner(harness).RunAsync(CancellationToken.None);
+
+        Assert.Equal(OldParam, harness.Files.Text(ParamPath));
+    }
+
+    [Fact]
+    public async Task Installed_app_is_updated_in_place_and_an_absent_variant_is_not_installed()
+    {
+        using var harness = await PreparedAsync();
+        harness.Files.AddFile(ParamPath, OldParam);
+
+        var report = await Runner(harness, apps: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal(0, report.ExitCode);
+        Assert.Equal(SetupHarness.ParamV1, harness.Files.Text(ParamPath));
+        Assert.DoesNotContain(harness.Files.Files.Keys, k => k.Contains("PPSA99575", StringComparison.Ordinal));
+        Assert.Contains(report.Lines, l => l.Component == "PS5LM" && l.Message.Contains("Not installed", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Running_app_is_not_overwritten()
+    {
+        using var harness = await PreparedAsync();
+        harness.Files.AddFile(ParamPath, OldParam);
+        harness.VoidShell.SetUp([SetupHarness.TitleId], runningKnown: true, active: SetupHarness.TitleId);
+
+        var report = await Runner(harness, apps: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal(OldParam, harness.Files.Text(ParamPath));
+        Assert.Contains(report.Lines, l => l.Component == "PS5LM Plus" && l.Status == SetupStatus.Warn && l.Message.Contains("running", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Unprepared_console_fails_and_points_to_setup()
+    {
+        using var harness = new SetupHarness();
+        harness.Ports.Remove(8084);
+
+        var report = await Runner(harness).RunAsync(CancellationToken.None);
+
+        Assert.Equal(2, report.ExitCode);
+        Assert.Contains(report.Lines, l => l.Message.Contains("run setup", StringComparison.OrdinalIgnoreCase));
+    }
+}

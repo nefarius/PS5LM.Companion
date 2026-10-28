@@ -68,6 +68,16 @@ public sealed class FtpFileSystemTests : IAsyncLifetime
         Assert.Null(await _fs.ReadTextAsync("/data/PS5LM/missing", 1024, CancellationToken.None));
     }
 
+    [Fact]
+    public async Task Reads_bytes_and_refuses_files_over_the_limit()
+    {
+        await _fs.WriteTextAsync("/data/PS5LM/blob", "abc", CancellationToken.None);
+
+        Assert.Equal("abc"u8.ToArray(), await _fs.ReadBytesAsync("/data/PS5LM/blob", 1024, CancellationToken.None));
+        Assert.Null(await _fs.ReadBytesAsync("/data/PS5LM/blob", 2, CancellationToken.None));
+        Assert.Null(await _fs.ReadBytesAsync("/data/PS5LM/missing", 1024, CancellationToken.None));
+    }
+
     /// <summary>Records progress synchronously, so nothing is lost to a posted callback.</summary>
     private sealed class SyncProgress : IProgress<long>
     {
