@@ -296,4 +296,9 @@ Sony Interactive Entertainment.
 
 ### Dependencies
 
+- [FastEndpoints](https://github.com/FastEndpoints/FastEndpoints)
+- [MudBlazor](https://github.com/MudBlazor/MudBlazor)
+- [Serilog.AspNetCore](https://github.com/serilog/serilog-aspnetcore)
+- [Serilog.Sinks.Console](https://github.com/serilog/serilog-sinks-console)
+- [Serilog.Sinks.File](https://github.com/serilog/serilog-sinks-file)
 - [YARP](https://github.com/dotnet/yarp) (inference gateway forwarding)
