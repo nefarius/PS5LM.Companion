@@ -32,6 +32,15 @@ else
             <MudAlert Severity="Severity.Warning" Class="mt-2">
                 Payload Manager is not reachable@(string.IsNullOrWhiteSpace(Status.PayloadManagerMessage) ? "." : $": {Status.PayloadManagerMessage}")
                 The companion cannot see which payloads are installed or launch them. It uses port 8084 on the console unless PS5:Consoles:@(Target.Id):PayloadManagerUrl is set.
+                <div class="mt-2">
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@(_restarting || !ElfldrReady)" OnClick="RestartManagerAsync">
+                        @(_restarting ? "Restarting Payload Manager..." : "Restart Payload Manager")
+                    </MudButton>
+                    @if (!ElfldrReady)
+                    {
+                        <MudText Typo="Typo.caption" Class="ml-2">elfldr is not verified, so a new Payload Manager cannot be started remotely.</MudText>
+                    }
+                </div>
             </MudAlert>
         }
         else if (MissingRequired.Count > 0)
@@ -236,6 +245,7 @@ else
 @code {
     private bool _launching;
     private bool _launchingApp;
+    private bool _restarting;
 
     private static string RunText(AppRunState state) => state switch
     {
@@ -256,7 +266,38 @@ else
     {
         _launching = false;
         _launchingApp = false;
+        _restarting = false;
         return Task.CompletedTask;
+    }
+
+    private bool ElfldrReady =>
+        Status.Dependencies.FirstOrDefault(dependency => dependency.Id == PayloadDependencies.Elfldr) is { Health: DependencyHealth.Verified };
+
+    private async Task RestartManagerAsync()
+    {
+        var console = Target;
+        if (console is null || _restarting)
+        {
+            return;
+        }
+
+        _restarting = true;
+        try
+        {
+            if (!await Confirm.AskAsync(Dialogs, $"Restart Payload Manager on {console.Name}",
+                    $"Stop Payload Manager on {Confirm.On(console)} and start a fresh copy? Running payloads are not affected.", "Restart")
+                || !ReferenceEquals(console, Target))
+            {
+                return;
+            }
+
+            var result = await console.ManagerRestart.RestartAsync(CancellationToken.None);
+            Snackbar.Add(result.Message ?? result.Outcome.ToString(), result.Succeeded ? Severity.Success : Severity.Error);
+        }
+        finally
+        {
+            _restarting = false;
+        }
     }
 
     private async Task CloseAppAsync(AppVariantStatus app)

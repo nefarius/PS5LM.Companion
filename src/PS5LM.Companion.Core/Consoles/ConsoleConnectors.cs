@@ -11,7 +11,8 @@ public sealed record ConsoleConnectors(
     IPayloadCatalog Payloads,
     IPayloadLauncher Launcher,
     IElfldrProbe Elfldr,
-    IReadOnlyList<IAppControlProvider>? AppControl = null);
+    IReadOnlyList<IAppControlProvider>? AppControl = null,
+    PS5LM.Companion.Core.Setup.PayloadManagerRecovery? Recovery = null);
 
 /// <summary>Creates the network clients for one configured console.</summary>
 public interface IConsoleConnectorFactory

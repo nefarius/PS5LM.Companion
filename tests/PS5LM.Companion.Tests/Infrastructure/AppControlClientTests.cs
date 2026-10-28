@@ -3,6 +3,7 @@ using System.Text;
 
 using Polly.Timeout;
 
+using PS5LM.Companion.Core.Abstractions;
 using PS5LM.Companion.Infrastructure.Http;
 using PS5LM.Companion.Tests.Support;
 
@@ -132,6 +133,65 @@ public sealed class AppControlClientTests
         Assert.Equal(HttpMethod.Post, request.Method);
         Assert.Equal("/api/launch", request.RequestUri!.AbsolutePath);
         Assert.Equal("text/plain", request.Content!.Headers.ContentType!.MediaType);
+    }
+
+    [Fact]
+    public async Task The_fork_reports_its_semver_next_to_the_unchanged_version_and_upstream_has_none()
+    {
+        var fork = new VoidShellClient(Client(
+            r => r.RequestUri!.AbsolutePath == "/api/version" ? Json("""{"version":"V1.1","semver":" 1.1.1-nefarius.4 "}""") : VoidShell(r),
+            out _));
+        var upstream = new VoidShellClient(Client(VoidShell, out _));
+        var malformed = new VoidShellClient(Client(
+            r => r.RequestUri!.AbsolutePath == "/api/version" ? Json("""{"version":"V1.1","semver":7}""") : VoidShell(r),
+            out _));
+
+        var forkSnapshot = await fork.ProbeAsync(CancellationToken.None);
+        var upstreamSnapshot = await upstream.ProbeAsync(CancellationToken.None);
+        var malformedSnapshot = await malformed.ProbeAsync(CancellationToken.None);
+
+        Assert.Equal("V1.1", forkSnapshot.Version);
+        Assert.Equal("1.1.1-nefarius.4", forkSnapshot.SemVer);
+        Assert.Null(upstreamSnapshot.SemVer);
+        Assert.True(malformedSnapshot.Available);
+        Assert.Null(malformedSnapshot.SemVer);
+    }
+
+    [Fact]
+    public async Task VoidShell_lists_processes_and_skips_malformed_entries()
+    {
+        var client = new VoidShellClient(Client(
+            _ => Json("""{"processes":[{"pid":77,"name":"pldmgr_v0.6.3.el"},{"pid":"x","name":"bad"},{"name":"nopid"},{"pid":5,"name":"ftpsrv.elf"}]}"""),
+            out var handler));
+
+        var processes = await client.ListAsync(CancellationToken.None);
+
+        Assert.Equal([new RemoteProcess(77, "pldmgr_v0.6.3.el"), new RemoteProcess(5, "ftpsrv.elf")], processes);
+        Assert.Equal("/api/processes", handler.Requests.Single().RequestUri!.AbsolutePath);
+    }
+
+    [Fact]
+    public async Task An_older_VoidShell_without_the_process_api_lists_nothing()
+    {
+        var older = new VoidShellClient(Client(VoidShell, out _));
+        var down = new VoidShellClient(Client(_ => throw new HttpRequestException("refused"), out _));
+
+        Assert.Null(await older.ListAsync(CancellationToken.None));
+        Assert.Null(await down.ListAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task VoidShell_kill_posts_the_pid_and_needs_an_ok_status()
+    {
+        var accepted = new VoidShellClient(Client(_ => Json("""{"status":"ok"}"""), out var handler));
+        var refused = new VoidShellClient(Client(_ => Json("""{"status":"error","error":"refused"}"""), out _));
+
+        Assert.True(await accepted.KillAsync(77, CancellationToken.None));
+        Assert.False(await refused.KillAsync(1, CancellationToken.None));
+        var request = handler.Requests.Single();
+        Assert.Equal(HttpMethod.Post, request.Method);
+        Assert.Equal("/api/kill", request.RequestUri!.AbsolutePath);
+        Assert.Equal("1", Assert.Single(request.Headers.GetValues("X-VoidShell-Request")));
     }
 
     [Fact]

@@ -72,7 +72,7 @@ firmware or `update --apps`.
 Upstream VoidShell v1.1.1 imports `sceAppInstUtilAppInstallTitleDir` statically. Firmware such as 13.40 does not export it, so the
 loader logs `Unable to resolve 'sceAppInstUtilAppInstallTitleDir'` and the payload exits before `main()` (found with klogsrv, kernel
 log on port 3232). The upstream fix ([amilarajans/voidshell#2](https://github.com/amilarajans/voidshell/pull/2)) has had no response,
-so the manifest uses the reproducible fork build [nefarius/voidshell `v1.1.1-nefarius.3`](https://github.com/nefarius/voidshell/releases/tag/v1.1.1-nefarius.3)
+so the manifest uses the reproducible fork build [nefarius/voidshell `v1.1.1-nefarius.4`](https://github.com/nefarius/voidshell/releases/tag/v1.1.1-nefarius.4)
 (Docker build, ps5-payload-sdk v0.45). It also adds `running_app` to `/api/stats`, the running title regardless of focus,
 which the companion uses for the app check, and `firmware` (e.g. `13.40`), the console's system software version shown on the overview tiles and
 the status page. Verified on FW 13.40 and 10.00.

@@ -72,6 +72,20 @@ public sealed class PayloadManagerClientTests
     }
 
     [Fact]
+    public async Task A_list_that_fails_with_a_500_reports_the_status_and_the_managers_own_text()
+    {
+        var handler = new RoutingHandler(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError)
+        {
+            Content = new StringContent("cannot read /data/pldmgr/payloads/repo/x\nbad json", Encoding.UTF8, "text/plain"),
+        });
+
+        var snapshot = await Client(handler).ReadAsync(CancellationToken.None);
+
+        Assert.False(snapshot.Available);
+        Assert.Contains("running but returned HTTP 500: cannot read /data/pldmgr/payloads/repo/x bad json", snapshot.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task A_manager_that_never_answers_fails_the_read_instead_of_waiting_forever()
     {
         var handler = new HangingHandler();

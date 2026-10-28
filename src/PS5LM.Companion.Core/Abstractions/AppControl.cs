@@ -21,6 +21,7 @@ public enum AppProviderKind
 /// <param name="ActiveTitleId">The running (or, for upstream VoidShell, foreground) title as the service reported it, possibly truncated.</param>
 /// <param name="Message">Why it is unavailable, when it is.</param>
 /// <param name="Firmware">The console's system software version (e.g. <c>13.40</c>), when the service reports it.</param>
+/// <param name="SemVer">The fork's full SemVer (e.g. <c>1.1.1-nefarius.4</c>); null on upstream builds, which only report <c>V1.1</c>.</param>
 public sealed record AppProviderSnapshot(
     AppProviderKind Kind,
     bool Available,
@@ -29,7 +30,8 @@ public sealed record AppProviderSnapshot(
     bool RunningKnown,
     string? ActiveTitleId,
     string? Message,
-    string? Firmware = null)
+    string? Firmware = null,
+    string? SemVer = null)
 {
     public static AppProviderSnapshot Unavailable(AppProviderKind kind, string? message = null) =>
         new(kind, false, null, [], false, null, message);
