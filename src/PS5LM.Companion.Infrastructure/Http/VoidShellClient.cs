@@ -11,7 +11,8 @@ namespace PS5LM.Companion.Infrastructure.Http;
 /// REST API of the required nefarius VoidShell fork (port 7007 by default): <c>/api/version</c>, <c>/api/library</c>,
 /// <c>/api/stats</c> (<c>running_app</c> and <c>firmware</c>) and <c>POST /api/launch</c> with the title ID as plain text. Releases from <c>v1.1.1-nefarius.4</c> also serve
 /// <c>GET /api/processes</c> and <c>POST /api/kill</c> (pid as plain text), used to stop a stuck Payload Manager.
-/// The reported version stays <c>V1.1</c>, so upstream-shaped stats are still accepted. Transport failures are an unavailable snapshot.
+/// The reported version stays <c>V1.1</c>, so upstream-shaped stats are still accepted; the fork adds <c>semver</c>
+/// to <c>/api/version</c> (absent upstream) to tell itself apart. Transport failures are an unavailable snapshot.
 /// </summary>
 public sealed class VoidShellClient(HttpClient http) : IAppControlProvider, IProcessControl
 {
@@ -30,6 +31,11 @@ public sealed class VoidShellClient(HttpClient http) : IAppControlProvider, IPro
             }
 
             var version = versionElement.GetString();
+            var semVer = versionDoc.RootElement.TryGetProperty("semver", out var semVerElement)
+                && semVerElement.ValueKind == JsonValueKind.String
+                && !string.IsNullOrWhiteSpace(semVerElement.GetString())
+                    ? semVerElement.GetString()!.Trim()
+                    : null;
             var installed = new List<string>();
             using (var library = await GetJsonAsync("api/library", cancellationToken))
             {
@@ -90,7 +96,7 @@ public sealed class VoidShellClient(HttpClient http) : IAppControlProvider, IPro
                 }
             }
 
-            return new AppProviderSnapshot(Kind, true, version, installed, runningKnown, active, null, firmware);
+            return new AppProviderSnapshot(Kind, true, version, installed, runningKnown, active, null, firmware, semVer);
         }
         catch (Exception ex) when (IsTransient(ex, cancellationToken))
         {

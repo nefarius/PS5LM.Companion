@@ -130,7 +130,13 @@ public sealed class CompanionStatusService(
             return (false, snapshot.Message ?? "The required VoidShell fork did not answer.");
         }
 
-        return (true, string.IsNullOrWhiteSpace(snapshot.Version) ? "VoidShell is answering." : $"VoidShell is answering ({snapshot.Version}).");
+        var label = string.IsNullOrWhiteSpace(snapshot.Version) ? null : snapshot.Version;
+        if (!string.IsNullOrWhiteSpace(snapshot.SemVer))
+        {
+            label = label is null ? snapshot.SemVer : $"{label}, fork {snapshot.SemVer}";
+        }
+
+        return (true, label is null ? "VoidShell is answering." : $"VoidShell is answering ({label}).");
     }
 
     private async Task<AppProviderSnapshot[]?> ReadAppControlAsync(CancellationToken cancellationToken)

@@ -136,6 +136,28 @@ public sealed class AppControlClientTests
     }
 
     [Fact]
+    public async Task The_fork_reports_its_semver_next_to_the_unchanged_version_and_upstream_has_none()
+    {
+        var fork = new VoidShellClient(Client(
+            r => r.RequestUri!.AbsolutePath == "/api/version" ? Json("""{"version":"V1.1","semver":" 1.1.1-nefarius.4 "}""") : VoidShell(r),
+            out _));
+        var upstream = new VoidShellClient(Client(VoidShell, out _));
+        var malformed = new VoidShellClient(Client(
+            r => r.RequestUri!.AbsolutePath == "/api/version" ? Json("""{"version":"V1.1","semver":7}""") : VoidShell(r),
+            out _));
+
+        var forkSnapshot = await fork.ProbeAsync(CancellationToken.None);
+        var upstreamSnapshot = await upstream.ProbeAsync(CancellationToken.None);
+        var malformedSnapshot = await malformed.ProbeAsync(CancellationToken.None);
+
+        Assert.Equal("V1.1", forkSnapshot.Version);
+        Assert.Equal("1.1.1-nefarius.4", forkSnapshot.SemVer);
+        Assert.Null(upstreamSnapshot.SemVer);
+        Assert.True(malformedSnapshot.Available);
+        Assert.Null(malformedSnapshot.SemVer);
+    }
+
+    [Fact]
     public async Task VoidShell_lists_processes_and_skips_malformed_entries()
     {
         var client = new VoidShellClient(Client(
