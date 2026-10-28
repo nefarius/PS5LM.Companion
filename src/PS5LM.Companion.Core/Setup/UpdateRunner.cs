@@ -141,6 +141,14 @@ public sealed class UpdateRunner
                 continue;
             }
 
+            // Decide before uploading: once the file is current a later run would never launch it. Launching a
+            // payload that may already run would also leave a second copy that cannot bind its port.
+            if (payload.Ready.Port <= 0 && await _services.Manager.GetProcessesAsync(cancellationToken) is null)
+            {
+                Add(payload.Name, SetupStatus.Warn, $"{payload.Version} was not uploaded: Payload Manager's process list could not be read, so it is unknown whether the old build runs. Run update again.");
+                continue;
+            }
+
             Ui.Info($"Uploading {payload.Name} {payload.Version}");
             try
             {
@@ -166,7 +174,6 @@ public sealed class UpdateRunner
 
         inventory = await _services.Manager.ListPayloadsAsync(cancellationToken);
         var toLaunch = new List<(ManifestPayload, ManagedPayload)>();
-        var processes = await _services.Manager.GetProcessesAsync(cancellationToken);
         foreach (var payload in uploaded)
         {
             var stored = SetupRunner.FindStored(inventory, payload);
@@ -174,12 +181,7 @@ public sealed class UpdateRunner
             {
                 Add(payload.Name, SetupStatus.Fail, "Payload Manager does not list it after the upload.");
             }
-            else if (payload.Ready.Port <= 0 && processes is null)
-            {
-                // Launching a payload that may already run would leave a second copy that cannot bind.
-                Add(payload.Name, SetupStatus.Warn, $"Uploaded {payload.Version}, but Payload Manager's process list could not be read, so it is unknown whether the old build runs. It was not launched; run update again.");
-            }
-            else if (await _setup.IsReadyAsync(payload, cancellationToken, processes))
+            else if (await _setup.IsReadyAsync(payload, cancellationToken))
             {
                 _stillOld.Add((payload, stored));
             }

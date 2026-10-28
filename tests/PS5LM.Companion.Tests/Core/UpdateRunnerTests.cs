@@ -205,7 +205,7 @@ public sealed class UpdateRunnerTests
     }
 
     [Fact]
-    public async Task Process_based_payload_is_not_launched_when_the_process_list_cannot_be_read()
+    public async Task Process_based_payload_is_left_stale_when_the_process_list_cannot_be_read()
     {
         using var harness = await PreparedAsync();
         Stale(harness, "kstuff-lite.elf");
@@ -213,8 +213,15 @@ public sealed class UpdateRunnerTests
 
         var report = await Runner(harness).RunAsync(CancellationToken.None);
 
-        Assert.Equal(["upload:kstuff-lite.elf"], harness.Events);
+        Assert.Empty(harness.Events);
         Assert.Contains(report.Lines, l => l.Component == "kstuff-lite" && l.Status == SetupStatus.Warn && l.Message.Contains("process list", StringComparison.Ordinal));
+
+        // Still stale, so the next run with a readable list picks it up.
+        harness.ProcessListUnreadable = false;
+        harness.Processes.Remove("kstuff.elf");
+        await Runner(harness).RunAsync(CancellationToken.None);
+
+        Assert.Equal(["upload:kstuff-lite.elf", "load:kstuff-lite.elf"], harness.Events);
     }
 
     [Theory]
