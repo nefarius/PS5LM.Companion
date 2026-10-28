@@ -18,6 +18,44 @@ public sealed class AppControlTests
         new(kind, true, "v", installed, known, active, null);
 
     [Fact]
+    public void Serving_llama_overrides_home_screen_focus_for_the_sole_installed_variant()
+    {
+        var status = AppControlEvaluator.Evaluate([Snap(AppProviderKind.VoidShell, [Lm], true, "NPXS4003")], LlamaServerState.Serving);
+
+        Assert.Equal(AppRunState.Running, status.Apps.Single(a => a.TitleId == Lm).State);
+        Assert.Equal(AppRunState.NotRunning, status.Apps.Single(a => a.TitleId == Plus).State);
+    }
+
+    [Fact]
+    public void Serving_llama_is_ambiguous_between_two_installed_variants_when_focus_names_neither()
+    {
+        var status = AppControlEvaluator.Evaluate([Snap(AppProviderKind.VoidShell, [Lm, Plus], true, "NPXS4003")], LlamaServerState.Loading);
+
+        Assert.All(status.Apps, app => Assert.Equal(AppRunState.RunningVariantUnknown, app.State));
+    }
+
+    [Fact]
+    public void A_variant_the_service_names_as_running_stays_when_llama_serves()
+    {
+        var status = AppControlEvaluator.Evaluate([Snap(AppProviderKind.VoidShell, [Lm, Plus], true, Plus)], LlamaServerState.Serving);
+
+        Assert.Equal(AppRunState.Running, status.Apps.Single(a => a.TitleId == Plus).State);
+        Assert.Equal(AppRunState.NotRunning, status.Apps.Single(a => a.TitleId == Lm).State);
+    }
+
+    [Fact]
+    public void Serving_llama_without_any_service_reports_an_unknown_variant_and_keeps_the_explanation()
+    {
+        var unavailable = AppControlEvaluator.Evaluate([AppProviderSnapshot.Unavailable(AppProviderKind.VoidShell)]);
+        var status = AppControlEvaluator.Evaluate([AppProviderSnapshot.Unavailable(AppProviderKind.VoidShell)], LlamaServerState.Serving);
+
+        Assert.False(status.Available);
+        Assert.NotNull(unavailable.Message);
+        Assert.Equal(unavailable.Message, status.Message);
+        Assert.All(status.Apps, app => Assert.Equal(AppRunState.RunningVariantUnknown, app.State));
+    }
+
+    [Fact]
     public void Nothing_answering_reports_unavailable_rows()
     {
         var status = AppControlEvaluator.Evaluate([AppProviderSnapshot.Unavailable(AppProviderKind.VoidShell), AppProviderSnapshot.Unavailable(AppProviderKind.Websrv)]);

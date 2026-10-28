@@ -69,7 +69,10 @@ public sealed class CompanionStatusService(
         var sensors = await sensorTask;
         var catalog = await catalogTask;
         var elfldrListening = await elfldrTask;
-        var apps = await appTask;
+        var appSnapshots = await appTask;
+        var apps = appSnapshots is null
+            ? AppControlStatus.NotChecked with { Message = "VoidShell and websrv are not configured for this console." }
+            : AppControlEvaluator.Evaluate(appSnapshots, probe.State);
 
         var telemetry = probe.State == LlamaServerState.Serving ? _telemetry.Update(probe.MetricsText, now) : ResetTelemetry();
         if (probe.State == LlamaServerState.Serving)
@@ -107,15 +110,14 @@ public sealed class CompanionStatusService(
             apps);
     }
 
-    private async Task<AppControlStatus> ReadAppControlAsync(CancellationToken cancellationToken)
+    private async Task<AppProviderSnapshot[]?> ReadAppControlAsync(CancellationToken cancellationToken)
     {
         if (appControl is not { Count: > 0 })
         {
-            return AppControlStatus.NotChecked with { Message = "VoidShell and websrv are not configured for this console." };
+            return null;
         }
 
-        var snapshots = await Task.WhenAll(appControl.Select(provider => provider.ProbeAsync(cancellationToken)));
-        return AppControlEvaluator.Evaluate(snapshots);
+        return await Task.WhenAll(appControl.Select(provider => provider.ProbeAsync(cancellationToken)));
     }
 
     private static CompanionLifecycle DetermineLifecycle(

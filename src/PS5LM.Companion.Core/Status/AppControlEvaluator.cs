@@ -4,10 +4,49 @@ using PS5LM.Companion.Core.Domain;
 
 namespace PS5LM.Companion.Core.Status;
 
-/// <summary>Merges the app-control services' snapshots into one per-variant view. VoidShell wins over websrv.</summary>
+/// <summary>
+/// Merges the app-control services' snapshots into one per-variant view. VoidShell wins over websrv. A live
+/// llama-server is proof the app runs, whatever has focus, so it overrides the services' running state.
+/// </summary>
 public static class AppControlEvaluator
 {
-    public static AppControlStatus Evaluate(IReadOnlyList<AppProviderSnapshot> snapshots)
+    /// <param name="snapshots">What each service reported.</param>
+    /// <param name="llama">The llama-server state; serving or loading means some PS5LM app runs.</param>
+    public static AppControlStatus Evaluate(
+        IReadOnlyList<AppProviderSnapshot> snapshots,
+        LlamaServerState llama = LlamaServerState.Closed)
+    {
+        var status = EvaluateServices(snapshots);
+        return llama is LlamaServerState.Serving or LlamaServerState.Loading ? WithLlamaProof(status) : status;
+    }
+
+    /// <summary>
+    /// llama-server proves that a PS5LM app runs, not which one. A variant the services already named as running
+    /// stays; otherwise the sole installed variant is it; otherwise the owner is unknown. The configured variant
+    /// is not evidence: it says which app the companion manages, not which one is serving.
+    /// </summary>
+    private static AppControlStatus WithLlamaProof(AppControlStatus status)
+    {
+        if (status.Apps.Count(a => a.State == AppRunState.Running) == 1)
+        {
+            return status;
+        }
+
+        var installed = status.Apps.Where(a => a.Installed).ToList();
+        var owner = installed.Count == 1 ? installed[0].Variant : (PS5Variant?)null;
+        var apps = status.Apps.Select(a => a with
+        {
+            State = owner is null
+                ? AppRunState.RunningVariantUnknown
+                : (a.Variant == owner ? AppRunState.Running : AppRunState.NotRunning),
+        }).ToList();
+
+        // Service notes ("cannot report which app runs", ambiguous title) are settled by llama-server;
+        // an unavailable-service explanation stays.
+        return status with { Apps = apps, Message = status.Available ? null : status.Message };
+    }
+
+    private static AppControlStatus EvaluateServices(IReadOnlyList<AppProviderSnapshot> snapshots)
     {
         var available = snapshots.Where(s => s.Available).OrderBy(s => s.Kind).ToList();
         if (available.Count == 0)
