@@ -99,7 +99,9 @@ public sealed class UpdateRunnerTests
         harness.Files.AddFile(PidFile, pidText);
         if (runningPid is { } pid)
         {
-            harness.Pids[pid] = "voidshell.elf";
+            // elfldr names every payload it loads "payload.elf" (seen in /processes_list on a console).
+            harness.Pids[pid] = "payload.elf";
+            harness.PidPayloads[pid] = "voidshell.elf";
         }
 
         return harness;
@@ -141,6 +143,7 @@ public sealed class UpdateRunnerTests
 
     [Theory]
     [InlineData("ftpsrv.elf")]
+    [InlineData("shadowmountplus.elf")]
     [InlineData("pldmgr.elf")]
     [InlineData("elfldr.elf")]
     [InlineData("mini-syscore.elf")]

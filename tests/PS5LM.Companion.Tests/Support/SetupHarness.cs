@@ -53,6 +53,9 @@ internal sealed class SetupHarness : IDisposable
     /// <summary>Running payload processes by pid, with the payload file each one runs.</summary>
     public Dictionary<int, string> Pids { get; } = [];
 
+    /// <summary>The payload file a pid runs, when its process name is the loader's generic <c>payload.elf</c>.</summary>
+    public Dictionary<int, string> PidPayloads { get; } = [];
+
     /// <summary>A kill that succeeds but leaves the payload answering, as when another copy holds the port.</summary>
     public bool KillsAreIneffective { get; set; }
 
@@ -164,7 +167,7 @@ internal sealed class SetupHarness : IDisposable
             }
 
             owner.Events.Add("kill:" + pid);
-            if (!owner.KillsAreIneffective && Effects.TryGetValue(fileName, out var effect))
+            if (!owner.KillsAreIneffective && Effects.TryGetValue(owner.PidPayloads.GetValueOrDefault(pid, fileName), out var effect))
             {
                 owner.Ports.Remove(effect.Port);
             }

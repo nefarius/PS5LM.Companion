@@ -244,14 +244,11 @@ public sealed class UpdateRunner
             return $"pid {pid} from {payload.PidFile} is not running.";
         }
 
-        if (!name.EndsWith(".elf", StringComparison.OrdinalIgnoreCase) || name is "pldmgr.elf" or "elfldr.elf" or "mini-syscore.elf")
+        // A payload started through elfldr shows up as the loader's generic "payload.elf", not under its own file name.
+        var names = new[] { "payload.elf", payload.UploadName, payload.Id + ".elf" };
+        if (!names.Contains(name, StringComparer.OrdinalIgnoreCase) || name is "pldmgr.elf" or "elfldr.elf" or "mini-syscore.elf")
         {
-            return $"pid {pid} from {payload.PidFile} is '{name}', which is not a payload to stop.";
-        }
-
-        if (!name.Equals(payload.UploadName, StringComparison.OrdinalIgnoreCase))
-        {
-            return $"pid {pid} from {payload.PidFile} is '{name}', expected '{payload.UploadName}'.";
+            return $"pid {pid} from {payload.PidFile} is '{name}', which is not this payload's process.";
         }
 
         Ui.Info($"Stopping {payload.Name} (pid {pid})");
