@@ -1,11 +1,17 @@
-# PS5LM Companion
+# <img src="src/PS5LM.Companion.App/wwwroot/logo.png" align="left" alt="PS5LM Companion" width="64" height="64" />PS5LM Companion
 
-<img src="src/PS5LM.Companion.App/wwwroot/logo.png" alt="PS5LM Companion" width="64" height="64" />
+[![Build status](https://github.com/nefarius/PS5LM.Companion/actions/workflows/ci.yml/badge.svg)](https://github.com/nefarius/PS5LM.Companion/actions/workflows/ci.yml)
+[![GitHub Release](https://img.shields.io/github/v/release/nefarius/PS5LM.Companion?include_prereleases)](https://github.com/nefarius/PS5LM.Companion/releases/latest)
+[![Docker Pulls](https://img.shields.io/docker/pulls/containinger/ps5lm-companion)](https://hub.docker.com/r/containinger/ps5lm-companion)
+[![License: MIT](https://img.shields.io/github/license/nefarius/PS5LM.Companion)](LICENSE)
+[![Discord](https://img.shields.io/discord/346756263763378176.svg)](https://discord.nefarius.at/)
 
 Headless web dashboard that manages models and monitors a PS5 running PS5LM or PS5LM Plus, from any browser on your network.
 
 > [!NOTE]
 > Ahoy, traveler! 👋 This project has been "vibe-coded", meaning that the vast majority of the code has been written with the assistance of AI coding agents. I use my own work in production and value stability and security. Bear in mind, though, that the code you browse might not be an accurate reflection of my personal "style" or taste. The primary goal was to make a useful product, quickly, rather than focus on the development process itself. With that out of the way, if you find it useful, feel free to get inspired by it 😁
+
+## Screenshots
 
 <p align="center">
   <img src="assets/screenshots/msedge_eJ19bRgB1q.png" width="49%" alt="Overview: two consoles, both ready, with the loaded model">
@@ -58,6 +64,8 @@ docker run -p 8080:8080 -v ps5lm-companion:/data \
 ```
 
 The image build excludes `.git`, so MinVer cannot calculate a version inside Docker. `MINVERVERSIONOVERRIDE` is required. The command above uses the pinned MinVer CLI, which produces the same version as `dotnet build`.
+
+## Configuration
 
 Configuration (environment variables use `__` for nesting). Each console is a section `PS5:Consoles:{id}` where `{id}`
 is a stable slug (lowercase letters, digits and hyphens, at most 40 characters); it appears in API routes and keys the
@@ -268,9 +276,24 @@ The issue tracker is not a help desk. Include the companion version and logs whe
 MIT, see [LICENSE](LICENSE). Not affiliated with Sony Interactive Entertainment. "PlayStation" and "PS5" are trademarks of
 Sony Interactive Entertainment.
 
-## Credits
+## Sources & 3rd party credits
 
-[cobanov/PS5LM](https://github.com/cobanov/PS5LM), [abhi245y/PS5LM-Plus](https://github.com/abhi245y/PS5LM-Plus),
-[YARP](https://github.com/dotnet/yarp) (inference gateway forwarding),
-[nefarius/voidshell](https://github.com/nefarius/voidshell) (required fork of [amilarajans/voidshell](https://github.com/amilarajans/voidshell)),
-[ps5-payload-dev](https://github.com/ps5-payload-dev) (ftpsrv, elfldr, websrv), [ps5-exporter](https://github.com/Marice/ps5-exporter).
+### Related
+
+- [PS5LM](https://github.com/cobanov/PS5LM)
+- [PS5LM Plus](https://github.com/abhi245y/PS5LM-Plus)
+
+### Console services
+
+- [nefarius/voidshell](https://github.com/nefarius/voidshell), the required fork of [amilarajans/voidshell](https://github.com/amilarajans/voidshell)
+- [PS5 Payload Manager](https://github.com/itsPLK/ps5-payload-manager)
+- [ps5-payload-dev](https://github.com/ps5-payload-dev): [ftpsrv](https://github.com/ps5-payload-dev/ftpsrv), [elfldr](https://github.com/ps5-payload-dev/elfldr) and [websrv](https://github.com/ps5-payload-dev/websrv)
+- [kstuff-lite](https://github.com/EchoStretch/kstuff-lite)
+- [OnionHEN](https://github.com/aydencharles/onionHEN)
+- [ShadowMountPlus](https://github.com/drakmor/ShadowMountPlus)
+- [PS5 Web File Manager](https://github.com/owendswang/ps5-web-file-manager)
+- [ps5-exporter](https://github.com/Marice/ps5-exporter)
+
+### Dependencies
+
+- [YARP](https://github.com/dotnet/yarp) (inference gateway forwarding)
