@@ -249,6 +249,11 @@ public sealed class UpdateRunner
             return $"pid {pid} from {payload.PidFile} is '{name}', which is not a payload to stop.";
         }
 
+        if (!name.Equals(payload.UploadName, StringComparison.OrdinalIgnoreCase))
+        {
+            return $"pid {pid} from {payload.PidFile} is '{name}', expected '{payload.UploadName}'.";
+        }
+
         Ui.Info($"Stopping {payload.Name} (pid {pid})");
         if (!await _services.Manager.KillProcessAsync(pid, cancellationToken))
         {

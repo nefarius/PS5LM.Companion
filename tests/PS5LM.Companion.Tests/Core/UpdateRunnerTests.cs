@@ -140,6 +140,24 @@ public sealed class UpdateRunnerTests
     }
 
     [Theory]
+    [InlineData("ftpsrv.elf")]
+    [InlineData("pldmgr.elf")]
+    [InlineData("elfldr.elf")]
+    [InlineData("mini-syscore.elf")]
+    [InlineData("SceShellUI")]
+    [InlineData("/data/voidshell.elf")]
+    public async Task Restart_refuses_a_pid_whose_process_name_does_not_match_the_payload(string processName)
+    {
+        using var harness = RunningStaleVoidShell(await PreparedAsync());
+        harness.Pids[116] = processName;
+
+        var report = await Runner(harness, restart: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal(["upload:voidshell.elf"], harness.Events);
+        Assert.Contains(report.Lines, l => l.Component == "VoidShell" && l.Status == SetupStatus.Warn && l.Message.Contains("Not restarted", StringComparison.Ordinal));
+    }
+
+    [Theory]
     [InlineData("not a pid")]
     [InlineData("1")]
     public async Task Restart_refuses_a_missing_or_unsafe_pid(string pidText)

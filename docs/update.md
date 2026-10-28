@@ -28,7 +28,8 @@ Exit codes: 0 current or updated, 1 bad arguments, 2 something failed, 3 `--chec
 3. A payload that was not running is launched. One that is running keeps the old build until the next autoload or console
    reboot; this is a warning. Launching it again does not help: the new copy cannot bind the port and the old one keeps serving.
    With `--restart` a payload that lists a `pidFile` in the manifest (VoidShell: `/data/voidshell/voidshell.pid`) is replaced
-   at the end of the run: the pid is read over FTP, must be a running `.elf` process (never `pldmgr.elf`, `elfldr.elf`,
+   at the end of the run: the pid is read over FTP, must be a running process whose name matches the manifest's `<id>.elf`
+   filename (never `pldmgr.elf`, `elfldr.elf`,
    `mini-syscore.elf`), is stopped through Payload Manager's `/process_kill`, and once the payload no longer answers the new
    build is launched. If it still answers, another copy holds the port (a copy that was launched by hand and failed to start
    also overwrites the pid file), nothing is relaunched and a warning says so; reboot the console then.

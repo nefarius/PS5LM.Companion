@@ -154,7 +154,7 @@ internal sealed class SetupHarness : IDisposable
             Task.FromResult<IReadOnlySet<string>?>(owner.Processes.ToHashSet(StringComparer.OrdinalIgnoreCase));
 
         public Task<IReadOnlyDictionary<int, string>?> GetProcessIdsAsync(CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyDictionary<int, string>?>(owner.Pids.ToDictionary(p => p.Key, p => "payload.elf"));
+            Task.FromResult<IReadOnlyDictionary<int, string>?>(owner.Pids.ToDictionary(p => p.Key, p => p.Value));
 
         public Task<bool> KillProcessAsync(int pid, CancellationToken cancellationToken)
         {
