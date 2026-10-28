@@ -35,6 +35,36 @@ public sealed class VoidShellContractTests
     }
 
     [Fact]
+    public async Task The_fork_running_app_wins_over_home_screen_focus()
+    {
+        var snapshot = await Probe("library.json", "stats-home-focus.json", "V1.1.1-nefarius.2");
+        Assert.Equal("PPSA99575", snapshot.ActiveTitleId);
+
+        var ps5lm = Assert.Single(AppControlEvaluator.Evaluate([snapshot]).Apps, app => app.TitleId == "PPSA99575");
+        Assert.Equal(AppRunState.Running, ps5lm.State);
+    }
+
+    [Fact]
+    public async Task A_stale_active_game_with_menu_state_does_not_hide_the_running_app()
+    {
+        var snapshot = await Probe("library.json", "stats-menu.json", "V1.1.1-nefarius.2");
+
+        Assert.Equal("PPSA99575", snapshot.ActiveTitleId);
+        var ps5lm = Assert.Single(AppControlEvaluator.Evaluate([snapshot]).Apps, app => app.TitleId == "PPSA99575");
+        Assert.Equal(AppRunState.Running, ps5lm.State);
+    }
+
+    [Fact]
+    public async Task An_empty_running_app_means_nothing_runs_even_with_focus_on_a_title()
+    {
+        var snapshot = await Probe("library.json", "stats-idle.json", "V1.1.1-nefarius.2");
+
+        Assert.True(snapshot.RunningKnown);
+        Assert.True(string.IsNullOrEmpty(snapshot.ActiveTitleId));
+        Assert.All(AppControlEvaluator.Evaluate([snapshot]).Apps, app => Assert.Equal(AppRunState.NotRunning, app.State));
+    }
+
+    [Fact]
     public async Task Rescan_fixture_is_a_successful_empty_post()
     {
         var http = new HttpClient(new RescanHandler());
@@ -44,13 +74,13 @@ public sealed class VoidShellContractTests
         Assert.Equal("{\"status\":\"ok\"}", RescanHandler.Body.Trim());
     }
 
-    private static async Task<PS5LM.Companion.Core.Abstractions.AppProviderSnapshot> Probe(string library, string stats)
+    private static async Task<PS5LM.Companion.Core.Abstractions.AppProviderSnapshot> Probe(string library, string stats, string version = "V1.1")
     {
-        var http = new HttpClient(new LibraryHandler(library, stats)) { BaseAddress = new Uri("http://voidshell.test/") };
+        var http = new HttpClient(new LibraryHandler(library, stats, version)) { BaseAddress = new Uri("http://voidshell.test/") };
         return await new VoidShellClient(http).ProbeAsync(CancellationToken.None);
     }
 
-    private sealed class LibraryHandler(string library, string stats) : HttpMessageHandler
+    private sealed class LibraryHandler(string library, string stats, string version) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -61,7 +91,7 @@ public sealed class VoidShellContractTests
                 "/api/stats" => stats,
                 _ => null,
             };
-            var body = name is null ? "{}" : FixtureFiles.Read("voidshell", "V1.1", name);
+            var body = name is null ? "{}" : FixtureFiles.Read("voidshell", version, name);
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(body, Encoding.UTF8, "application/json"),

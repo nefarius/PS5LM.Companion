@@ -18,7 +18,7 @@ public enum AppProviderKind
 /// <param name="Version">Version text, when reported.</param>
 /// <param name="InstalledTitleIds">Title IDs it lists as installed.</param>
 /// <param name="RunningKnown">Whether <paramref name="ActiveTitleId"/> is meaningful (null then means nothing runs).</param>
-/// <param name="ActiveTitleId">The foreground title as the service reported it, possibly truncated.</param>
+/// <param name="ActiveTitleId">The running (or, for upstream VoidShell, foreground) title as the service reported it, possibly truncated.</param>
 /// <param name="Message">Why it is unavailable, when it is.</param>
 public sealed record AppProviderSnapshot(
     AppProviderKind Kind,

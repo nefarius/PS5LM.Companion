@@ -8,7 +8,7 @@ using PS5LM.Companion.Core.Abstractions;
 namespace PS5LM.Companion.Infrastructure.Http;
 
 /// <summary>
-/// VoidShell's REST API (port 7007): <c>/api/version</c>, <c>/api/library</c>, <c>/api/stats</c> and
+/// VoidShell's REST API (port 7007): <c>/api/version</c>, <c>/api/library</c>, <c>/api/stats</c> (<c>running_app</c> in the nefarius fork) and
 /// <c>POST /api/launch</c> with the title ID as a plain-text body. Transport failures are an unavailable snapshot.
 /// </summary>
 public sealed class VoidShellClient(HttpClient http) : IAppControlProvider
@@ -59,11 +59,16 @@ public sealed class VoidShellClient(HttpClient http) : IAppControlProvider
                     var state = stats.RootElement.TryGetProperty("state", out var stateElement) && stateElement.ValueKind == JsonValueKind.String
                         ? stateElement.GetString()
                         : null;
-                    // active_game keeps the last title after it exits; only state GAME means it is in the foreground
-                    // (MENU is the system UI). Without a state field, trust the title.
-                    if (stats.RootElement.TryGetProperty("active_game", out var game) && game.ValueKind == JsonValueKind.String
+                    if (stats.RootElement.TryGetProperty("running_app", out var running) && running.ValueKind == JsonValueKind.String)
+                    {
+                        // The fork reports the running big app regardless of focus; empty means nothing runs.
+                        active = running.GetString();
+                    }
+                    else if (stats.RootElement.TryGetProperty("active_game", out var game) && game.ValueKind == JsonValueKind.String
                         && (state is null || string.Equals(state, "GAME", StringComparison.OrdinalIgnoreCase)))
                     {
+                        // Upstream: active_game keeps the last title after it exits and follows focus, so only
+                        // state GAME counts (MENU is the system UI). Without a state field, trust the title.
                         active = game.GetString();
                     }
                 }
