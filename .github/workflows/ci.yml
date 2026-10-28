@@ -152,8 +152,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            echo "Release $GITHUB_REF_NAME already exists."
+          if draft="$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft 2>/dev/null)"; then
+            if [[ "$draft" == "true" ]]; then
+              echo "Publishing draft release $GITHUB_REF_NAME."
+              edit=(release edit "$GITHUB_REF_NAME" --draft=false)
+              # A draft prerelease must stay off releases/latest, which is what the dashboard checks.
+              if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+                edit+=(--prerelease)
+              else
+                edit+=(--prerelease=false --latest)
+              fi
+              gh "${edit[@]}"
+            else
+              echo "Release $GITHUB_REF_NAME already exists."
+            fi
             exit 0
           fi
           args=(release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag)
