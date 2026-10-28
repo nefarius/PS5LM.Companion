@@ -131,9 +131,18 @@ public sealed class UpdateRunner
             }
 
             Ui.Info($"Uploading {payload.Name} {payload.Version}");
-            await using (var file = File.OpenRead(local))
+            try
             {
+                await using var file = File.OpenRead(local);
                 await _services.Manager.UploadAsync(payload.UploadName, file, cancellationToken);
+            }
+            catch (IOException ex)
+            {
+                // Payload Manager cannot overwrite a file that is in use; renaming a new file over it works.
+                Ui.Info($"Payload Manager refused the upload ({ex.Message}); replacing {stored.Path} over FTP instead");
+                await using var file = File.OpenRead(local);
+                await _services.Files.UploadAsync(file, stored.Path + ".part", null, cancellationToken);
+                await _services.Files.MoveAsync(stored.Path + ".part", stored.Path, cancellationToken);
             }
 
             uploaded.Add(payload);

@@ -76,7 +76,8 @@ public sealed class PayloadManagerAdminClient(HttpClient http) : IPayloadManager
         using var response = await http.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            throw new IOException($"Payload Manager refused the upload of {fileName} ({(int)response.StatusCode}).");
+            var body = (await response.Content.ReadAsStringAsync(cancellationToken)).Trim();
+            throw new IOException($"Payload Manager refused the upload of {fileName} ({(int)response.StatusCode}){(body.Length == 0 ? string.Empty : ": " + body[..Math.Min(body.Length, 300)])}.");
         }
     }
 

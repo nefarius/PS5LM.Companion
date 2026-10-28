@@ -52,6 +52,9 @@ internal sealed class SetupHarness : IDisposable
 
     public HashSet<string> LoadFails { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Upload names Payload Manager refuses, as it does for a payload file that is in use.</summary>
+    public HashSet<string> UploadFails { get; } = new(StringComparer.OrdinalIgnoreCase);
+
     public bool Consent { get; set; }
 
     public bool CanPrompt { get; set; }
@@ -100,6 +103,11 @@ internal sealed class SetupHarness : IDisposable
 
         public async Task UploadAsync(string fileName, Stream content, CancellationToken cancellationToken)
         {
+            if (owner.UploadFails.Contains(fileName))
+            {
+                throw new IOException($"Payload Manager refused the upload of {fileName} (500).");
+            }
+
             using var buffer = new MemoryStream();
             await content.CopyToAsync(buffer, cancellationToken);
             owner.Events.Add("upload:" + fileName);

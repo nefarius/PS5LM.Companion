@@ -77,6 +77,21 @@ public sealed class UpdateRunnerTests
     }
 
     [Fact]
+    public async Task Refused_upload_falls_back_to_replacing_the_stored_file_over_ftp()
+    {
+        using var harness = await PreparedAsync();
+        Stale(harness, "voidshell.elf");
+        harness.UploadFails.Add("voidshell.elf");
+        var path = harness.Stored.Single(s => s.FileName == "voidshell.elf").Path!;
+
+        var report = await Runner(harness).RunAsync(CancellationToken.None);
+
+        Assert.Equal("ELF:voidshell.elf", harness.Files.Text(path));
+        Assert.DoesNotContain(path + ".part", harness.Files.Files.Keys);
+        Assert.DoesNotContain(report.Lines, l => l.Status == SetupStatus.Fail);
+    }
+
+    [Fact]
     public async Task Payload_that_is_not_stored_is_reported_not_installed()
     {
         using var harness = await PreparedAsync();
