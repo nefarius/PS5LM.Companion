@@ -1,8 +1,8 @@
 @inherits LayoutComponentBase
 @implements IDisposable
-@using System.Reflection
 @inject NavigationManager Navigation
 @inject IConsoleRegistry Registry
+@inject LatestReleaseChecker VersionChecker
 
 <MudThemeProvider @bind-IsDarkMode="_dark" />
 <MudPopoverProvider />
@@ -18,7 +18,17 @@
         </a>
         <MudSpacer />
         <StatusChip Console="@_current" />
-        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Class="app-version" aria-label="@($"Version {VersionText}")">@VersionText</MudChip>
+        <MudTooltip Text="@_versionStatus.Tooltip">
+            <MudChip T="string"
+                     Size="Size.Small"
+                     Variant="Variant.Outlined"
+                     Color="@(_versionStatus.UpdateAvailable ? Color.Warning : Color.Default)"
+                     Class="app-version"
+                     aria-label="@_versionStatus.AriaLabel"
+                     Href="@_versionStatus.ReleaseUri?.ToString()"
+                     Target="@(_versionStatus.ReleaseUri is null ? null : "_blank")"
+                     Rel="@(_versionStatus.ReleaseUri is null ? null : "noopener noreferrer")">@_versionStatus.ChipLabel</MudChip>
+        </MudTooltip>
         <MudIconButton Href="https://github.com/nefarius/PS5LM.Companion/"
                        Target="_blank"
                        Rel="noopener noreferrer"
@@ -69,22 +79,16 @@
 </div>
 
 @code {
-    private static readonly string VersionText = FormatVersion();
     private readonly Dictionary<string, bool> _open = new(StringComparer.Ordinal);
+    private VersionCheckStatus _versionStatus = new(null, null, false, null);
     private ConsoleRuntime? _current;
     private bool _drawerOpen = true;
     private bool _dark = true;
-
-    private static string FormatVersion()
-    {
-        var version = typeof(PS5LM.Companion.App.Program).Assembly
-            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
-            ?.InformationalVersion;
-        return string.IsNullOrWhiteSpace(version) ? "unknown" : "v" + version;
-    }
+    private bool _versionCheckStarted;
 
     protected override void OnInitialized()
     {
+        _versionStatus = VersionChecker.GetLocalStatus();
         Navigation.LocationChanged += OnLocationChanged;
         Registry.Changed += OnRegistryChanged;
         foreach (var console in Registry.All)
@@ -94,6 +98,25 @@
         }
 
         RefreshCurrent();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _versionCheckStarted)
+        {
+            return;
+        }
+
+        _versionCheckStarted = true;
+        try
+        {
+            _versionStatus = await VersionChecker.GetStatusAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception)
+        {
+            // The local version chip remains visible when the latest-release lookup fails.
+        }
     }
 
     private void OnRegistryChanged(ConsoleChange change)

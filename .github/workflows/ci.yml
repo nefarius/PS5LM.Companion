@@ -92,6 +92,8 @@ jobs:
     if: github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     needs: [build-and-test, docker]
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -144,3 +146,31 @@ jobs:
             --build-arg "MINVERVERSIONOVERRIDE=${VERSION}" \
             "${tags[@]}" .
           docker push --all-tags "${IMAGE}"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if draft="$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft 2>/dev/null)"; then
+            if [[ "$draft" == "true" ]]; then
+              echo "Publishing draft release $GITHUB_REF_NAME."
+              edit=(release edit "$GITHUB_REF_NAME" --draft=false)
+              # A draft prerelease must stay off releases/latest, which is what the dashboard checks.
+              if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+                edit+=(--prerelease)
+              else
+                edit+=(--prerelease=false --latest)
+              fi
+              gh "${edit[@]}"
+            else
+              echo "Release $GITHUB_REF_NAME already exists."
+            fi
+            exit 0
+          fi
+          args=(release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag)
+          # Prereleases stay off releases/latest, which is what the dashboard checks.
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            args+=(--prerelease)
+          fi
+          gh "${args[@]}"

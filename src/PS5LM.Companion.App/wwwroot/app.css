@@ -22,6 +22,11 @@
     border-color: currentColor;
 }
 
+.mud-appbar .app-version.mud-chip-color-warning {
+    color: var(--mud-palette-warning);
+    border-color: rgba(var(--mud-palette-warning-rgb), var(--mud-palette-border-opacity));
+}
+
 #blazor-error-ui {
     background: #b32121;
     color: #fff;

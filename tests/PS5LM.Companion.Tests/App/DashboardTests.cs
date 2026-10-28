@@ -1,6 +1,16 @@
 using System.Net;
 using System.Reflection;
+using System.Text;
 
+using Bunit;
+
+using Microsoft.Extensions.DependencyInjection;
+
+using MudBlazor.Services;
+
+using PS5LM.Companion.App.Updates;
+using PS5LM.Companion.Core.Consoles;
+using PS5LM.Companion.Core.Discovery;
 using PS5LM.Companion.Core.Domain;
 using PS5LM.Companion.Tests.Support;
 
@@ -34,11 +44,45 @@ public sealed class DashboardTests
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
             ?.InformationalVersion;
         Assert.False(string.IsNullOrWhiteSpace(version));
+        Assert.Contains("app-version", html);
+        Assert.Contains("mud-tooltip-root", html);
         Assert.Contains($"aria-label=\"Version v{version}\"", html);
         Assert.Contains($"v{version}", html);
         Assert.Contains("href=\"https://github.com/nefarius/PS5LM.Companion/\"", html);
         Assert.Contains("aria-label=\"PS5LM Companion on GitHub\"", html);
         Assert.Contains("target=\"_blank\"", html);
+    }
+
+    [Fact]
+    public async Task An_interactive_render_links_the_version_chip_to_a_newer_release()
+    {
+        const string releaseUrl = "https://github.com/nefarius/PS5LM.Companion/releases/tag/v9.9.9";
+        var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                $$"""{"tag_name":"v9.9.9","html_url":"{{releaseUrl}}","draft":false,"prerelease":false}""",
+                Encoding.UTF8,
+                "application/json"),
+        });
+        var http = new HttpClient(handler, disposeHandler: false);
+        var checker = new LatestReleaseChecker(http, new FixedVersion("1.0.0"));
+        await using var ctx = new BunitContext();
+        ctx.JSInterop.Mode = JSRuntimeMode.Loose;
+        ctx.Services.AddSingleton(checker);
+        ctx.Services.AddSingleton<IConsoleRegistry>(new EmptyRegistry());
+        ctx.Services.AddMudServices();
+
+        var cut = ctx.Render<PS5LM.Companion.App.Components.Layout.MainLayout>();
+
+        cut.WaitForAssertion(() =>
+        {
+            var chip = cut.Find(".app-version");
+            Assert.Contains("mud-chip-color-warning", chip.GetAttribute("class"));
+            Assert.Equal(releaseUrl, chip.GetAttribute("href"));
+            Assert.Equal("_blank", chip.GetAttribute("target"));
+            Assert.Contains("noopener", chip.GetAttribute("rel"));
+            Assert.Contains("v1.0.0 · v9.9.9 available", chip.TextContent);
+        });
     }
 
     [Fact]
@@ -254,5 +298,25 @@ public sealed class DashboardTests
         Assert.Equal(HttpStatusCode.Redirect, anonymous.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, circuit.StatusCode);
         Assert.Equal(HttpStatusCode.OK, signedIn.StatusCode);
+    }
+
+    private sealed class FixedVersion(string? version) : IAssemblyVersionSource
+    {
+        public string? TryGetVersion() => version;
+    }
+
+    private sealed class EmptyRegistry : IConsoleRegistry
+    {
+        public IReadOnlyList<ConsoleRuntime> All { get; } = [];
+
+        public event Action<ConsoleChange>? Changed { add { } remove { } }
+
+        public ConsoleRuntime? Find(string? id) => null;
+
+        public ConsoleEditResult Add(string id, PS5Options options) => throw new NotSupportedException();
+
+        public ConsoleEditResult Update(string id, PS5Options options) => throw new NotSupportedException();
+
+        public ConsoleEditResult Remove(string id) => throw new NotSupportedException();
     }
 }
