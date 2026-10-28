@@ -45,6 +45,16 @@ public sealed class VoidShellContractTests
     }
 
     [Fact]
+    public async Task A_stale_active_game_with_menu_state_does_not_hide_the_running_app()
+    {
+        var snapshot = await Probe("library.json", "stats-menu.json", "V1.1.1-nefarius.2");
+
+        Assert.Equal("PPSA99575", snapshot.ActiveTitleId);
+        var ps5lm = Assert.Single(AppControlEvaluator.Evaluate([snapshot]).Apps, app => app.TitleId == "PPSA99575");
+        Assert.Equal(AppRunState.Running, ps5lm.State);
+    }
+
+    [Fact]
     public async Task An_empty_running_app_means_nothing_runs_even_with_focus_on_a_title()
     {
         var snapshot = await Probe("library.json", "stats-idle.json", "V1.1.1-nefarius.2");
