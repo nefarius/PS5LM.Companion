@@ -34,6 +34,26 @@ public sealed class PayloadManagerAdminClientTests
     }
 
     [Fact]
+    public async Task A_pipeline_timeout_after_the_caller_cancelled_is_not_swallowed()
+    {
+        using var versionCancel = new CancellationTokenSource();
+        var version = new StubHandler(_ =>
+        {
+            versionCancel.Cancel();
+            throw new TimeoutRejectedException("stuck");
+        });
+        using var shutdownCancel = new CancellationTokenSource();
+        var shutdown = new StubHandler(_ =>
+        {
+            shutdownCancel.Cancel();
+            throw new TimeoutRejectedException("stuck");
+        });
+
+        await Assert.ThrowsAsync<TimeoutRejectedException>(() => Client(version).GetVersionAsync(versionCancel.Token));
+        await Assert.ThrowsAsync<TimeoutRejectedException>(() => Client(shutdown).ShutdownAsync(shutdownCancel.Token));
+    }
+
+    [Fact]
     public async Task List_reads_slots_on_06_and_paths_on_05()
     {
         var modern = await Client(new StubHandler(_ => Text("""{"items":[{"slot":"local/elfldr","path":"/p/elfldr.elf","filename":"elfldr.elf"},{"slot":"repo/ftpsrv@ab12","id":"ftpsrv","filename":"f.elf"}]}""")))
