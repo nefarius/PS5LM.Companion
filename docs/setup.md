@@ -68,9 +68,14 @@ To update a version, follow [Bumping a pin](#bumping-a-pin).
 Upstream VoidShell v1.1.1 imports `sceAppInstUtilAppInstallTitleDir` statically. Firmware such as 13.40 does not export it, so the
 loader logs `Unable to resolve 'sceAppInstUtilAppInstallTitleDir'` and the payload exits before `main()` (found with klogsrv, kernel
 log on port 3232). The upstream fix ([amilarajans/voidshell#2](https://github.com/amilarajans/voidshell/pull/2)) has had no response,
-so the manifest uses the reproducible fork build [nefarius/voidshell `v1.1.1-nefarius.2`](https://github.com/nefarius/voidshell/releases/tag/v1.1.1-nefarius.2)
+so the manifest uses the reproducible fork build [nefarius/voidshell `v1.1.1-nefarius.3`](https://github.com/nefarius/voidshell/releases/tag/v1.1.1-nefarius.3)
 (Docker build, ps5-payload-sdk v0.45). It also adds `running_app` to `/api/stats`, the running title regardless of focus,
-which the companion uses for the app check. Verified on FW 13.40 and 10.00.
+which the companion uses for the app check, and `firmware` (e.g. `13.40`), the console's system software version shown on the overview tiles and
+the status page. Verified on FW 13.40 and 10.00.
+
+**Upgrading from `v1.1.1-nefarius.2`.** A normal `setup` rerun skips payloads that are already on the console, so it keeps the old
+build and no firmware appears. Run `setup --force` to upload the new `voidshell.elf` and `index.html` again, then restart VoidShell
+(reboot the console or relaunch it from Payload Manager) so the new build is the one running.
 
 To go back to upstream once it ships the fix: repin `version`, `url`, `sha256` and the `index.html` entry of `voidshell` in the manifest,
 then run `setup --verify-manifest`. A payload can still be marked `"optional": true` to downgrade a failed start to a warning.

@@ -106,7 +106,8 @@ public sealed record CompanionStatus(
     bool PayloadManagerAvailable,
     string? PayloadManagerMessage,
     IReadOnlyList<DependencyStatus> Dependencies,
-    AppControlStatus? AppControl = null)
+    AppControlStatus? AppControl = null,
+    string? FirmwareVersion = null)
 {
     public static CompanionStatus Initial { get; } = new(
         CompanionLifecycle.Disconnected,

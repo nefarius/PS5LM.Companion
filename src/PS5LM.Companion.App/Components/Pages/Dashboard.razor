@@ -149,6 +149,7 @@ else
                 <tbody>
                     <tr><td>State</td><td><MudChip T="string" Size="Size.Small" Color="@Display.LifecycleColor(Status.Lifecycle)">@Display.Lifecycle(Status.Lifecycle)</MudChip></td></tr>
                     <tr><td>App</td><td>@(Status.Variant == PS5Variant.Unknown ? "Not detected" : Status.Variant.ToString())</td></tr>
+                    <tr><td>Firmware</td><td>@(Status.FirmwareVersion ?? "n/a")</td></tr>
                     <tr><td>Loaded model</td><td>@(Status.LoadedModel ?? "None")</td></tr>
                     <tr><td>Command folder</td><td>@(Status.ControlRoot ?? "Unknown")</td></tr>
                 </tbody>

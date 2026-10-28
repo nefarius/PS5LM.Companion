@@ -26,6 +26,7 @@
     <MudSimpleTable Dense="true" Hover="false" Elevation="0" Class="mb-2">
         <tbody>
             <tr><td>App</td><td>@(status.Variant == PS5Variant.Unknown ? "Not detected" : status.Variant.ToString())</td></tr>
+            <tr><td>Firmware</td><td>@(status.FirmwareVersion ?? "n/a")</td></tr>
             <tr><td>Loaded model</td><td>@(status.LoadedModel ?? "None")</td></tr>
             <tr><td>Generation</td><td>@(status.Telemetry is { } telemetry ? $"{telemetry.GenerationTokensPerSecond:0.0} tokens/s" : "n/a")</td></tr>
             <tr><td>SoC temperature</td><td>@(status.Sensors?.SocTemperatureC is { } temp ? $"{temp:0.#} °C" : "n/a")</td></tr>

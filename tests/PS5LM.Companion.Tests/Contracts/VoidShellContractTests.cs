@@ -65,6 +65,22 @@ public sealed class VoidShellContractTests
     }
 
     [Fact]
+    public async Task The_fork_reports_the_console_firmware_in_stats()
+    {
+        var snapshot = await Probe("library.json", "stats.json", "V1.1.1-nefarius.3");
+
+        Assert.Equal("13.40", snapshot.Firmware);
+    }
+
+    [Fact]
+    public async Task Stats_without_a_firmware_field_leave_it_unknown()
+    {
+        var snapshot = await Probe("library.json", "stats-idle.json", "V1.1.1-nefarius.2");
+
+        Assert.Null(snapshot.Firmware);
+    }
+
+    [Fact]
     public async Task Rescan_fixture_is_a_successful_empty_post()
     {
         var http = new HttpClient(new RescanHandler());

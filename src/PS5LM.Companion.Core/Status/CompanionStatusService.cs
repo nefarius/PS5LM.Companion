@@ -107,7 +107,8 @@ public sealed class CompanionStatusService(
             catalog.Available,
             catalog.Available ? null : catalog.Message,
             PayloadDependencies.Evaluate(catalog, ftp.Reachable, sensors is not null, elfldrListening, options.ElfldrPort),
-            apps);
+            apps,
+            appSnapshots?.FirstOrDefault(snapshot => snapshot is { Available: true, Kind: AppProviderKind.VoidShell, Firmware: { Length: > 0 } })?.Firmware);
     }
 
     private async Task<AppProviderSnapshot[]?> ReadAppControlAsync(CancellationToken cancellationToken)
