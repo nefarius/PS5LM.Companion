@@ -13,6 +13,9 @@ public sealed record UpdateOptions(string Host, string? AppId = null)
 
     public bool UpgradePayloadManager { get; init; }
 
+    /// <summary>Replace an updated payload that is still running (needs a <c>pidFile</c> in the manifest).</summary>
+    public bool Restart { get; init; }
+
     public int FtpPort { get; init; } = 2121;
 
     public int ElfldrPort { get; init; } = 9021;

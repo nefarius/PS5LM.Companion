@@ -50,6 +50,12 @@ internal sealed class SetupHarness : IDisposable
 
     public AutoloadConfig Autoload { get; set; } = new(false, string.Empty);
 
+    /// <summary>Running payload processes by pid, with the payload file each one runs.</summary>
+    public Dictionary<int, string> Pids { get; } = [];
+
+    /// <summary>A kill that succeeds but leaves the payload answering, as when another copy holds the port.</summary>
+    public bool KillsAreIneffective { get; set; }
+
     public HashSet<string> LoadFails { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Upload names Payload Manager refuses, as it does for a payload file that is in use.</summary>
@@ -146,6 +152,25 @@ internal sealed class SetupHarness : IDisposable
 
         public Task<IReadOnlySet<string>?> GetProcessesAsync(CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlySet<string>?>(owner.Processes.ToHashSet(StringComparer.OrdinalIgnoreCase));
+
+        public Task<IReadOnlyDictionary<int, string>?> GetProcessIdsAsync(CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyDictionary<int, string>?>(owner.Pids.ToDictionary(p => p.Key, p => "payload.elf"));
+
+        public Task<bool> KillProcessAsync(int pid, CancellationToken cancellationToken)
+        {
+            if (!owner.Pids.Remove(pid, out var fileName))
+            {
+                return Task.FromResult(false);
+            }
+
+            owner.Events.Add("kill:" + pid);
+            if (!owner.KillsAreIneffective && Effects.TryGetValue(fileName, out var effect))
+            {
+                owner.Ports.Remove(effect.Port);
+            }
+
+            return Task.FromResult(true);
+        }
 
         public Task<AutoloadConfig?> GetAutoloadAsync(CancellationToken cancellationToken) => Task.FromResult<AutoloadConfig?>(owner.Autoload);
 

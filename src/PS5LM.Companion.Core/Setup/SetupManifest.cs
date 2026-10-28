@@ -17,6 +17,7 @@ public sealed record ReadyCheck(int Port = 0, IReadOnlyList<string>? Processes =
 /// <param name="Id">Stable id; the payload is uploaded as <c>{Id}.elf</c>.</param>
 /// <param name="DelayAfterMs">Autoload pause (and manual wait) after this payload, for heavy ones.</param>
 /// <param name="ReadyTimeoutSeconds">How long to wait for <see cref="Ready"/> after launching.</param>
+/// <param name="PidFile">File on the console where the payload writes its own pid; lets <c>update --restart</c> replace a running copy.</param>
 /// <param name="Optional">When true, a payload that is not up at the end is reported as a warning instead of a failure.</param>
 /// <param name="OptionalNote">Shown with the warning to explain why the payload may legitimately not start.</param>
 public sealed record ManifestPayload(
@@ -30,7 +31,8 @@ public sealed record ManifestPayload(
     int ReadyTimeoutSeconds = 30,
     IReadOnlyList<ManifestFile>? Files = null,
     bool Optional = false,
-    string? OptionalNote = null)
+    string? OptionalNote = null,
+    string? PidFile = null)
 {
     public string UploadName => Id + ".elf";
 }
@@ -122,6 +124,11 @@ public sealed record SetupManifest(
             }
 
             CheckArtifact(payload.Id, payload.Url, payload.Sha256);
+            if (payload.PidFile is { } pidFile && (!pidFile.StartsWith("/data/", StringComparison.Ordinal) || pidFile.Contains("..", StringComparison.Ordinal)))
+            {
+                throw new InvalidDataException($"Payload '{payload.Id}' pidFile '{pidFile}' must be an absolute path under /data/.");
+            }
+
             foreach (var file in payload.Files ?? [])
             {
                 CheckArtifact(payload.Id + " file", file.Url, file.Sha256);

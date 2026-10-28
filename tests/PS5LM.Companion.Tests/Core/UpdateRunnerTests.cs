@@ -29,9 +29,9 @@ public sealed class UpdateRunnerTests
         return harness;
     }
 
-    private static UpdateRunner Runner(SetupHarness h, bool apps = false, bool check = false, string? variant = null) => new(
+    private static UpdateRunner Runner(SetupHarness h, bool apps = false, bool check = false, string? variant = null, bool restart = false) => new(
         h.Manifest,
-        new UpdateOptions("ps5.test", variant) { IncludeApps = apps, CheckOnly = check, WaitOverride = TimeSpan.FromMilliseconds(2) },
+        new UpdateOptions("ps5.test", variant) { IncludeApps = apps, CheckOnly = check, Restart = restart, WaitOverride = TimeSpan.FromMilliseconds(2) },
         new SetupServices(h.Manager, h.Artifacts, h.Files, h.Probe, h.Elfldr, h.VoidShell, new SetupHarness.FakeUi(h), TimeProvider.System));
 
     private static void Stale(SetupHarness h, string fileName) =>
@@ -89,6 +89,78 @@ public sealed class UpdateRunnerTests
         Assert.Equal("ELF:voidshell.elf", harness.Files.Text(path));
         Assert.DoesNotContain(path + ".part", harness.Files.Files.Keys);
         Assert.DoesNotContain(report.Lines, l => l.Status == SetupStatus.Fail);
+    }
+
+    private const string PidFile = "/data/voidshell/voidshell.pid";
+
+    private static SetupHarness RunningStaleVoidShell(SetupHarness harness, string pidText = "116", int? runningPid = 116)
+    {
+        Stale(harness, "voidshell.elf");
+        harness.Files.AddFile(PidFile, pidText);
+        if (runningPid is { } pid)
+        {
+            harness.Pids[pid] = "voidshell.elf";
+        }
+
+        return harness;
+    }
+
+    [Fact]
+    public async Task Restart_stops_the_running_copy_by_its_pid_file_and_launches_the_new_one()
+    {
+        using var harness = RunningStaleVoidShell(await PreparedAsync());
+
+        var report = await Runner(harness, restart: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal(["upload:voidshell.elf", "kill:116", "load:voidshell.elf"], harness.Events);
+        Assert.Contains(report.Lines, l => l.Component == "VoidShell" && l.Status == SetupStatus.Ok && l.Message.Contains("old copy was stopped", StringComparison.Ordinal));
+        Assert.Equal(0, report.ExitCode);
+    }
+
+    [Fact]
+    public async Task Running_payload_is_not_restarted_without_the_restart_option()
+    {
+        using var harness = RunningStaleVoidShell(await PreparedAsync());
+
+        var report = await Runner(harness).RunAsync(CancellationToken.None);
+
+        Assert.Equal(["upload:voidshell.elf"], harness.Events);
+        Assert.Contains(report.Lines, l => l.Component == "VoidShell" && l.Status == SetupStatus.Warn && l.Message.Contains("--restart", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Restart_refuses_a_pid_that_is_not_running()
+    {
+        using var harness = RunningStaleVoidShell(await PreparedAsync(), runningPid: null);
+
+        var report = await Runner(harness, restart: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal(["upload:voidshell.elf"], harness.Events);
+        Assert.Contains(report.Lines, l => l.Component == "VoidShell" && l.Status == SetupStatus.Warn && l.Message.Contains("not running", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("not a pid")]
+    [InlineData("1")]
+    public async Task Restart_refuses_a_missing_or_unsafe_pid(string pidText)
+    {
+        using var harness = RunningStaleVoidShell(await PreparedAsync(), pidText);
+
+        await Runner(harness, restart: true).RunAsync(CancellationToken.None);
+
+        Assert.DoesNotContain(harness.Events, e => e.StartsWith("kill:", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Restart_does_not_relaunch_when_the_old_copy_still_answers()
+    {
+        using var harness = RunningStaleVoidShell(await PreparedAsync());
+        harness.KillsAreIneffective = true;
+
+        var report = await Runner(harness, restart: true).RunAsync(CancellationToken.None);
+
+        Assert.DoesNotContain("load:voidshell.elf", harness.Events);
+        Assert.Contains(report.Lines, l => l.Component == "VoidShell" && l.Status == SetupStatus.Warn && l.Message.Contains("another copy", StringComparison.Ordinal));
     }
 
     [Fact]

@@ -20,6 +20,7 @@ internal static class UpdateCommand
           --host <console>              Console IP or host name (required)
           --apps                        Also update the installed PS5LM / PS5LM Plus app
           --variant <ps5lm|ps5lmplus>   Limit the app update to one variant
+          --restart                     Stop and relaunch an updated payload that is still running (VoidShell)
           --check                       Only report what is out of date (exit code 3 when something is)
           --upgrade-payload-manager     Upgrade an older Payload Manager without asking
           --payload-manager-url <url>   When Payload Manager is not on port 8084 of the host
@@ -35,7 +36,7 @@ internal static class UpdateCommand
         {
             values = CommandSupport.Parse(
                 args,
-                ["apps", "check", "upgrade-payload-manager", "help"],
+                ["apps", "check", "restart", "upgrade-payload-manager", "help"],
                 ["host", "variant", "payload-manager-url", "ftp-port", "manifest", "cache"]);
         }
         catch (ArgumentException ex)
@@ -85,6 +86,7 @@ internal static class UpdateCommand
             {
                 IncludeApps = values.ContainsKey("apps"),
                 CheckOnly = values.ContainsKey("check"),
+                Restart = values.ContainsKey("restart"),
                 UpgradePayloadManager = values.ContainsKey("upgrade-payload-manager"),
                 FtpPort = ftpPort,
                 PayloadManagerPort = baseAddress.Port,

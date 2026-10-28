@@ -22,6 +22,7 @@ public sealed class UpdateRunner
     private readonly UpdateOptions _options;
     private readonly SetupServices _services;
     private readonly SetupRunner _setup;
+    private readonly List<(ManifestPayload Payload, ManagedPayload Stored)> _stillOld = [];
     private int _pending;
 
     public UpdateRunner(SetupManifest manifest, UpdateOptions options, SetupServices services)
@@ -46,6 +47,9 @@ public sealed class UpdateRunner
                 {
                     await UpdateAppsAsync(cancellationToken);
                 }
+
+                // Last: replacing ftpsrv or VoidShell drops connections the steps above still use.
+                await RestartOrWarnAsync(cancellationToken);
             }
         }
         catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -164,7 +168,7 @@ public sealed class UpdateRunner
             }
             else if (await _setup.IsReadyAsync(payload, cancellationToken))
             {
-                Add(payload.Name, SetupStatus.Warn, $"Uploaded {payload.Version}, but the old build is still running. The new one loads at the next autoload or console reboot.");
+                _stillOld.Add((payload, stored));
             }
             else
             {
@@ -181,6 +185,71 @@ public sealed class UpdateRunner
                 ready ? SetupStatus.Ok : payload.Optional ? SetupStatus.Warn : SetupStatus.Fail,
                 ready ? $"Updated to {payload.Version} and running." : $"Uploaded {payload.Version}, but it is not running.");
         }
+    }
+
+    // A running payload cannot be replaced by launching it again (the new copy cannot bind its port), so the old one is
+    // terminated by the pid it wrote to its pid file, after checking that pid really is a payload process.
+    private async Task RestartOrWarnAsync(CancellationToken cancellationToken)
+    {
+        foreach (var (payload, stored) in _stillOld)
+        {
+            var uploadedNote = $"Uploaded {payload.Version}, but the old build is still running. The new one loads at the next autoload or console reboot";
+            if (!_options.Restart)
+            {
+                Add(payload.Name, SetupStatus.Warn, uploadedNote + (payload.PidFile is null ? "." : "; run update --restart to replace it now."));
+                continue;
+            }
+
+            if (payload.PidFile is null)
+            {
+                Add(payload.Name, SetupStatus.Warn, uploadedNote + " (it cannot be restarted: no pid file is known for it).");
+                continue;
+            }
+
+            var failure = await TerminateAsync(payload, cancellationToken);
+            if (failure is not null)
+            {
+                Add(payload.Name, SetupStatus.Warn, $"{uploadedNote}. Not restarted: {failure}");
+                continue;
+            }
+
+            await _setup.LaunchPayloadsAsync([(payload, stored)], cancellationToken);
+            var ready = await _setup.IsReadyAsync(payload, cancellationToken);
+            Add(
+                payload.Name,
+                ready ? SetupStatus.Ok : payload.Optional ? SetupStatus.Warn : SetupStatus.Fail,
+                ready ? $"Updated to {payload.Version}; the old copy was stopped and the new one is running." : "The old copy was stopped, but the new one did not come up.");
+        }
+    }
+
+    /// <summary>Stops the running copy; returns why it could not, or null when it is gone.</summary>
+    private async Task<string?> TerminateAsync(ManifestPayload payload, CancellationToken cancellationToken)
+    {
+        var text = await _services.Files.ReadTextAsync(payload.PidFile!, 64, cancellationToken);
+        if (text is null || !int.TryParse(text.Trim(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var pid) || pid <= 1)
+        {
+            return $"{payload.PidFile} is missing or has no pid.";
+        }
+
+        var processes = await _services.Manager.GetProcessIdsAsync(cancellationToken);
+        if (processes is null || !processes.TryGetValue(pid, out var name))
+        {
+            return $"pid {pid} from {payload.PidFile} is not running.";
+        }
+
+        if (!name.EndsWith(".elf", StringComparison.OrdinalIgnoreCase) || name is "pldmgr.elf" or "elfldr.elf" or "mini-syscore.elf")
+        {
+            return $"pid {pid} from {payload.PidFile} is '{name}', which is not a payload to stop.";
+        }
+
+        Ui.Info($"Stopping {payload.Name} (pid {pid})");
+        if (!await _services.Manager.KillProcessAsync(pid, cancellationToken))
+        {
+            return $"Payload Manager could not stop pid {pid}.";
+        }
+
+        var gone = await _setup.WaitForAsync(async ct => !await _setup.IsReadyAsync(payload, ct), _options.WaitOverride ?? TimeSpan.FromSeconds(10), cancellationToken);
+        return gone ? null : $"pid {pid} was stopped but {payload.Name} still answers, so another copy runs (the pid file can name a copy that failed to start).";
     }
 
     private async Task UpdateExtraFilesAsync(CancellationToken cancellationToken)
