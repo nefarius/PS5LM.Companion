@@ -72,7 +72,7 @@ public sealed class CompanionStatusService(
         var appSnapshots = await appTask;
         var apps = appSnapshots is null
             ? AppControlStatus.NotChecked with { Message = "VoidShell and websrv are not configured for this console." }
-            : AppControlEvaluator.Evaluate(appSnapshots, probe.State, ftp.Installation?.Profile?.Variant);
+            : AppControlEvaluator.Evaluate(appSnapshots, probe.State);
 
         var telemetry = probe.State == LlamaServerState.Serving ? _telemetry.Update(probe.MetricsText, now) : ResetTelemetry();
         if (probe.State == LlamaServerState.Serving)
