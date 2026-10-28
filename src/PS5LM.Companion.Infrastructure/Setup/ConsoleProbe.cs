@@ -68,7 +68,9 @@ public sealed class ElfldrSender(string host, int port) : IElfldrSender
 {
     private static readonly TimeSpan SettleTime = TimeSpan.FromMilliseconds(500);
 
-    /// <summary>Connects and waits briefly: a healthy elfldr stays silent, a wedged one closes the connection straight away.</summary>
+    /// <summary>Connects and waits briefly: a healthy elfldr stays silent, a wedged one closes the connection straight away.
+    /// elfldr has no handshake or readiness reply (it reads a raw ELF until the peer closes), so this is a best-effort guard against the
+    /// observed wedged state, not proof that a payload will run.</summary>
     public async Task<bool> AcceptsAsync(CancellationToken cancellationToken)
     {
         try
