@@ -157,7 +157,10 @@ public sealed class VoidShellClient(HttpClient http) : IAppControlProvider, IPro
         try
         {
             using var content = new StringContent(pid.ToString(System.Globalization.CultureInfo.InvariantCulture), Encoding.UTF8, "text/plain");
-            using var response = await http.PostAsync("api/kill", content, cancellationToken);
+            using var request = new HttpRequestMessage(HttpMethod.Post, "api/kill") { Content = content };
+            // The fork refuses a kill without this header, which keeps a web page from sending one cross-origin.
+            request.Headers.Add("X-VoidShell-Request", "1");
+            using var response = await http.SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
                 return false;

@@ -169,6 +169,7 @@ public sealed class AppControlClientTests
         var request = handler.Requests.Single();
         Assert.Equal(HttpMethod.Post, request.Method);
         Assert.Equal("/api/kill", request.RequestUri!.AbsolutePath);
+        Assert.Equal("1", Assert.Single(request.Headers.GetValues("X-VoidShell-Request")));
     }
 
     [Fact]
