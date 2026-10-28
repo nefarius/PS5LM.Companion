@@ -37,6 +37,13 @@ autoload is not run again.
 (typically `/list_payloads`) fails, for example on a broken file in its payload folder. Restarting it may not cure that. Read the
 text in the warning first.
 
+## Security
+
+None of the console services involved authenticate callers: VoidShell (7007), Payload Manager (8084), elfldr (9021) and ftpsrv
+(2121) all trust anyone who can reach them. The `X-VoidShell-Request: 1` header on `POST /api/kill` is only a cross-origin guard
+(a web page cannot send it without a preflight that VoidShell never approves). It is not authentication. Keep the console on a
+trusted network and do not expose these ports beyond it; the companion's own REST API should be protected the same way.
+
 ## Still needs the console
 
 - VoidShell or elfldr is down.
