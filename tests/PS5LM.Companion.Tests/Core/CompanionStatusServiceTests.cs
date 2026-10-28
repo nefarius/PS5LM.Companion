@@ -22,6 +22,23 @@ public sealed class CompanionStatusServiceTests
         new(_options, fs, _llama, _sensors, new FakePayloadCatalog(), new FakeElfldrProbe(), _tracker, _time);
 
     [Fact]
+    public async Task The_firmware_comes_from_an_available_VoidShell()
+    {
+        var voidShell = new FakeAppProvider(AppProviderKind.VoidShell)
+        {
+            Snapshot = new AppProviderSnapshot(AppProviderKind.VoidShell, true, "V1.1", [], true, null, null, "13.40"),
+        };
+        var service = new CompanionStatusService(_options, ConsoleFixtures.PS5LMInstalled(), _llama, _sensors, new FakePayloadCatalog(), new FakeElfldrProbe(), _tracker, _time, [voidShell]);
+
+        var status = await service.RefreshAsync(CancellationToken.None);
+        voidShell.Snapshot = AppProviderSnapshot.Unavailable(AppProviderKind.VoidShell, "down");
+        var offline = await service.RefreshAsync(CancellationToken.None);
+
+        Assert.Equal("13.40", status.FirmwareVersion);
+        Assert.Null(offline.FirmwareVersion);
+    }
+
+    [Fact]
     public async Task Overlapping_refreshes_run_one_at_a_time()
     {
         var catalog = new BlockingCatalog();

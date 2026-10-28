@@ -50,12 +50,19 @@ public sealed class VoidShellClient(HttpClient http) : IAppControlProvider
             }
 
             var runningKnown = false;
+            string? firmware = null;
             string? active = null;
             using (var stats = await GetJsonAsync("api/stats", cancellationToken))
             {
                 if (stats is not null)
                 {
                     runningKnown = true;
+                    if (stats.RootElement.TryGetProperty("firmware", out var firmwareElement) && firmwareElement.ValueKind == JsonValueKind.String
+                        && firmwareElement.GetString() is { Length: > 0 } text)
+                    {
+                        firmware = text.Trim();
+                    }
+
                     var state = stats.RootElement.TryGetProperty("state", out var stateElement) && stateElement.ValueKind == JsonValueKind.String
                         ? stateElement.GetString()
                         : null;
@@ -74,7 +81,7 @@ public sealed class VoidShellClient(HttpClient http) : IAppControlProvider
                 }
             }
 
-            return new AppProviderSnapshot(Kind, true, version, installed, runningKnown, active, null);
+            return new AppProviderSnapshot(Kind, true, version, installed, runningKnown, active, null, firmware);
         }
         catch (Exception ex) when (IsTransient(ex, cancellationToken))
         {

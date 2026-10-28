@@ -86,6 +86,19 @@ public sealed class DashboardTests
     }
 
     [Fact]
+    public async Task The_status_page_shows_the_console_firmware()
+    {
+        await using var factory = new CompanionFactory();
+        var console = factory.Registry.Find("ps5")!;
+        console.Store.Publish(CompanionStatus.Initial with { FirmwareVersion = "10.01", UpdatedAt = DateTimeOffset.UtcNow });
+        using var client = factory.CreateClient();
+
+        var html = await client.GetStringAsync("/consoles/ps5");
+
+        Assert.Contains("<td>Firmware</td><td>10.01</td>", html);
+    }
+
+    [Fact]
     public async Task The_status_page_explains_the_payload_launch_limit()
     {
         await using var factory = new CompanionFactory();
@@ -242,6 +255,7 @@ public sealed class DashboardTests
             Lifecycle = CompanionLifecycle.Ready,
             Variant = PS5Variant.PS5LM,
             LoadedModel = "qwen.gguf",
+            FirmwareVersion = "13.40",
             Telemetry = new TelemetrySnapshot(10, 4, 0, 12.5, 40, checkedAt),
             Sensors = new ConsoleSensors(61.2, null, null, null,
             [
@@ -274,6 +288,8 @@ public sealed class DashboardTests
         Assert.Contains("den", html);
         Assert.Contains("room", html);
         Assert.Contains("qwen.gguf", html);
+        Assert.Contains("<td>Firmware</td><td>13.40</td>", html);
+        Assert.Contains("<td>Firmware</td><td>n/a</td>", html);
         Assert.Matches(@"12[.,]5 tokens/s", html);
         Assert.Matches(@"61[.,]2", html);
         Assert.Contains("250 B free", html);

@@ -57,14 +57,14 @@
     {
       "id": "voidshell",
       "name": "VoidShell",
-      "version": "v1.1.1-nefarius.2",
-      "url": "https://github.com/nefarius/voidshell/releases/download/v1.1.1-nefarius.2/voidshell.elf",
-      "sha256": "ca7e641fb8832999d84fb3482cdcc407b17d8a9175ec6d5f71387418f731f91b",
+      "version": "v1.1.1-nefarius.3",
+      "url": "https://github.com/nefarius/voidshell/releases/download/v1.1.1-nefarius.3/voidshell.elf",
+      "sha256": "fd455f69aade087ba178c9668c94cd05d91b5a904a98071d3d6d6db7d6442a59",
       "ready": { "port": 7007 },
       "readyTimeoutSeconds": 30,
       "files": [
         {
-          "url": "https://github.com/nefarius/voidshell/releases/download/v1.1.1-nefarius.2/index.html",
+          "url": "https://github.com/nefarius/voidshell/releases/download/v1.1.1-nefarius.3/index.html",
           "sha256": "769e06252d97cb703b414f09f57957dcb6ad9f723ccbc5e7e9a190efb2c5b256",
           "target": "/data/voidshell/www/index.html"
         }

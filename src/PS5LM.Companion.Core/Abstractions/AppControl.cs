@@ -20,6 +20,7 @@ public enum AppProviderKind
 /// <param name="RunningKnown">Whether <paramref name="ActiveTitleId"/> is meaningful (null then means nothing runs).</param>
 /// <param name="ActiveTitleId">The running (or, for upstream VoidShell, foreground) title as the service reported it, possibly truncated.</param>
 /// <param name="Message">Why it is unavailable, when it is.</param>
+/// <param name="Firmware">The console's system software version (e.g. <c>13.40</c>), when the service reports it.</param>
 public sealed record AppProviderSnapshot(
     AppProviderKind Kind,
     bool Available,
@@ -27,7 +28,8 @@ public sealed record AppProviderSnapshot(
     IReadOnlyList<string> InstalledTitleIds,
     bool RunningKnown,
     string? ActiveTitleId,
-    string? Message)
+    string? Message,
+    string? Firmware = null)
 {
     public static AppProviderSnapshot Unavailable(AppProviderKind kind, string? message = null) =>
         new(kind, false, null, [], false, null, message);
