@@ -133,7 +133,7 @@ internal static class UpdateCommand
             Console.Error.WriteLine("A request timed out.");
             return 2;
         }
-        catch (Exception ex) when (ex is InvalidDataException or IOException or ArgumentException or InvalidOperationException)
+        catch (Exception ex) when (ex is InvalidDataException or IOException or ArgumentException or InvalidOperationException or FormatException)
         {
             Console.Error.WriteLine(ex.Message);
             return 1;

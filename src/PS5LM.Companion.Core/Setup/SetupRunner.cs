@@ -392,7 +392,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         return AppInstall.Copied;
     }
 
-    private static string? ReadTitleId(string paramJson)
+    internal static string? ReadTitleId(string paramJson)
     {
         try
         {

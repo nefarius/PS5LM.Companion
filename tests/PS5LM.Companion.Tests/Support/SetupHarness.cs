@@ -50,6 +50,9 @@ internal sealed class SetupHarness : IDisposable
 
     public AutoloadConfig Autoload { get; set; } = new(false, string.Empty);
 
+    /// <summary>Makes <c>/processes_list</c> unreadable (the fake answers null).</summary>
+    public bool ProcessListUnreadable { get; set; }
+
     /// <summary>Running payload processes by pid, with the payload file each one runs.</summary>
     public Dictionary<int, string> Pids { get; } = [];
 
@@ -154,7 +157,7 @@ internal sealed class SetupHarness : IDisposable
         }
 
         public Task<IReadOnlySet<string>?> GetProcessesAsync(CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlySet<string>?>(owner.Processes.ToHashSet(StringComparer.OrdinalIgnoreCase));
+            Task.FromResult<IReadOnlySet<string>?>(owner.ProcessListUnreadable ? null : owner.Processes.ToHashSet(StringComparer.OrdinalIgnoreCase));
 
         public Task<IReadOnlyDictionary<int, string>?> GetProcessIdsAsync(CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyDictionary<int, string>?>(owner.Pids.ToDictionary(p => p.Key, p => p.Value));

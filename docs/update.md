@@ -17,7 +17,7 @@ dotnet PS5LM.Companion.App.dll update --host <console> [--apps] [--variant ps5lm
 | `--upgrade-payload-manager` | Upgrade an older Payload Manager without a prompt |
 | `--payload-manager-url`, `--ftp-port`, `--manifest`, `--cache` | As for `setup` |
 
-Exit codes: 0 current or updated, 1 bad arguments, 2 something failed, 3 `--check` found updates.
+Exit codes: 0 current or updated, 1 bad arguments, 2 something failed, 3 `--check` found updates, 130 cancelled with Ctrl+C.
 
 ## What it does
 

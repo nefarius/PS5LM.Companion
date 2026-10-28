@@ -205,6 +205,38 @@ public sealed class UpdateRunnerTests
     }
 
     [Fact]
+    public async Task Process_based_payload_is_not_launched_when_the_process_list_cannot_be_read()
+    {
+        using var harness = await PreparedAsync();
+        Stale(harness, "kstuff-lite.elf");
+        harness.ProcessListUnreadable = true;
+
+        var report = await Runner(harness).RunAsync(CancellationToken.None);
+
+        Assert.Equal(["upload:kstuff-lite.elf"], harness.Events);
+        Assert.Contains(report.Lines, l => l.Component == "kstuff-lite" && l.Status == SetupStatus.Warn && l.Message.Contains("process list", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Archive_for_another_title_is_a_failure_even_when_checking(bool check)
+    {
+        using var harness = await PreparedAsync();
+        harness.Manifest = harness.Manifest with
+        {
+            Apps = harness.Manifest.Apps.Select(a => a.Id == "ps5lmplus" ? a with { TitleId = "PPSA11111" } : a).ToList(),
+        };
+        harness.Files.AddFile("/data/homebrew/PPSA11111/sce_sys/param.json", OldParam);
+
+        var report = await Runner(harness, apps: true, check: check).RunAsync(CancellationToken.None);
+
+        Assert.Contains(report.Lines, l => l.Component == "PS5LM Plus" && l.Status == SetupStatus.Fail && l.Message.Contains("PPSA99581", StringComparison.Ordinal));
+        Assert.Equal(0, report.Pending);
+        Assert.Equal(2, report.ExitCode);
+    }
+
+    [Fact]
     public async Task Payload_that_is_not_stored_is_reported_not_installed()
     {
         using var harness = await PreparedAsync();

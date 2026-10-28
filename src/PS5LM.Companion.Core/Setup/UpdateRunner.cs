@@ -166,6 +166,7 @@ public sealed class UpdateRunner
 
         inventory = await _services.Manager.ListPayloadsAsync(cancellationToken);
         var toLaunch = new List<(ManifestPayload, ManagedPayload)>();
+        var processes = await _services.Manager.GetProcessesAsync(cancellationToken);
         foreach (var payload in uploaded)
         {
             var stored = SetupRunner.FindStored(inventory, payload);
@@ -173,7 +174,12 @@ public sealed class UpdateRunner
             {
                 Add(payload.Name, SetupStatus.Fail, "Payload Manager does not list it after the upload.");
             }
-            else if (await _setup.IsReadyAsync(payload, cancellationToken))
+            else if (payload.Ready.Port <= 0 && processes is null)
+            {
+                // Launching a payload that may already run would leave a second copy that cannot bind.
+                Add(payload.Name, SetupStatus.Warn, $"Uploaded {payload.Version}, but Payload Manager's process list could not be read, so it is unknown whether the old build runs. It was not launched; run update again.");
+            }
+            else if (await _setup.IsReadyAsync(payload, cancellationToken, processes))
             {
                 _stillOld.Add((payload, stored));
             }
@@ -320,7 +326,7 @@ public sealed class UpdateRunner
         foreach (var app in apps)
         {
             var installed = await _services.Files.ReadTextAsync($"/data/homebrew/{app.TitleId}/{ParamSuffix}", MaxTextBytes, cancellationToken);
-            if (installed is null)
+            if (installed is null && !await _services.Files.FileExistsAsync($"/data/homebrew/{app.TitleId}/{ParamSuffix}", cancellationToken))
             {
                 // With an explicit --variant the person expects it to be there.
                 Add(app.Name, _options.AppId is null ? SetupStatus.Ok : SetupStatus.Warn, "Not installed; nothing to update. Run setup to install it.");
@@ -334,7 +340,14 @@ public sealed class UpdateRunner
                 continue;
             }
 
-            if (installed.Trim() == wanted.Trim())
+            if (SetupRunner.ReadTitleId(wanted) is not { } archiveTitle || !archiveTitle.Equals(app.TitleId, StringComparison.Ordinal))
+            {
+                Add(app.Name, SetupStatus.Fail, $"The download's param.json names title '{SetupRunner.ReadTitleId(wanted) ?? "(none)"}', expected {app.TitleId}. Nothing was changed.");
+                continue;
+            }
+
+            // An installed param.json over the read limit comes back as null: it cannot be equal, so it is stale.
+            if (installed is not null && installed.Trim() == wanted.Trim())
             {
                 Add(app.Name, SetupStatus.Ok, $"{app.Version} is current.");
                 continue;

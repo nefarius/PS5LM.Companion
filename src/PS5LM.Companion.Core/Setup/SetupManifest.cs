@@ -124,7 +124,7 @@ public sealed record SetupManifest(
             }
 
             CheckArtifact(payload.Id, payload.Url, payload.Sha256);
-            if (payload.PidFile is { } pidFile && (!pidFile.StartsWith("/data/", StringComparison.Ordinal) || pidFile.Contains("..", StringComparison.Ordinal)))
+            if (payload.PidFile is { } pidFile && (!pidFile.StartsWith("/data/", StringComparison.Ordinal) || pidFile.Contains("..", StringComparison.Ordinal) || pidFile.EndsWith('/')))
             {
                 throw new InvalidDataException($"Payload '{payload.Id}' pidFile '{pidFile}' must be an absolute path under /data/.");
             }
