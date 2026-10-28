@@ -37,7 +37,7 @@ public sealed class VoidShellContractTests
     [Fact]
     public async Task The_fork_running_app_wins_over_home_screen_focus()
     {
-        var snapshot = await Probe("library.json", "stats.json", "V1.1.1-nefarius.2");
+        var snapshot = await Probe("library.json", "stats-home-focus.json", "V1.1.1-nefarius.2");
         Assert.Equal("PPSA99575", snapshot.ActiveTitleId);
 
         var ps5lm = Assert.Single(AppControlEvaluator.Evaluate([snapshot]).Apps, app => app.TitleId == "PPSA99575");
