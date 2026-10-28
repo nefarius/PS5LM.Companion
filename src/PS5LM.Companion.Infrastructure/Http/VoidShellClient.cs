@@ -9,10 +9,11 @@ namespace PS5LM.Companion.Infrastructure.Http;
 
 /// <summary>
 /// REST API of the required nefarius VoidShell fork (port 7007 by default): <c>/api/version</c>, <c>/api/library</c>,
-/// <c>/api/stats</c> (<c>running_app</c> and <c>firmware</c>) and <c>POST /api/launch</c> with the title ID as plain text.
+/// <c>/api/stats</c> (<c>running_app</c> and <c>firmware</c>) and <c>POST /api/launch</c> with the title ID as plain text. Releases from <c>v1.1.1-nefarius.4</c> also serve
+/// <c>GET /api/processes</c> and <c>POST /api/kill</c> (pid as plain text), used to stop a stuck Payload Manager.
 /// The reported version stays <c>V1.1</c>, so upstream-shaped stats are still accepted. Transport failures are an unavailable snapshot.
 /// </summary>
-public sealed class VoidShellClient(HttpClient http) : IAppControlProvider
+public sealed class VoidShellClient(HttpClient http) : IAppControlProvider, IProcessControl
 {
     public AppProviderKind Kind => AppProviderKind.VoidShell;
 
@@ -115,6 +116,62 @@ public sealed class VoidShellClient(HttpClient http) : IAppControlProvider
         catch (Exception ex) when (IsTransient(ex, cancellationToken))
         {
             return new AppLaunchResult(false, false, ex.Message);
+        }
+    }
+
+    /// <summary><c>GET /api/processes</c>; <see langword="null"/> when the answer is missing, which is how an older fork looks (404).</summary>
+    public async Task<IReadOnlyList<RemoteProcess>?> ListAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var document = await GetJsonAsync("api/processes", cancellationToken);
+            if (document is null
+                || !document.RootElement.TryGetProperty("processes", out var processes)
+                || processes.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            var result = new List<RemoteProcess>();
+            foreach (var process in processes.EnumerateArray())
+            {
+                if (process.ValueKind == JsonValueKind.Object
+                    && process.TryGetProperty("pid", out var pid) && pid.ValueKind == JsonValueKind.Number && pid.TryGetInt32(out var id)
+                    && process.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String)
+                {
+                    result.Add(new RemoteProcess(id, name.GetString() ?? string.Empty));
+                }
+            }
+
+            return result;
+        }
+        catch (Exception ex) when (IsTransient(ex, cancellationToken))
+        {
+            return null;
+        }
+    }
+
+    /// <summary><c>POST /api/kill</c> with the pid as plain text; true only for <c>{"status":"ok"}</c>.</summary>
+    public async Task<bool> KillAsync(int pid, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var content = new StringContent(pid.ToString(System.Globalization.CultureInfo.InvariantCulture), Encoding.UTF8, "text/plain");
+            using var response = await http.PostAsync("api/kill", content, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return false;
+            }
+
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+            return document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty("status", out var status)
+                && status.ValueKind == JsonValueKind.String
+                && status.GetString() == "ok";
+        }
+        catch (Exception ex) when (IsTransient(ex, cancellationToken) || ex is JsonException)
+        {
+            return false;
         }
     }
 

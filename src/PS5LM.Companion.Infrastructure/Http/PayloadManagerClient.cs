@@ -125,7 +125,9 @@ public sealed class PayloadManagerClient(IPayloadManagerApi api) : IPayloadCatal
     }
 
     private static string TransportMessage(Exception? error, HttpStatusCode? status) =>
-        error is null ? $"Payload Manager returned {(int?)status ?? 0}." : $"Payload Manager did not answer: {error.Message}";
+        status is { } code
+            ? $"Payload Manager did not answer: it is running but returned HTTP {(int)code}."
+            : error is null ? "Payload Manager returned no status." : $"Payload Manager did not answer: {error.Message}";
 
     private static void ThrowIfCallerCancelled(Exception exception, CancellationToken cancellationToken)
     {
