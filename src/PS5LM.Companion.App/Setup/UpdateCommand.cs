@@ -80,9 +80,21 @@ internal static class UpdateCommand
                 : SetupManifest.LoadEmbedded();
             var cache = values.GetValueOrDefault("cache")
                 ?? Path.Combine(Environment.GetEnvironmentVariable("Companion__DataDirectory") ?? "data", "setup-cache");
+            var variant = values.GetValueOrDefault("variant");
+            if (variant is not null)
+            {
+                variant = manifest.Apps.FirstOrDefault(a => a.Id.Equals(variant, StringComparison.OrdinalIgnoreCase))?.Id;
+                if (variant is null)
+                {
+                    Console.Error.WriteLine($"Unknown --variant '{values["variant"]}'. Choose {string.Join(" or ", manifest.Apps.Select(a => a.Id))}.");
+                    Console.Error.WriteLine(Usage);
+                    return 1;
+                }
+            }
+
             var ftpPort = CommandSupport.ParseFtpPort(values);
             var baseAddress = new PS5Options { Host = host, PayloadManagerUrl = values.GetValueOrDefault("payload-manager-url") }.PayloadManagerBaseAddress();
-            var options = new UpdateOptions(host, values.GetValueOrDefault("variant"))
+            var options = new UpdateOptions(host, variant)
             {
                 IncludeApps = values.ContainsKey("apps"),
                 CheckOnly = values.ContainsKey("check"),

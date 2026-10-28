@@ -77,7 +77,12 @@ internal static class CommandSupport
             }
             else if (valued.Contains(name))
             {
-                result[name] = ++i < args.Length ? args[i] : throw new ArgumentException($"--{name} needs a value.");
+                if (i + 1 >= args.Length || args[i + 1].StartsWith("--", StringComparison.Ordinal))
+                {
+                    throw new ArgumentException($"--{name} needs a value.");
+                }
+
+                result[name] = args[++i];
             }
             else
             {
