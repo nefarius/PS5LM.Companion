@@ -5,8 +5,10 @@ using PS5LM.Companion.Core.Domain;
 namespace PS5LM.Companion.Core.Status;
 
 /// <summary>
-/// Merges the app-control services' snapshots into one per-variant view. The required VoidShell fork wins over
-/// the websrv legacy fallback. A live llama-server is proof the app runs, so it overrides the services' running state.
+/// Builds one per-variant view from the app-control services. The first service that answered (the VoidShell fork,
+/// when it is up) supplies the installed titles and, when it knows, the running title. A later service supplies the
+/// running title only when that primary service does not know it. A live llama-server proves that an app runs, so it
+/// overrides the reported running state.
 /// </summary>
 public static class AppControlEvaluator
 {
@@ -63,10 +65,11 @@ public static class AppControlEvaluator
         }
 
         var primary = available[0];
-        var installed = available.SelectMany(s => s.InstalledTitleIds).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var running = available.FirstOrDefault(s => s.RunningKnown);
+        var installed = primary.InstalledTitleIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var running = primary.RunningKnown ? primary : available.FirstOrDefault(snapshot => snapshot.RunningKnown);
 
         var installedProfiles = VariantProfile.All.Where(p => installed.Contains(p.TitleId)).ToList();
+        var runningScope = running is null || ReferenceEquals(running, primary) ? installedProfiles : VariantProfile.All;
         string? note = null;
         var apps = new List<AppVariantStatus>();
         foreach (var profile in VariantProfile.All)
@@ -75,7 +78,7 @@ public static class AppControlEvaluator
             var state = AppRunState.Unknown;
             if (running is not null)
             {
-                state = RunState(profile, running.ActiveTitleId, installedProfiles, out var truncated);
+                state = RunState(profile, running.ActiveTitleId, runningScope, out var truncated);
                 if (truncated)
                 {
                     note = $"{running.Kind} reported the running title as '{running.ActiveTitleId}', which fits more than one PS5LM variant.";

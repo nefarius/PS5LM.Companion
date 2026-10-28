@@ -7,7 +7,8 @@ namespace PS5LM.Companion.Core.Status;
 
 /// <summary>
 /// Launches PS5LM or PS5LM Plus through the required VoidShell fork, or through websrv when that fork does not
-/// answer. Only a title the service lists as installed is launched, and a second request while one runs is refused.
+/// answer. A VoidShell answer that omits the title is final. Only a title the chosen service lists as installed is
+/// launched, and a second request while one runs is refused.
 /// </summary>
 public sealed class AppLaunchService(
     IReadOnlyList<IAppControlProvider> providers,
@@ -42,6 +43,11 @@ public sealed class AppLaunchService(
                 reachable = true;
                 if (!snapshot.InstalledTitleIds.Contains(profile.TitleId, StringComparer.OrdinalIgnoreCase))
                 {
+                    if (provider.Kind == AppProviderKind.VoidShell)
+                    {
+                        return new OperationResult(OperationOutcome.NotFound, $"{profile.DisplayName} ({profile.TitleId}) is not installed on the console.");
+                    }
+
                     continue;
                 }
 
