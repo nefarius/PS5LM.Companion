@@ -33,7 +33,7 @@ Start the companion with `PS5__Consoles__<id>__Host=<console>` and open the dash
 8. **Plus sandbox**: on a sandboxed PS5LM Plus, loading a model from `/app0/models` works and uploads land in the
    sandbox folder.
 9. **Both installed**: with both apps present and `PS5:Consoles:{id}:Variant` unset, the dashboard explains how to choose.
-10. **App check**: the pinned fork `v1.1.1-nefarius.3` on port 7007 is required. The *PS5LM app* card lists both titles
+10. **App check**: the pinned fork `v1.1.1-nefarius.4` on port 7007 is required. The *PS5LM app* card lists both titles
     as installed and marks the running one as running (`running_app`, including while the home screen has focus). The
     VoidShell payload row is Verified. `/api/version` stays `V1.1` and does not by itself prove the fork tag.
 11. **App launch**: stop PS5LM, press Launch on its row. The app opens on the TV; launching again while it runs is accepted.
