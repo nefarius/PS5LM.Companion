@@ -35,4 +35,4 @@ Exit codes: 0 current or updated, 1 bad arguments, 2 something failed, 3 `--chec
 4. Extra files (VoidShell `index.html`) are compared by hash and replaced through a `.part` file.
 5. With `--apps`: each installed app whose `param.json` differs from the pinned archive is overwritten in place (`param.json`
    last), then VoidShell is asked to rescan. An app that is not installed is never installed. A running app (VoidShell
-   `running_app`) is skipped with a warning.
+   `running_app`) is skipped with a warning, and so is one whose running state VoidShell cannot report.

@@ -242,6 +242,28 @@ public sealed class UpdateRunnerTests
         Assert.Contains(report.Lines, l => l.Component == "PS5LM Plus" && l.Status == SetupStatus.Warn && l.Message.Contains("running", StringComparison.Ordinal));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task App_is_not_overwritten_when_the_running_state_is_unknown(bool voidShellAnswers)
+    {
+        using var harness = await PreparedAsync();
+        harness.Files.AddFile(ParamPath, OldParam);
+        if (voidShellAnswers)
+        {
+            harness.VoidShell.SetUp([SetupHarness.TitleId], runningKnown: false);
+        }
+        else
+        {
+            harness.VoidShell.Snapshot = PS5LM.Companion.Core.Abstractions.AppProviderSnapshot.Unavailable(harness.VoidShell.Kind, "down");
+        }
+
+        var report = await Runner(harness, apps: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal(OldParam, harness.Files.Text(ParamPath));
+        Assert.Contains(report.Lines, l => l.Component == "PS5LM Plus" && l.Status == SetupStatus.Warn && l.Message.Contains("Cannot tell", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task Unprepared_console_fails_and_points_to_setup()
     {

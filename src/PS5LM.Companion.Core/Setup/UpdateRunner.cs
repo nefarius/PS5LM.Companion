@@ -337,10 +337,14 @@ public sealed class UpdateRunner
                 continue;
             }
 
-            if (await IsRunningAsync(app.TitleId, cancellationToken))
+            switch (await IsRunningAsync(app.TitleId, cancellationToken))
             {
-                Add(app.Name, SetupStatus.Warn, $"{app.TitleId} is running; close it and run update again. Nothing was changed.");
-                continue;
+                case true:
+                    Add(app.Name, SetupStatus.Warn, $"{app.TitleId} is running; close it and run update again. Nothing was changed.");
+                    continue;
+                case null:
+                    Add(app.Name, SetupStatus.Warn, $"Cannot tell whether {app.TitleId} is running (VoidShell is not reporting it). Start VoidShell and run update again. Nothing was changed.");
+                    continue;
             }
 
             if (await _setup.InstallAppAsync(app, cancellationToken) == SetupRunner.AppInstall.Copied)
@@ -367,17 +371,23 @@ public sealed class UpdateRunner
         return await reader.ReadToEndAsync(cancellationToken);
     }
 
-    private async Task<bool> IsRunningAsync(string titleId, CancellationToken cancellationToken)
+    /// <summary>True or false when VoidShell establishes whether the title runs; null when it cannot.</summary>
+    private async Task<bool?> IsRunningAsync(string titleId, CancellationToken cancellationToken)
     {
         if (_services.VoidShell is null)
         {
-            return false;
+            return null;
         }
 
         var snapshot = await _services.VoidShell.ProbeAsync(cancellationToken);
-        // The reported id can be truncated.
-        return snapshot is { Available: true, RunningKnown: true, ActiveTitleId.Length: > 0 }
-            && titleId.StartsWith(snapshot.ActiveTitleId, StringComparison.OrdinalIgnoreCase);
+        if (!snapshot.Available || !snapshot.RunningKnown)
+        {
+            return null;
+        }
+
+        // The reported id can be truncated; null means nothing runs.
+        return snapshot.ActiveTitleId is { Length: > 0 } active
+            && titleId.StartsWith(active, StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task<bool> RequireFtpAsync(string component, CancellationToken cancellationToken)
