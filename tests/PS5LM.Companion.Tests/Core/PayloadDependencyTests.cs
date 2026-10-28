@@ -21,6 +21,25 @@ public sealed class PayloadDependencyTests
     }
 
     [Fact]
+    public void VoidShell_is_required_and_only_its_own_api_makes_it_healthy()
+    {
+        var pending = Row(PayloadDependencies.Evaluate(PayloadCatalogSnapshot.NotChecked, false, false, false, 9021), PayloadDependencies.VoidShell);
+        var down = Row(PayloadDependencies.Evaluate(PayloadCatalogSnapshot.NotChecked, false, false, false, 9021, false, "down"), PayloadDependencies.VoidShell);
+        var up = Row(PayloadDependencies.Evaluate(PayloadCatalogSnapshot.NotChecked, false, false, false, 9021, true, "VoidShell is answering (V1.1)."), PayloadDependencies.VoidShell);
+
+        Assert.Equal(DependencyRequirement.Required, pending.Requirement);
+        Assert.Equal(DependencyHealth.Unavailable, pending.Health);
+        Assert.Equal("Not checked yet.", pending.Message);
+        Assert.False(pending.CanLaunch);
+        Assert.Equal(DependencyHealth.Unknown, down.Health);
+        Assert.Equal(DependencyPresence.Unknown, down.Presence);
+        Assert.Equal("down", down.Message);
+        Assert.Equal(DependencyHealth.Verified, up.Health);
+        Assert.Equal(DependencyPresence.Installed, up.Presence);
+        Assert.False(up.CanLaunch);
+    }
+
+    [Fact]
     public void An_unchecked_catalog_does_not_invent_installation_or_health()
     {
         var rows = PayloadDependencies.Evaluate(PayloadCatalogSnapshot.NotChecked, false, false, false, 9021);
@@ -199,7 +218,8 @@ public sealed class PayloadDependencyTests
     [InlineData(PayloadDependencies.Elfldr)]
     [InlineData(PayloadDependencies.Exporter)]
     [InlineData(PayloadDependencies.ManagerId)]
-    public async Task Elfldr_the_bundled_exporter_and_the_manager_itself_are_refused(string id)
+    [InlineData(PayloadDependencies.VoidShell)]
+    public async Task Elfldr_the_bundled_exporter_the_manager_and_VoidShell_are_refused(string id)
     {
         var (service, launcher, _) = Harness(Available(EtaHen), listening: true);
 

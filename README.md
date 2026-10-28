@@ -31,16 +31,16 @@ works before any model exists. It needs no changes to either app.
 - Lists models on the console; loads and unloads a model through the apps' command files, and deletes one GGUF at a time.
 - Downloads GGUF models from Hugging Face on the companion and uploads them to the console.
 - Optional inference gateway: one OpenAI/Anthropic-compatible endpoint that load-balances consoles running the same model.
-- Checks whether PS5LM or PS5LM Plus is installed and in the foreground, and launches it, through [VoidShell](https://github.com/amilarajans/voidshell) (preferred) or [websrv](https://github.com/ps5-payload-dev/websrv).
+- Checks whether PS5LM or PS5LM Plus is installed and running, and launches it, through the required [nefarius/voidshell](https://github.com/nefarius/voidshell) fork. [websrv](https://github.com/ps5-payload-dev/websrv) is a legacy fallback when that fork is not answering: it cannot report the running title and stops the current app before launching.
 - Live telemetry from llama-server (port 8081) and ps5-exporter (port 9100) when they are available.
-- Shows whether the PS5LM Plus payloads are installed, reads Payload Manager's process list to see whether kstuff-lite, etaHEN (or onionHEN) and ShadowMountPlus are running, records its launches, and checks ftpsrv, elfldr and ps5-exporter directly. Launches an installed payload through [PS5 Payload Manager](https://github.com/itsPLK/ps5-payload-manager).
+- Shows whether the required payloads are present. The pinned VoidShell fork is checked on its own port. Payload Manager's process list shows whether kstuff-lite, etaHEN (or onionHEN) and ShadowMountPlus are running. The companion records Payload Manager launches and checks ftpsrv, elfldr and ps5-exporter directly. It launches an installed payload through [PS5 Payload Manager](https://github.com/itsPLK/ps5-payload-manager).
 
 ## Support scope
 
 - Companion: Linux, Windows or macOS with .NET 10, or the Docker image (linux/amd64, linux/arm64 via .NET base images).
 - Console: jailbroken PS5 running PS5LM or PS5LM Plus with [ftpsrv](https://github.com/ps5-payload-dev/ftpsrv) on port 2121.
 - Payload launch needs [PS5 Payload Manager](https://github.com/itsPLK/ps5-payload-manager) on port 8084 and elfldr already listening on port 9021. Payload Manager cannot start elfldr itself.
-- App check and launch (optional): VoidShell on port 7007 (`/api/library`, `/api/stats`, `POST /api/launch`) or websrv on port 8080 (`/fs`, `/launch?titleId=`). Both are probed on the configured console host only; nothing scans the network. VoidShell is used first. websrv cannot report the foreground title, and it stops the running app before launching. VoidShell V1.1 reports the foreground title truncated to 8 characters (`PPSA9957`); the companion matches it as a prefix. A VoidShell launch is only queued and is not confirmed; websrv answers 503 when the console refuses to start the title. Either way the app listens on port 8081 only once a model is loaded. REST: `GET /api/consoles/{id}/apps`, `POST /api/consoles/{id}/apps/{ps5lm|ps5lmplus}/launch` and `.../close`. Close writes the `quit` command file the apps poll (over FTP) so they exit through the system's exit path; it is never a kill, and a request the app does not pick up within 20 seconds is withdrawn.
+- App check and launch require the pinned [nefarius/voidshell](https://github.com/nefarius/voidshell) fork on port 7007 (`/api/library`, `/api/stats`, `POST /api/launch`). `setup` installs `v1.1.1-nefarius.3`. That fork reports `running_app` and `firmware` on `/api/stats`. Its `/api/version` string stays `V1.1`, so the companion cannot tell the release from the API and still accepts an upstream-shaped stats body. A port of 0 is rejected. Probes use the configured console host only; nothing scans the network for these services. websrv on port 8080 (`/fs`, `/launch?titleId=`) is a legacy fallback used only when the fork does not answer, and a successful fallback does not make the VoidShell dependency healthy. websrv cannot report the running title, and it stops the running app before launching. A truncated title ID of at least 6 characters is matched as a prefix (`PPSA9957` is PS5LM). A VoidShell launch is only queued and is not confirmed; websrv answers 503 when the console refuses to start the title. Either way the app listens on port 8081 only once a model is loaded. REST: `GET /api/consoles/{id}/apps`, `POST /api/consoles/{id}/apps/{ps5lm|ps5lmplus}/launch` and `.../close`. Close writes the `quit` command file the apps poll (over FTP) so they exit through the system's exit path; it is never a kill, and a request the app does not pick up within 20 seconds is withdrawn.
 - Not supported: force-killing the PS5LM app, editing the apps' `settings.json`, or detecting a payload that patches the system and leaves no process. Running checks match process names (for example `kstuff.elf`, `etahen.elf`, `onion_daemon.elf`, `shadowmountplus.elf`) from Payload Manager's `/processes_list`.
 
 ## Quick start
@@ -70,7 +70,8 @@ stored in `data/consoles.json` and apply without a restart. A stored console who
 | `PS5:Consoles:{id}:Host` | required | Console IP or host name |
 | `PS5:Consoles:{id}:DisplayName` | the id | Name shown in the dashboard |
 | `PS5:Consoles:{id}:FtpPort` / `LlamaPort` / `ExporterPort` | 2121 / 8081 / 9100 | Service ports |
-| `PS5:Consoles:{id}:VoidShellPort` / `WebsrvPort` | 7007 / 8080 | App check and launch services on the console (not the companion's own port 8080); 0 disables one |
+| `PS5:Consoles:{id}:VoidShellPort` | 7007 | Required port of the pinned nefarius VoidShell fork (not the companion's own port 8080). 1–65535; 0 is rejected. A stored console with port 0 is skipped at startup |
+| `PS5:Consoles:{id}:WebsrvPort` | 8080 | Legacy app-launch fallback. 0 disables it. It does not satisfy the VoidShell dependency |
 | `PS5:Consoles:{id}:ElfldrPort` | 9021 | elfldr, required before Payload Manager can launch anything |
 | `PS5:Consoles:{id}:PayloadManagerUrl` | `http://{Host}:8084` | Payload Manager base URL when it is not on port 8084 of the console |
 | `PS5:Consoles:{id}:Variant` | auto | `PS5LM` or `PS5LMPlus`; required when both apps are installed |
@@ -103,7 +104,7 @@ dotnet PS5LM.Companion.App.dll setup --host 192.168.1.50 --variant ps5lmplus
 docker run --rm -v ps5lm-companion:/data ps5lm-companion setup --host 192.168.1.50 --variant ps5lm --upgrade-payload-manager
 ```
 
-Setup installs a [fork build of VoidShell](docs/setup.md#voidshell-fork-build) because upstream v1.1.1 does not start on some firmware (e.g. 13.40).
+Setup installs the required [nefarius/voidshell fork](docs/setup.md#voidshell-fork-build) because upstream v1.1.1 does not start on some firmware (e.g. 13.40). The companion expects that build on port 7007 afterwards. Setup fails if it does not come up.
 
 Exit code 0: nothing failed. 2: a component is not working. 1: bad arguments or manifest.
 
@@ -132,7 +133,7 @@ Console-scoped routes live under `/api/consoles/{consoleId}`; an unknown id retu
 |---|---|
 | `GET /api/consoles` | Configured consoles with their lifecycle and whether each came from configuration or was added in the companion |
 | `POST /api/consoles` | Add a console. An id that already exists returns `409` |
-| `POST /api/consoles/test` | Check unsaved settings: FTP and the installed app, Payload Manager, elfldr, VoidShell, websrv, ps5-exporter, and llama-server (a closed llama port is not a failure) |
+| `POST /api/consoles/test` | Check unsaved settings: FTP and the installed app, Payload Manager, elfldr, the required VoidShell fork, websrv (skipped when VoidShell answers), ps5-exporter, and llama-server (a closed llama port is not a failure). A VoidShell port of 0 is rejected |
 | `POST /api/consoles/discover` | Scan the local IPv4 networks, or `{ "cidr": "192.168.1.0/24" }`, for consoles. A prefix wider than /22 is capped |
 | `GET /api/consoles/{consoleId}/settings` | That console's settings and whether they came from configuration |
 | `PUT /api/consoles/{consoleId}` | Replace a user console's settings. A configuration console, or one with a queued or running transfer, returns `409` |
@@ -140,7 +141,7 @@ Console-scoped routes live under `/api/consoles/{consoleId}`; an unknown id retu
 | `GET /api/consoles/{consoleId}/status` | Normalised console status, including payload dependencies |
 | `GET /api/consoles/{consoleId}/dependencies` | Payload installation and health from the latest status check |
 | `POST /api/consoles/{consoleId}/dependencies/{id}/launch` | Launch an installed payload by its stable id (`kstuff-lite`, `etahen`, `shadowmountplus`, `ftpsrv`) |
-| `GET /api/consoles/{consoleId}/apps` | Whether PS5LM and PS5LM Plus are installed (VoidShell or websrv) and, with VoidShell only, which one is in the foreground; with websrv the run state is `Unknown` |
+| `GET /api/consoles/{consoleId}/apps` | Whether PS5LM and PS5LM Plus are installed. The required VoidShell fork reports which one is running. With only the websrv fallback the run state is `Unknown`, and the VoidShell dependency stays unhealthy |
 | `POST /api/consoles/{consoleId}/apps/{ps5lm\|ps5lmplus}/launch` | Launch the app; `.../close` asks it to quit through its `quit` command file |
 | `GET /api/consoles/{consoleId}/models` | Models on the console and the storage locations that accept uploads |
 | `POST /api/consoles/{consoleId}/models/load` | `{ "path": "<appPath from models>" }`; only known model paths are accepted |
@@ -271,4 +272,5 @@ Sony Interactive Entertainment.
 
 [cobanov/PS5LM](https://github.com/cobanov/PS5LM), [abhi245y/PS5LM-Plus](https://github.com/abhi245y/PS5LM-Plus),
 [YARP](https://github.com/dotnet/yarp) (inference gateway forwarding),
-[ps5-payload-dev](https://github.com/ps5-payload-dev) (ftpsrv, elfldr), [ps5-exporter](https://github.com/Marice/ps5-exporter).
+[nefarius/voidshell](https://github.com/nefarius/voidshell) (required fork of [amilarajans/voidshell](https://github.com/amilarajans/voidshell)),
+[ps5-payload-dev](https://github.com/ps5-payload-dev) (ftpsrv, elfldr, websrv), [ps5-exporter](https://github.com/Marice/ps5-exporter).

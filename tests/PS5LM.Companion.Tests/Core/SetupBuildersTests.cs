@@ -16,7 +16,11 @@ public sealed class SetupBuildersTests
         Assert.All(manifest.Artifacts(), a => Assert.StartsWith("https://github.com/", a.Url, StringComparison.Ordinal));
         Assert.Equal(3000, manifest.Payloads.Single(p => p.Id == "kstuff-lite").DelayAfterMs);
         Assert.Equal(3000, manifest.Payloads.Single(p => p.Id == "onionhen").DelayAfterMs);
-        Assert.Equal("/data/voidshell/www/index.html", manifest.Payloads.Single(p => p.Id == "voidshell").Files!.Single().Target);
+        var voidshell = manifest.Payloads.Single(p => p.Id == "voidshell");
+        Assert.False(voidshell.Optional);
+        Assert.Equal("v1.1.1-nefarius.3", voidshell.Version);
+        Assert.StartsWith("https://github.com/nefarius/voidshell/releases/download/v1.1.1-nefarius.3/", voidshell.Url, StringComparison.Ordinal);
+        Assert.Equal("/data/voidshell/www/index.html", voidshell.Files!.Single().Target);
     }
 
     [Theory]

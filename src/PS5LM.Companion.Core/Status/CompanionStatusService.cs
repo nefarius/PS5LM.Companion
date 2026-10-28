@@ -71,8 +71,9 @@ public sealed class CompanionStatusService(
         var elfldrListening = await elfldrTask;
         var appSnapshots = await appTask;
         var apps = appSnapshots is null
-            ? AppControlStatus.NotChecked with { Message = "VoidShell and websrv are not configured for this console." }
+            ? AppControlStatus.NotChecked with { Message = "The fixed VoidShell fork is not configured for this console." }
             : AppControlEvaluator.Evaluate(appSnapshots, probe.State);
+        var (voidShellAnswering, voidShellDetail) = VoidShellDependency(appSnapshots);
 
         var telemetry = probe.State == LlamaServerState.Serving ? _telemetry.Update(probe.MetricsText, now) : ResetTelemetry();
         if (probe.State == LlamaServerState.Serving)
@@ -106,9 +107,30 @@ public sealed class CompanionStatusService(
             now,
             catalog.Available,
             catalog.Available ? null : catalog.Message,
-            PayloadDependencies.Evaluate(catalog, ftp.Reachable, sensors is not null, elfldrListening, options.ElfldrPort),
+            PayloadDependencies.Evaluate(catalog, ftp.Reachable, sensors is not null, elfldrListening, options.ElfldrPort, voidShellAnswering, voidShellDetail),
             apps,
             appSnapshots?.FirstOrDefault(snapshot => snapshot is { Available: true, Kind: AppProviderKind.VoidShell, Firmware: { Length: > 0 } })?.Firmware);
+    }
+
+    private static (bool? Answering, string? Detail) VoidShellDependency(AppProviderSnapshot[]? snapshots)
+    {
+        if (snapshots is null)
+        {
+            return (false, "The fixed VoidShell fork is not configured for this console.");
+        }
+
+        var snapshot = snapshots.FirstOrDefault(item => item.Kind == AppProviderKind.VoidShell);
+        if (snapshot is null)
+        {
+            return (false, "The fixed VoidShell fork is not configured for this console.");
+        }
+
+        if (!snapshot.Available)
+        {
+            return (false, snapshot.Message ?? "The required VoidShell fork did not answer.");
+        }
+
+        return (true, string.IsNullOrWhiteSpace(snapshot.Version) ? "VoidShell is answering." : $"VoidShell is answering ({snapshot.Version}).");
     }
 
     private async Task<AppProviderSnapshot[]?> ReadAppControlAsync(CancellationToken cancellationToken)

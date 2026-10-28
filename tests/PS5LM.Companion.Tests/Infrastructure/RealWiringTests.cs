@@ -47,7 +47,10 @@ public sealed class RealWiringTests
         Assert.False(status.Capabilities.Telemetry);
         Assert.False(status.Capabilities.Sensors);
         Assert.False(status.PayloadManagerAvailable);
-        Assert.Equal(6, status.Dependencies.Count);
+        Assert.Equal(7, status.Dependencies.Count);
+        var voidShell = status.Dependencies.Single(dependency => dependency.Id == PayloadDependencies.VoidShell);
+        Assert.Equal(DependencyRequirement.Required, voidShell.Requirement);
+        Assert.NotEqual(DependencyHealth.Verified, voidShell.Health);
         Assert.Equal(DependencyHealth.Unknown, status.Dependencies.Single(dependency => dependency.Id == PayloadDependencies.Elfldr).Health);
         Assert.Equal(DependencyPresence.Bundled, status.Dependencies.Single(dependency => dependency.Id == PayloadDependencies.Exporter).Presence);
         Assert.DoesNotContain(status.Dependencies, dependency => dependency.CanLaunch);

@@ -47,14 +47,18 @@ public sealed class ConsoleSettingsPageTests
         fake.Llama.Result = PS5LM.Companion.Core.Abstractions.LlamaProbeResult.Closed;
         using var client = factory.CreateClient();
 
-        using var response = await client.PostAsJsonAsync("/api/consoles/test", new { host = "10.0.0.8", voidShellPort = 0 });
+        using var response = await client.PostAsJsonAsync("/api/consoles/test", new { host = "10.0.0.8" });
         var json = await response.Content.ReadFromJsonAsync<JsonElement>();
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var checks = json.GetProperty("checks").EnumerateArray().ToList();
         Assert.Contains(checks, check => check.GetProperty("name").GetString() == "FTP" && check.GetProperty("outcome").GetString() == "Pass");
         Assert.Contains(checks, check => check.GetProperty("name").GetString() == "llama-server" && check.GetProperty("outcome").GetString() == "Skipped");
-        Assert.Contains(checks, check => check.GetProperty("name").GetString() == "VoidShell" && check.GetProperty("outcome").GetString() == "Skipped");
+        Assert.Contains(checks, check => check.GetProperty("name").GetString() == "VoidShell" && check.GetProperty("outcome").GetString() == "Fail");
+
+        using var disabled = await client.PostAsJsonAsync("/api/consoles/test", new { host = "10.0.0.8", voidShellPort = 0 });
+        Assert.Equal(HttpStatusCode.BadRequest, disabled.StatusCode);
+        Assert.Contains("VoidShell port is required", await disabled.Content.ReadAsStringAsync(), StringComparison.Ordinal);
 
         using var invalid = await client.PostAsJsonAsync("/api/consoles/test", new { host = "" });
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);

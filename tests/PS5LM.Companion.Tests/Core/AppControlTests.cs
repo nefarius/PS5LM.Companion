@@ -157,6 +157,7 @@ public sealed class AppControlTests
         var result = await service.LaunchAsync(PS5Variant.PS5LM, CancellationToken.None);
 
         Assert.True(result.Succeeded);
+        Assert.Contains("legacy fallback", result.Message, StringComparison.Ordinal);
         Assert.Equal([Lm], websrv.Launched);
     }
 

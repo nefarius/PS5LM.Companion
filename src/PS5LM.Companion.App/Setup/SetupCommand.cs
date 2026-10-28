@@ -28,6 +28,8 @@ internal static class SetupCommand
           --manifest <file>             Use this manifest instead of the built-in one
           --cache <dir>                 Download cache (default <Companion__DataDirectory>/setup-cache)
           --verify-manifest             Download every artifact and check its SHA-256; no console needed
+
+        The built-in manifest requires the pinned nefarius/voidshell fork on port 7007.
         """;
 
     public static async Task<int> RunAsync(string[] args)

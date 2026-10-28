@@ -5,8 +5,8 @@ using PS5LM.Companion.Core.Domain;
 namespace PS5LM.Companion.Core.Status;
 
 /// <summary>
-/// Merges the app-control services' snapshots into one per-variant view. VoidShell wins over websrv. A live
-/// llama-server is proof the app runs, whatever has focus, so it overrides the services' running state.
+/// Merges the app-control services' snapshots into one per-variant view. The required VoidShell fork wins over
+/// the websrv legacy fallback. A live llama-server is proof the app runs, so it overrides the services' running state.
 /// </summary>
 public static class AppControlEvaluator
 {
@@ -55,7 +55,7 @@ public static class AppControlEvaluator
                 false,
                 null,
                 null,
-                "Neither VoidShell nor websrv answered, so the companion cannot check or launch PS5LM.",
+                "The fixed VoidShell fork did not answer, and websrv (legacy fallback) did not answer either, so the companion cannot check or launch PS5LM.",
                 VariantProfile.All.Select(p => new AppVariantStatus(p.Variant, p.TitleId, p.DisplayName, false, AppRunState.Unknown, false)).ToList());
         }
 
@@ -75,14 +75,18 @@ public static class AppControlEvaluator
                 state = RunState(profile, running.ActiveTitleId, installedProfiles, out var truncated);
                 if (truncated)
                 {
-                    note = $"{running.Kind} reported the foreground title as '{running.ActiveTitleId}', which fits more than one PS5LM variant.";
+                    note = $"{running.Kind} reported the running title as '{running.ActiveTitleId}', which fits more than one PS5LM variant.";
                 }
             }
 
             apps.Add(new AppVariantStatus(profile.Variant, profile.TitleId, profile.DisplayName, isInstalled, state, isInstalled));
         }
 
-        note ??= running is null ? $"{primary.Kind} cannot report which app is running." : null;
+        note ??= running is null
+            ? primary.Kind == AppProviderKind.Websrv
+                ? "websrv is a legacy fallback and cannot report which app is running. The fixed VoidShell fork did not answer."
+                : $"{primary.Kind} cannot report which app is running."
+            : null;
         return new AppControlStatus(true, primary.Kind.ToString(), primary.Version, note, apps);
     }
 

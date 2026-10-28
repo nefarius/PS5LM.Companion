@@ -36,11 +36,14 @@ public sealed class PS5Options
     /// </summary>
     public string? PayloadManagerUrl { get; set; }
 
-    /// <summary>VoidShell's web port (title library, foreground title and launching). 0 disables it.</summary>
-    [Range(0, 65535)]
+    /// <summary>
+    /// Port of the required <c>nefarius/voidshell</c> fork (title library, running title, firmware and launching).
+    /// Setup listens on 7007. The API version does not identify the release.
+    /// </summary>
+    [Range(1, 65535, ErrorMessage = "The VoidShell port is required and must be between 1 and 65535.")]
     public int VoidShellPort { get; set; } = 7007;
 
-    /// <summary>ps5-payload-dev websrv's port on the console (title launching). 0 disables it.</summary>
+    /// <summary>ps5-payload-dev websrv's port. 0 disables this legacy fallback. It does not replace VoidShell.</summary>
     [Range(0, 65535)]
     public int WebsrvPort { get; set; } = 8080;
 

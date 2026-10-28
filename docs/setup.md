@@ -60,10 +60,14 @@ Setup says so and exits with 2. If step 1 fails, nothing is shut down.
 
 `src/PS5LM.Companion.Core/Setup/setup-manifest.json` is embedded in the build. Each entry has a direct GitHub release URL and the
 SHA-256 from the release asset. A payload marked `"optional": true` is reported as a warning (with its `optionalNote`) instead of a
-failure when it is not up at the end. A payload can list `files` (URL, SHA-256, absolute target under `/data/`) that go over FTP.
+failure when it is not up at the end. The stock `voidshell` entry is not optional: setup exits 2 if that fork is not up, and the
+companion requires its API at runtime. A payload can list `files` (URL, SHA-256, absolute target under `/data/`) that go over FTP.
 To update a version, follow [Bumping a pin](#bumping-a-pin).
 
 ## VoidShell fork build
+
+The pinned fork is a required companion dependency. Upstream VoidShell is not a supported substitute for app check, launch,
+firmware or `update --apps`.
 
 Upstream VoidShell v1.1.1 imports `sceAppInstUtilAppInstallTitleDir` statically. Firmware such as 13.40 does not export it, so the
 loader logs `Unable to resolve 'sceAppInstUtilAppInstallTitleDir'` and the payload exits before `main()` (found with klogsrv, kernel
@@ -78,7 +82,8 @@ build and no firmware appears. Run [`update`](update.md) (or `setup --force`) to
 (reboot the console or relaunch it from Payload Manager) so the new build is the one running.
 
 To go back to upstream once it ships the fix: repin `version`, `url`, `sha256` and the `index.html` entry of `voidshell` in the manifest,
-then run `setup --verify-manifest`. A payload can still be marked `"optional": true` to downgrade a failed start to a warning.
+then run `setup --verify-manifest`. Leave `voidshell` required. A custom manifest may mark a different payload `"optional": true`
+so a failed start is a warning; that does not make the companion work without VoidShell.
 
 ## Bumping a pin
 
