@@ -66,6 +66,27 @@ public sealed class ConsoleProbe(string host, HttpClient http) : IConsoleProbe
 /// <summary>Streams an ELF to elfldr's port; elfldr runs it when the connection closes.</summary>
 public sealed class ElfldrSender(string host, int port) : IElfldrSender
 {
+    private static readonly TimeSpan SettleTime = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>Connects and waits briefly: a healthy elfldr stays silent, a wedged one closes the connection straight away.</summary>
+    public async Task<bool> AcceptsAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var client = new TcpClient();
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(2));
+            await client.ConnectAsync(host, port, timeout.Token);
+            await Task.Delay(SettleTime, cancellationToken);
+            // Readable with nothing to read means the peer closed (or reset) the connection.
+            return !(client.Client.Poll(0, SelectMode.SelectRead) && client.Client.Available == 0);
+        }
+        catch (Exception ex) when (ex is SocketException or ObjectDisposedException or OperationCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            return false;
+        }
+    }
+
     public async Task SendAsync(string filePath, CancellationToken cancellationToken)
     {
         using var client = new TcpClient();

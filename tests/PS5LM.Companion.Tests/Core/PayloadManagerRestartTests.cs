@@ -26,6 +26,10 @@ public sealed class PayloadManagerRestartTests
 
         public bool NewManagerAnswers { get; set; } = true;
 
+        public bool ElfldrAccepts { get; set; } = true;
+
+        public Task<bool> AcceptsAsync(CancellationToken cancellationToken) => Task.FromResult(ElfldrAccepts);
+
         public bool Started { get; private set; }
 
         public List<int> Killed { get; } = [];
@@ -197,6 +201,20 @@ public sealed class PayloadManagerRestartTests
         Assert.Equal(OperationOutcome.Unavailable, result.Outcome);
         Assert.Contains("elfldr", result.Message, StringComparison.Ordinal);
         Assert.Empty(console.Killed);
+    }
+
+    [Fact]
+    public async Task An_elfldr_that_closes_connections_at_once_is_refused_before_anything_is_stopped()
+    {
+        var console = new Console { ElfldrAccepts = false, ShutdownWorks = true };
+
+        var result = await Service(console).RestartAsync(CancellationToken.None);
+
+        Assert.Equal(OperationOutcome.Unavailable, result.Outcome);
+        Assert.Contains("Nothing was stopped", result.Message, StringComparison.Ordinal);
+        Assert.True(console.PortOpen);
+        Assert.Empty(console.Killed);
+        Assert.Empty(console.Sent);
     }
 
     [Fact]

@@ -47,6 +47,14 @@ public sealed class PayloadManagerRestartService(
                 return new OperationResult(OperationOutcome.Unavailable, "elfldr is not listening, so a new Payload Manager cannot be started. " + PayloadDependencies.ElfldrBootstrap(options.ElfldrPort));
             }
 
+            // Stopping the old manager cannot be undone remotely, so prove elfldr takes a connection first.
+            if (!await recovery.Elfldr.AcceptsAsync(cancellationToken))
+            {
+                return new OperationResult(
+                    OperationOutcome.Unavailable,
+                    "elfldr accepts connections but closes them at once, so it could not start a new Payload Manager. Nothing was stopped. Reboot the console to reset elfldr.");
+            }
+
             var port = options.PayloadManagerBaseAddress().Port;
             var stopped = await StopAsync(recovery, port, cancellationToken);
             if (stopped is not null)
@@ -70,7 +78,7 @@ public sealed class PayloadManagerRestartService(
             }
             catch (Exception ex) when (ex is IOException or System.Net.Sockets.SocketException)
             {
-                return new OperationResult(OperationOutcome.Unavailable, $"The old Payload Manager is stopped, but sending the new one to elfldr failed: {ex.Message}");
+                return new OperationResult(OperationOutcome.Unavailable, $"The old Payload Manager is stopped, but sending the new one to elfldr failed: {ex.Message} Reboot the console so autoload starts Payload Manager again.");
             }
 
             var answered = await WaitAsync(async ct => await recovery.Manager.GetVersionAsync(ct) is not null, 60, cancellationToken);

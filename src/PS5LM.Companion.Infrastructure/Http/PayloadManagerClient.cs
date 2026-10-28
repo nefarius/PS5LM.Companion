@@ -126,8 +126,21 @@ public sealed class PayloadManagerClient(IPayloadManagerApi api) : IPayloadCatal
 
     private static string TransportMessage(Exception? error, HttpStatusCode? status) =>
         status is { } code
-            ? $"Payload Manager did not answer: it is running but returned HTTP {(int)code}."
+            ? $"Payload Manager did not answer: it is running but returned HTTP {(int)code}{BodyHint(error)}."
             : error is null ? "Payload Manager returned no status." : $"Payload Manager did not answer: {error.Message}";
+
+    /// <summary>The manager's own error text, when it sent one: it usually names the cause of a 500.</summary>
+    private static string BodyHint(Exception? error)
+    {
+        var body = (error as ApiException)?.Content?.Trim();
+        if (string.IsNullOrEmpty(body))
+        {
+            return string.Empty;
+        }
+
+        body = body.ReplaceLineEndings(" ");
+        return ": " + (body.Length > 200 ? body[..200] + "..." : body);
+    }
 
     private static void ThrowIfCallerCancelled(Exception exception, CancellationToken cancellationToken)
     {

@@ -70,6 +70,12 @@ public interface IConsoleProbe
 public interface IElfldrSender
 {
     Task SendAsync(string filePath, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// True when elfldr takes a connection and keeps it open. A wedged elfldr still accepts the connection but
+    /// closes it at once, so a port check alone is not enough before something irreversible is stopped.
+    /// </summary>
+    Task<bool> AcceptsAsync(CancellationToken cancellationToken) => Task.FromResult(true);
 }
 
 /// <summary>What setup tells and asks the person running it.</summary>

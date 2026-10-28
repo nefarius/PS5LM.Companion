@@ -6,7 +6,8 @@ Payload Manager can stay alive while its HTTP server is stuck: port 8084 accepts
 
 ## What it does
 
-1. Requires elfldr to be listening (it starts the new copy). Otherwise it stops before changing anything.
+1. Requires elfldr to be listening **and** to keep a connection open for half a second. A wedged elfldr still accepts the
+   connection but closes it at once; in that case nothing is stopped, because the old manager cannot be brought back remotely.
 2. If the manager's port is open, asks it to exit (`POST /shutdown`, 5 s). A stuck manager never answers.
 3. If the port is still open, asks VoidShell for `GET /api/processes` and kills every process whose name starts with
    `pldmgr` (`POST /api/kill`), then waits for the port to close.
@@ -30,7 +31,14 @@ autoload is not run again.
   (`v1.1.1-nefarius.4` or newer). The reported version stays `V1.1`; an older VoidShell answers `404`, and the restart then says
   to run `update`.
 
+## When a restart will not help
+
+"Payload Manager is running but returned HTTP 500" with the manager's own text means the manager is up and one endpoint
+(typically `/list_payloads`) fails, for example on a broken file in its payload folder. Restarting it may not cure that. Read the
+text in the warning first.
+
 ## Still needs the console
 
 - VoidShell or elfldr is down.
 - The port stays open after the kill (something else holds it).
+- elfldr stops accepting the new manager after the old one was stopped. Autoload starts Payload Manager again on the next boot.
