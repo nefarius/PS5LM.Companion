@@ -11,12 +11,16 @@ namespace PS5LM.Companion.Infrastructure.Http;
 /// Probes llama-server. Connection refusal is the expected answer before a model is loaded, so every
 /// transport failure maps to <see cref="LlamaServerState.Closed"/> instead of an error.
 /// </summary>
-public sealed class LlamaServerProbe(ILlamaServerApi api) : ILlamaServerProbe
+public sealed class LlamaServerProbe(ILlamaServerApi api, TimeProvider? time = null) : ILlamaServerProbe
 {
+    private readonly TimeProvider _time = time ?? TimeProvider.System;
+
     public async Task<LlamaProbeResult> ProbeAsync(CancellationToken cancellationToken)
     {
         try
         {
+            // The counters are read at some point after the request is sent, so its start is a safe lower bound.
+            var observedAt = _time.GetUtcNow();
             using var metrics = await api.GetMetricsAsync(cancellationToken);
 
             // Refit reports a transport failure (refused, unreachable) as a response without a status code.
@@ -44,7 +48,7 @@ public sealed class LlamaServerProbe(ILlamaServerApi api) : ILlamaServerProbe
                 return new LlamaProbeResult(LlamaServerState.Loading, null, null);
             }
 
-            return new LlamaProbeResult(LlamaServerState.Serving, metrics.Content, await LoadedModelAsync(cancellationToken));
+            return new LlamaProbeResult(LlamaServerState.Serving, metrics.Content, await LoadedModelAsync(cancellationToken), observedAt);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {

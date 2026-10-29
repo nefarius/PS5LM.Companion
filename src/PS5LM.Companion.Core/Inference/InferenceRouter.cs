@@ -311,13 +311,14 @@ public sealed class InferenceRouter
 
     /// <summary>
     /// The status is polled every few seconds, so right after the gateway released a console it can still read
-    /// Generating. Only a status taken after the last release shows load from somewhere else.
+    /// Generating. Only a /metrics observation made after the last release shows load from somewhere else.
     /// </summary>
     private bool IsGenerating(ConsoleRuntime console)
     {
         var status = console.Store.Current;
+        var observedAt = status.Telemetry?.SampledAt ?? status.UpdatedAt;
         return status.Lifecycle == CompanionLifecycle.Generating
-               && (!_lastReleased.TryGetValue(console.Id, out var released) || status.UpdatedAt > released);
+               && (!_lastReleased.TryGetValue(console.Id, out var released) || observedAt > released);
     }
 
     private void Remember(string entryKey, string consoleId)

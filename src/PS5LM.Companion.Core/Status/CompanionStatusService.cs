@@ -75,7 +75,7 @@ public sealed class CompanionStatusService(
             : AppControlEvaluator.Evaluate(appSnapshots, probe.State);
         var (voidShellAnswering, voidShellDetail) = VoidShellDependency(appSnapshots);
 
-        var telemetry = probe.State == LlamaServerState.Serving ? _telemetry.Update(probe.MetricsText, now) : ResetTelemetry();
+        var telemetry = probe.State == LlamaServerState.Serving ? _telemetry.Update(probe.MetricsText, probe.MetricsObservedAt ?? now) : ResetTelemetry();
         if (probe.State == LlamaServerState.Serving)
         {
             loadTracker.Clear();

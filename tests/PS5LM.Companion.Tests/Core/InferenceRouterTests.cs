@@ -371,7 +371,14 @@ public sealed class InferenceRouterTests
     }
 
     private static void Publish(ConsoleRegistry registry, string id, CompanionLifecycle lifecycle, DateTimeOffset at) =>
-        registry.Find(id)!.Store.Publish(CompanionStatus.Initial with { Lifecycle = lifecycle, LoadedModel = "/data/PS5LM/models/qwen.gguf", UpdatedAt = at });
+        // UpdatedAt stays old on purpose: only the time of the /metrics observation decides whether a status is stale.
+        registry.Find(id)!.Store.Publish(CompanionStatus.Initial with
+        {
+            Lifecycle = lifecycle,
+            LoadedModel = "/data/PS5LM/models/qwen.gguf",
+            UpdatedAt = DateTimeOffset.MinValue,
+            Telemetry = new TelemetrySnapshot(0, 0, lifecycle == CompanionLifecycle.Generating ? 1 : 0, 0, 0, at),
+        });
 
     private sealed class LeaseScope(InferenceLease lease) : IDisposable
     {
