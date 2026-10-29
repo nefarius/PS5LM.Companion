@@ -242,6 +242,23 @@ public sealed class InferenceGatewayTests
         Assert.Equal("new", third.Headers.GetValues("X-PS5LM-Affinity").Single());
     }
 
+    [Theory]
+    [InlineData("/v1/messages/count_tokens")]
+    [InlineData("/v1/responses/input_tokens")]
+    public async Task Counting_tokens_neither_uses_nor_changes_the_remembered_console(string path)
+    {
+        await using var cluster = await Cluster.StartAsync(["a", "b"]);
+        using var client = cluster.Factory.CreateClient();
+
+        using var turn = await client.PostAsync("/v1/chat/completions", Json(Conversation));
+        using var count = await client.PostAsync(path, Json(Conversation));
+        using var next = await client.PostAsync("/v1/chat/completions", Json(Conversation));
+
+        Assert.False(count.Headers.Contains("X-PS5LM-Affinity"));
+        Assert.Equal("hit", next.Headers.GetValues("X-PS5LM-Affinity").Single());
+        Assert.Equal(turn.Headers.GetValues("X-PS5LM-Console").Single(), next.Headers.GetValues("X-PS5LM-Console").Single());
+    }
+
     [Fact]
     public async Task A_request_without_a_conversation_carries_no_affinity_header()
     {

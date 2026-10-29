@@ -121,7 +121,9 @@ internal static class InferenceGateway
             return;
         }
 
-        var admission = await router.AcquireAsync(alias, cancellation, affinityKey: read.AffinityKey);
+        // Counting tokens generates nothing: it must not move the conversation's remembered console.
+        var affinityKey = IsTokenCount(context.Request.Path) ? null : read.AffinityKey;
+        var admission = await router.AcquireAsync(alias, cancellation, affinityKey: affinityKey);
         if (admission.Lease is not { } lease)
         {
             var (status, type) = admission.Failure switch
@@ -183,6 +185,10 @@ internal static class InferenceGateway
             lease.Release();
         }
     }
+
+    private static bool IsTokenCount(PathString path) =>
+        path.Value is { } value
+        && (value.EndsWith("/input_tokens", StringComparison.OrdinalIgnoreCase) || value.EndsWith("/count_tokens", StringComparison.OrdinalIgnoreCase));
 
     private readonly record struct ModelRead(string? Model, int Status, string? ErrorType, string? Error, string? AffinityKey = null);
 
