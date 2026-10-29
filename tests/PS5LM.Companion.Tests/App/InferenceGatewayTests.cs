@@ -205,6 +205,54 @@ public sealed class InferenceGatewayTests
         Assert.NotEqual(one.Headers.GetValues("X-PS5LM-Console").Single(), two.Headers.GetValues("X-PS5LM-Console").Single());
     }
 
+    private const string Conversation = """{"model":"chat","messages":[{"role":"system","content":"s"},{"role":"user","content":"first"}]}""";
+
+    [Fact]
+    public async Task Turns_of_one_conversation_stay_on_one_console()
+    {
+        await using var cluster = await Cluster.StartAsync(["a", "b"]);
+        using var client = cluster.Factory.CreateClient();
+
+        using var one = await client.PostAsync("/v1/chat/completions", Json(Conversation));
+        // Later turns carry more history but the same start.
+        using var two = await client.PostAsync("/v1/chat/completions", Json("""{"model":"chat","messages":[{"role":"system","content":"s"},{"role":"user","content":"first"},{"role":"assistant","content":"x"},{"role":"user","content":"more"}]}"""));
+        using var three = await client.PostAsync("/v1/chat/completions", Json("""{"model":"chat","messages":[{"role":"system","content":"s"},{"role":"user","content":"other chat"}]}"""));
+
+        Assert.Equal("new", one.Headers.GetValues("X-PS5LM-Affinity").Single());
+        Assert.Equal("hit", two.Headers.GetValues("X-PS5LM-Affinity").Single());
+        Assert.Equal(one.Headers.GetValues("X-PS5LM-Console").Single(), two.Headers.GetValues("X-PS5LM-Console").Single());
+        Assert.Equal("new", three.Headers.GetValues("X-PS5LM-Affinity").Single());
+        Assert.NotEqual(one.Headers.GetValues("X-PS5LM-Console").Single(), three.Headers.GetValues("X-PS5LM-Console").Single());
+    }
+
+    [Fact]
+    public async Task The_session_header_and_cache_key_take_precedence_over_the_conversation_hash()
+    {
+        await using var cluster = await Cluster.StartAsync(["a", "b"]);
+        using var client = cluster.Factory.CreateClient();
+
+        using var first = await client.PostAsync("/v1/chat/completions", Json("""{"model":"chat","prompt_cache_key":"k1","messages":[{"role":"user","content":"x"}]}"""));
+        using var second = await client.PostAsync("/v1/chat/completions", Json("""{"model":"chat","prompt_cache_key":"k1","messages":[{"role":"user","content":"completely different"}]}"""));
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/v1/chat/completions") { Content = Json(Conversation) };
+        request.Headers.Add("X-PS5LM-Session", "mine");
+        using var third = await client.SendAsync(request);
+
+        Assert.Equal("hit", second.Headers.GetValues("X-PS5LM-Affinity").Single());
+        Assert.Equal(first.Headers.GetValues("X-PS5LM-Console").Single(), second.Headers.GetValues("X-PS5LM-Console").Single());
+        Assert.Equal("new", third.Headers.GetValues("X-PS5LM-Affinity").Single());
+    }
+
+    [Fact]
+    public async Task A_request_without_a_conversation_carries_no_affinity_header()
+    {
+        await using var cluster = await Cluster.StartAsync(["a"]);
+        using var client = cluster.Factory.CreateClient();
+
+        using var response = await client.PostAsync("/v1/completions", Json("""{"model":"chat","prompt":"hi"}"""));
+
+        Assert.False(response.Headers.Contains("X-PS5LM-Affinity"));
+    }
+
     [Fact]
     public async Task A_busy_console_makes_the_next_request_wait_for_its_slot()
     {

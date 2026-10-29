@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Time.Testing;
+
 using PS5LM.Companion.Core.Consoles;
 using PS5LM.Companion.Core.Discovery;
 using PS5LM.Companion.Core.Domain;
@@ -220,6 +222,156 @@ public sealed class InferenceRouterTests
 
         Assert.Equal(AdmissionFailure.NoReplica, (await waiting.WaitAsync(TimeSpan.FromSeconds(5))).Failure);
     }
+
+    private static (InferenceRouter Router, ConsoleRegistry Registry, FakeTimeProvider Time) CreateTimed(string[] consoles, Action<InferenceOptions>? configure = null)
+    {
+        var consoleOptions = new ConsolesOptions();
+        foreach (var id in consoles)
+        {
+            consoleOptions.Consoles[id] = new PS5Options { Host = "127.0.0.1" };
+        }
+
+        var time = new FakeTimeProvider(new DateTimeOffset(2026, 10, 29, 12, 0, 0, TimeSpan.Zero));
+        var registry = new ConsoleRegistry(consoleOptions, new FakeConnectorFactory(), time);
+        var options = new InferenceOptions { QueueTimeoutSeconds = 5 };
+        options.Pools["chat"] = new InferencePoolOptions { Model = Model, Consoles = [.. consoles] };
+        configure?.Invoke(options);
+        return (new InferenceRouter(registry, options, time: time), registry, time);
+    }
+
+    private static async Task<InferenceAdmission> TurnAsync(InferenceRouter router, string key)
+    {
+        var admission = await router.AcquireAsync("chat", CancellationToken.None, affinityKey: key);
+        admission.Lease!.Release();
+        return admission;
+    }
+
+    [Fact]
+    public async Task A_conversation_returns_to_its_console_although_the_other_is_least_recently_used()
+    {
+        var (router, registry, _) = CreateTimed(["a", "b"]);
+        Serve(registry, "a");
+        Serve(registry, "b");
+
+        var first = await TurnAsync(router, "session");
+        var second = await TurnAsync(router, "session");
+        var third = await TurnAsync(router, "session");
+
+        Assert.Equal(AffinityOutcome.New, first.Affinity);
+        Assert.Equal(AffinityOutcome.Hit, second.Affinity);
+        Assert.Equal(AffinityOutcome.Hit, third.Affinity);
+        Assert.Equal(first.Lease!.Console.Id, second.Lease!.Console.Id);
+        Assert.Equal(first.Lease.Console.Id, third.Lease!.Console.Id);
+    }
+
+    [Fact]
+    public async Task Requests_without_a_key_keep_rotating()
+    {
+        var (router, registry, _) = CreateTimed(["a", "b"]);
+        Serve(registry, "a");
+        Serve(registry, "b");
+
+        var first = await router.AcquireAsync("chat", CancellationToken.None);
+        first.Lease!.Release();
+        var second = await router.AcquireAsync("chat", CancellationToken.None);
+
+        Assert.Equal(AffinityOutcome.None, first.Affinity);
+        Assert.NotEqual(first.Lease.Console.Id, second.Lease!.Console.Id);
+    }
+
+    [Fact]
+    public async Task A_busy_affine_console_sends_the_request_elsewhere_and_the_affinity_moves()
+    {
+        var (router, registry, _) = CreateTimed(["a", "b"]);
+        Serve(registry, "a");
+        Serve(registry, "b");
+        var first = await TurnAsync(router, "session");
+        var other = first.Lease!.Console.Id == "a" ? "b" : "a";
+        var blocker = (await router.AcquireAsync("chat", CancellationToken.None, first.Lease.Console.Id)).Lease!;
+
+        var moved = await TurnAsync(router, "session");
+        blocker.Release();
+        var after = await TurnAsync(router, "session");
+
+        Assert.Equal(AffinityOutcome.Moved, moved.Affinity);
+        Assert.Equal(other, moved.Lease!.Console.Id);
+        Assert.Equal(AffinityOutcome.Hit, after.Affinity);
+        Assert.Equal(other, after.Lease!.Console.Id);
+    }
+
+    [Fact]
+    public async Task An_expired_affinity_is_forgotten_and_zero_turns_it_off()
+    {
+        var (router, registry, time) = CreateTimed(["a", "b"], o => o.AffinityMinutes = 10);
+        Serve(registry, "a");
+        Serve(registry, "b");
+        await TurnAsync(router, "session");
+
+        time.Advance(TimeSpan.FromMinutes(11));
+        var expired = await TurnAsync(router, "session");
+
+        Assert.Equal(AffinityOutcome.New, expired.Affinity);
+
+        var (off, offRegistry, _) = CreateTimed(["a", "b"], o => o.AffinityMinutes = 0);
+        Serve(offRegistry, "a");
+        Serve(offRegistry, "b");
+        Assert.Equal(AffinityOutcome.None, (await TurnAsync(off, "session")).Affinity);
+    }
+
+    [Fact]
+    public async Task A_waiting_request_is_admitted_to_its_affine_console()
+    {
+        var (router, registry, _) = CreateTimed(["a", "b"]);
+        Serve(registry, "a");
+        Serve(registry, "b");
+        var first = await TurnAsync(router, "session");
+        var home = first.Lease!.Console.Id;
+        var other = home == "a" ? "b" : "a";
+        var holdHome = (await router.AcquireAsync("chat", CancellationToken.None, home)).Lease!;
+        var holdOther = (await router.AcquireAsync("chat", CancellationToken.None, other)).Lease!;
+
+        var waiting = router.AcquireAsync("chat", CancellationToken.None, affinityKey: "session");
+        await Task.Delay(50);
+        holdHome.Release();
+        var admitted = await waiting.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(home, admitted.Lease!.Console.Id);
+        Assert.Equal(AffinityOutcome.Hit, admitted.Affinity);
+        holdOther.Release();
+        admitted.Lease.Release();
+    }
+
+    [Fact]
+    public async Task A_generating_status_older_than_the_last_release_does_not_steer_requests_away()
+    {
+        var (router, registry, time) = CreateTimed(["a", "b"]);
+        Serve(registry, "a");
+        Serve(registry, "b");
+        Publish(registry, "a", CompanionLifecycle.Generating, time.GetUtcNow());
+
+        // "a" serves a request and is released after its status was taken: that status is stale. "b" then serves one,
+        // so "a" is the least recently used console.
+        var used = (await router.AcquireAsync("chat", CancellationToken.None, "a")).Lease!;
+        time.Advance(TimeSpan.FromSeconds(1));
+        used.Release();
+        (await router.AcquireAsync("chat", CancellationToken.None, "b")).Lease!.Release();
+
+        var stale = (await router.AcquireAsync("chat", CancellationToken.None)).Lease!;
+        stale.Release();
+        Assert.Equal("a", stale.Console.Id);
+
+        // A status taken after the release that still reads Generating is outside load: "a" is passed over.
+        time.Advance(TimeSpan.FromSeconds(1));
+        Publish(registry, "a", CompanionLifecycle.Generating, time.GetUtcNow());
+        (await router.AcquireAsync("chat", CancellationToken.None, "b")).Lease!.Release();
+        var fresh = (await router.AcquireAsync("chat", CancellationToken.None)).Lease!;
+        fresh.Release();
+
+        Assert.Equal("b", fresh.Console.Id);
+    }
+
+    private static void Publish(ConsoleRegistry registry, string id, CompanionLifecycle lifecycle, DateTimeOffset at) =>
+        registry.Find(id)!.Store.Publish(CompanionStatus.Initial with { Lifecycle = lifecycle, LoadedModel = "/data/PS5LM/models/qwen.gguf", UpdatedAt = at });
 
     private sealed class LeaseScope(InferenceLease lease) : IDisposable
     {

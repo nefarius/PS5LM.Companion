@@ -93,7 +93,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(sp => new InferenceRouter(
             sp.GetRequiredService<IConsoleRegistry>(),
             sp.GetRequiredService<IOptions<InferenceOptions>>().Value,
-            sp.GetRequiredService<IInferencePoolSource>()));
+            sp.GetRequiredService<IInferencePoolSource>(),
+            sp.GetService<TimeProvider>()));
         return services;
     }
 

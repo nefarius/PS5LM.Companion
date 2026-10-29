@@ -21,8 +21,24 @@ public enum AdmissionFailure
     Timeout,
 }
 
+/// <summary>How a request's affinity key shaped the choice of console.</summary>
+public enum AffinityOutcome
+{
+    /// <summary>No key, or affinity is off.</summary>
+    None = 0,
+
+    /// <summary>The key was not known: the console was chosen normally and remembered.</summary>
+    New,
+
+    /// <summary>The console that served the conversation last was chosen again.</summary>
+    Hit,
+
+    /// <summary>The previous console was busy or not serving: another one was chosen and remembered.</summary>
+    Moved,
+}
+
 /// <summary>The outcome of asking for a replica: a lease on one console, or the reason there is none.</summary>
-public sealed record InferenceAdmission(InferenceLease? Lease, AdmissionFailure Failure, string? Message, string? Pool = null)
+public sealed record InferenceAdmission(InferenceLease? Lease, AdmissionFailure Failure, string? Message, string? Pool = null, AffinityOutcome Affinity = AffinityOutcome.None)
 {
     public static InferenceAdmission Fail(AdmissionFailure failure, string message) => new(null, failure, message);
 }
@@ -69,14 +85,20 @@ public sealed class InferenceRouter
     private readonly object _gate = new();
     private readonly Dictionary<string, int> _active = new(StringComparer.Ordinal);
     private readonly Dictionary<string, long> _lastAssigned = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, DateTimeOffset> _lastReleased = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Affinity> _affinity = new(StringComparer.Ordinal);
+    private readonly TimeProvider _time;
     private readonly LinkedList<Waiter> _waiters = new();
     private long _sequence;
 
-    public InferenceRouter(IConsoleRegistry registry, InferenceOptions options, IInferencePoolSource? pools = null)
+    private const int MaxAffinityEntries = 1024;
+
+    public InferenceRouter(IConsoleRegistry registry, InferenceOptions options, IInferencePoolSource? pools = null, TimeProvider? time = null)
     {
         _registry = registry;
         _options = options;
         _pools = pools;
+        _time = time ?? TimeProvider.System;
         if (pools is not null)
         {
             pools.Changed += OnPoolsChanged;
@@ -103,7 +125,8 @@ public sealed class InferenceRouter
 
     /// <param name="onlyConsole">Restricts the choice to one console of the pool, for tests that must reach a specific replica.</param>
     /// <param name="alias">A pool alias, or any alternate name or prefix that resolves to one.</param>
-    public async Task<InferenceAdmission> AcquireAsync(string alias, CancellationToken cancellationToken, string? onlyConsole = null)
+    /// <param name="affinityKey">Identifies a conversation; its requests prefer the console that served it last, which still holds its prompt cache.</param>
+    public async Task<InferenceAdmission> AcquireAsync(string alias, CancellationToken cancellationToken, string? onlyConsole = null, string? affinityKey = null)
     {
         var requested = alias;
         if (!TryGetPool(alias, out var pool, out var resolved))
@@ -123,9 +146,9 @@ public sealed class InferenceRouter
                 return InferenceAdmission.Fail(AdmissionFailure.NoReplica, $"No console is serving '{alias}' right now.");
             }
 
-            if (TryPick(eligible) is { } picked)
+            if (Pick(alias, eligible, affinityKey) is ({ } picked, var outcome))
             {
-                return new InferenceAdmission(Take(picked), AdmissionFailure.None, null, alias);
+                return new InferenceAdmission(Take(picked), AdmissionFailure.None, null, alias, outcome);
             }
 
             if (_waiters.Count >= _options.MaxQueuedRequests)
@@ -133,7 +156,7 @@ public sealed class InferenceRouter
                 return InferenceAdmission.Fail(AdmissionFailure.QueueFull, $"Every console serving '{alias}' is busy and the queue is full.");
             }
 
-            waiter = new Waiter(alias, onlyConsole);
+            waiter = new Waiter(alias, onlyConsole, affinityKey);
             node = _waiters.AddLast(waiter);
         }
 
@@ -207,6 +230,7 @@ public sealed class InferenceRouter
         lock (_gate)
         {
             _active[consoleId] = Math.Max(0, _active.GetValueOrDefault(consoleId) - 1);
+            _lastReleased[consoleId] = _time.GetUtcNow();
             Dispatch();
         }
     }
@@ -238,14 +262,85 @@ public sealed class InferenceRouter
             .Select(c => c!)
             .ToList();
 
-    /// <summary>The least busy eligible console with a free slot: fewest active, idle before generating, least recently used.</summary>
-    private ConsoleRuntime? TryPick(List<ConsoleRuntime> eligible) =>
-        eligible
-            .Where(c => _active.GetValueOrDefault(c.Id) < _options.MaxConcurrentPerConsole)
+    /// <summary>
+    /// The console for a request: the one that served the conversation last when it has a free slot (its prompt cache is
+    /// still there), else the least busy eligible console with a free slot. Runs under the lock; remembers the choice.
+    /// </summary>
+    private (ConsoleRuntime? Console, AffinityOutcome Outcome) Pick(string alias, List<ConsoleRuntime> eligible, string? key)
+    {
+        var free = eligible.Where(c => _active.GetValueOrDefault(c.Id) < _options.MaxConcurrentPerConsole).ToList();
+        if (free.Count == 0)
+        {
+            return (null, AffinityOutcome.None);
+        }
+
+        var tracked = key is not null && _options.AffinityMinutes > 0;
+        string? entryKey = null;
+        string? previous = null;
+        if (tracked)
+        {
+            entryKey = $"{alias}\n{key}";
+            if (_affinity.TryGetValue(entryKey, out var entry))
+            {
+                if (_time.GetUtcNow() - entry.LastUsed <= TimeSpan.FromMinutes(_options.AffinityMinutes))
+                {
+                    previous = entry.ConsoleId;
+                }
+                else
+                {
+                    _affinity.Remove(entryKey);
+                }
+            }
+        }
+
+        var affine = previous is null ? null : free.FirstOrDefault(c => c.Id.Equals(previous, StringComparison.OrdinalIgnoreCase));
+        var picked = affine ?? free
             .OrderBy(c => _active.GetValueOrDefault(c.Id))
-            .ThenBy(c => c.Store.Current.Lifecycle == CompanionLifecycle.Generating ? 1 : 0)
+            .ThenBy(c => IsGenerating(c) ? 1 : 0)
             .ThenBy(c => _lastAssigned.GetValueOrDefault(c.Id))
-            .FirstOrDefault();
+            .First();
+
+        if (!tracked)
+        {
+            return (picked, AffinityOutcome.None);
+        }
+
+        Remember(entryKey!, picked.Id);
+        return (picked, affine is not null ? AffinityOutcome.Hit : previous is not null ? AffinityOutcome.Moved : AffinityOutcome.New);
+    }
+
+    /// <summary>
+    /// The status is polled every few seconds, so right after the gateway released a console it can still read
+    /// Generating. Only a status taken after the last release shows load from somewhere else.
+    /// </summary>
+    private bool IsGenerating(ConsoleRuntime console)
+    {
+        var status = console.Store.Current;
+        return status.Lifecycle == CompanionLifecycle.Generating
+               && (!_lastReleased.TryGetValue(console.Id, out var released) || status.UpdatedAt > released);
+    }
+
+    private void Remember(string entryKey, string consoleId)
+    {
+        var now = _time.GetUtcNow();
+        if (!_affinity.ContainsKey(entryKey) && _affinity.Count >= MaxAffinityEntries)
+        {
+            var ttl = TimeSpan.FromMinutes(_options.AffinityMinutes);
+            foreach (var expired in _affinity.Where(pair => now - pair.Value.LastUsed > ttl).Select(pair => pair.Key).ToList())
+            {
+                _affinity.Remove(expired);
+            }
+
+            if (_affinity.Count >= MaxAffinityEntries)
+            {
+                _affinity.Remove(_affinity.MinBy(pair => pair.Value.LastUsed).Key);
+            }
+        }
+
+        _affinity[entryKey] = new Affinity(consoleId, now);
+    }
+
+    private readonly record struct Affinity(string ConsoleId, DateTimeOffset LastUsed);
 
     private InferenceLease Take(ConsoleRuntime console)
     {
@@ -275,10 +370,10 @@ public sealed class InferenceRouter
                 _waiters.Remove(node);
                 waiter.Completion.TrySetResult(InferenceAdmission.Fail(AdmissionFailure.NoReplica, $"No console is serving '{waiter.Alias}' any more."));
             }
-            else if (TryPick(eligible) is { } picked)
+            else if (Pick(waiter.Alias, eligible, waiter.AffinityKey) is ({ } picked, var outcome))
             {
                 _waiters.Remove(node);
-                waiter.Completion.TrySetResult(new InferenceAdmission(Take(picked), AdmissionFailure.None, null, waiter.Alias));
+                waiter.Completion.TrySetResult(new InferenceAdmission(Take(picked), AdmissionFailure.None, null, waiter.Alias, outcome));
             }
 
             node = next;
@@ -336,8 +431,10 @@ public sealed class InferenceRouter
             pool.Origin));
     }
 
-    private sealed class Waiter(string alias, string? onlyConsole)
+    private sealed class Waiter(string alias, string? onlyConsole, string? affinityKey)
     {
+        public string? AffinityKey { get; } = affinityKey;
+
         public string? OnlyConsole { get; } = onlyConsole;
 
         public string Alias { get; } = alias;

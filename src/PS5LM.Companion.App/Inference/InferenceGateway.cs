@@ -58,6 +58,8 @@ internal static class InferenceGateway
 {
     internal const string ConsoleHeader = "X-PS5LM-Console";
     internal const string PoolHeader = "X-PS5LM-Pool";
+    internal const string AffinityHeader = "X-PS5LM-Affinity";
+    internal const string SessionHeader = "X-PS5LM-Session";
 
     private static readonly string[] ForwardedPaths =
     [
@@ -105,7 +107,7 @@ internal static class InferenceGateway
         var settings = options.Value;
         var cancellation = context.RequestAborted;
 
-        var read = await ReadModelAsync(context, settings.MaxRequestBodyMegabytes * 1024L * 1024L, cancellation);
+        var read = await ReadRequestAsync(context, settings.MaxRequestBodyMegabytes * 1024L * 1024L, cancellation);
         if (read.Error is not null)
         {
             await WriteError(context, read.Status, read.ErrorType!, read.Error);
@@ -119,7 +121,7 @@ internal static class InferenceGateway
             return;
         }
 
-        var admission = await router.AcquireAsync(alias, cancellation);
+        var admission = await router.AcquireAsync(alias, cancellation, affinityKey: read.AffinityKey);
         if (admission.Lease is not { } lease)
         {
             var (status, type) = admission.Failure switch
@@ -145,6 +147,11 @@ internal static class InferenceGateway
             if (admission.Pool is { } poolAlias)
             {
                 context.Response.Headers[PoolHeader] = poolAlias;
+            }
+
+            if (admission.Affinity != AffinityOutcome.None)
+            {
+                context.Response.Headers[AffinityHeader] = admission.Affinity.ToString().ToLowerInvariant();
             }
 
 
@@ -177,10 +184,100 @@ internal static class InferenceGateway
         }
     }
 
-    private readonly record struct ModelRead(string? Model, int Status, string? ErrorType, string? Error);
+    private readonly record struct ModelRead(string? Model, int Status, string? ErrorType, string? Error, string? AffinityKey = null);
 
-    /// <summary>Finds the top-level <c>model</c> string without consuming the body the forwarder will send on.</summary>
-    private static async Task<ModelRead> ReadModelAsync(HttpContext context, long limit, CancellationToken cancellationToken)
+    /// <summary>
+    /// Identifies the conversation a request belongs to, so its turns reach the console that holds the prompt cache.
+    /// An explicit header wins, then the client's own cache or user id, then a hash of the conversation start
+    /// (system prompt and first user message), which stays the same for every turn of an agent session.
+    /// </summary>
+    internal static string? AffinityKeyOf(IHeaderDictionary headers, JsonElement root)
+    {
+        if (headers.TryGetValue(SessionHeader, out var session) && session.ToString().Trim() is { Length: > 0 } header)
+        {
+            return "h:" + Truncate(header);
+        }
+
+        if (root.TryGetProperty("prompt_cache_key", out var cacheKey) && cacheKey.ValueKind == JsonValueKind.String
+            && cacheKey.GetString()?.Trim() is { Length: > 0 } cache)
+        {
+            return "p:" + Truncate(cache);
+        }
+
+        if (root.TryGetProperty("metadata", out var metadata) && metadata.ValueKind == JsonValueKind.Object
+            && metadata.TryGetProperty("user_id", out var userId) && userId.ValueKind == JsonValueKind.String
+            && userId.GetString()?.Trim() is { Length: > 0 } user)
+        {
+            return "u:" + Truncate(user);
+        }
+
+        return ConversationStartHash(root);
+    }
+
+    private static string Truncate(string value) => value.Length <= 200 ? value : value[..200];
+
+    private static string? ConversationStartHash(JsonElement root)
+    {
+        var parts = new List<string>();
+        foreach (var name in new[] { "system", "instructions" })
+        {
+            if (root.TryGetProperty(name, out var value) && value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined))
+            {
+                parts.Add(value.GetRawText());
+            }
+        }
+
+        var sawUser = false;
+        foreach (var name in new[] { "messages", "input" })
+        {
+            if (!root.TryGetProperty(name, out var items))
+            {
+                continue;
+            }
+
+            if (items.ValueKind == JsonValueKind.String)
+            {
+                parts.Add(items.GetRawText());
+                sawUser = true;
+                break;
+            }
+
+            if (items.ValueKind != JsonValueKind.Array)
+            {
+                continue;
+            }
+
+            foreach (var item in items.EnumerateArray())
+            {
+                var role = item.ValueKind == JsonValueKind.Object && item.TryGetProperty("role", out var r) && r.ValueKind == JsonValueKind.String
+                    ? r.GetString()
+                    : null;
+                if (role is "system" or "developer" or "user")
+                {
+                    parts.Add(item.GetRawText());
+                }
+
+                if (role == "user")
+                {
+                    sawUser = true;
+                    break;
+                }
+            }
+
+            break;
+        }
+
+        if (!sawUser)
+        {
+            return null;
+        }
+
+        var hash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(string.Join('\n', parts)));
+        return "c:" + Convert.ToHexString(hash);
+    }
+
+    /// <summary>Finds the top-level <c>model</c> string and the conversation key without consuming the body the forwarder will send on.</summary>
+    private static async Task<ModelRead> ReadRequestAsync(HttpContext context, long limit, CancellationToken cancellationToken)
     {
         if (context.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } size)
         {
@@ -200,11 +297,11 @@ internal static class InferenceGateway
             if (document.RootElement.TryGetProperty("model", out var model))
             {
                 return model.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(model.GetString())
-                    ? new(model.GetString()!.Trim(), 0, null, null)
+                    ? new(model.GetString()!.Trim(), 0, null, null, AffinityKeyOf(context.Request.Headers, document.RootElement))
                     : new(null, StatusCodes.Status400BadRequest, "invalid_request_error", "'model' must be a non-empty string.");
             }
 
-            return new(null, 0, null, null);
+            return new(null, 0, null, null, AffinityKeyOf(context.Request.Headers, document.RootElement));
         }
         catch (JsonException)
         {
