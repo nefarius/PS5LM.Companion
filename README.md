@@ -93,6 +93,7 @@ stored in `data/consoles.json` and apply without a restart. A stored console who
 | `Inference:Pools:{alias}:AlternateNames:{n}` | none | Extra `model` names (exact, or a prefix ending in `*`) that reach the pool |
 | `Inference:MaxConcurrentPerConsole` / `MaxQueuedRequests` / `QueueTimeoutSeconds` | 1 / 16 / 30 | Requests per console at once; waiting requests across all pools; how long a request waits (see [Inference gateway](#inference-gateway)) |
 | `Inference:UpstreamTimeoutSeconds` / `MaxRequestBodyMegabytes` | 900 / 32 | Silence timeout for a forwarded request; body size read to find the model |
+| `Inference:AffinityMinutes` | 30 | How long a conversation keeps preferring the console that served it last (prompt cache reuse); 0 turns it off |
 
 The companion refuses to start on a non-loopback address without `Companion:AccessToken`, unless
 `Companion:AllowAnonymous` is set. The check covers `urls`/`ASPNETCORE_URLS`, `HTTP_PORTS`, `HTTPS_PORTS` and
@@ -226,9 +227,17 @@ Behaviour:
   without `model` uses the only pool; with several pools it gets `400`. An unknown alias gets `404`.
 - Among ready consoles with a free slot it picks the least busy one, idle before generating, then the least recently used.
   `Inference:MaxConcurrentPerConsole` (default 1, PS5LM starts llama-server with one slot) bounds requests per console.
+- **Conversation affinity:** a console runs one slot with no RAM prompt cache, so a turn that lands on another console re-processes
+  the whole prompt. Requests of one conversation therefore return to the console that served it last while it has a free slot,
+  else they move to another console at once (a long wait would cost more than a cache miss). The conversation is identified by
+  the `X-PS5LM-Session` request header, else `prompt_cache_key`, else `metadata.user_id`, else a hash of the system prompt and
+  first user message. `X-PS5LM-Affinity` in the response is `new`, `hit` or `moved`; it is absent without a conversation.
+  `Inference:AffinityMinutes` (30; 0 turns it off) is how long a conversation is remembered. A console status that was read
+  before the gateway released it no longer counts as "generating", so it is not passed over for the other console.
 - When every console is busy a request waits, up to `Inference:MaxQueuedRequests` (16) at once and
   `Inference:QueueTimeoutSeconds` (30); beyond that it gets `429`, and when no console serves the alias or the wait ends, `503`
-  with `Retry-After`.
+  with `Retry-After`. A generation can take minutes, so a second concurrent agent session may need a larger
+  `QueueTimeoutSeconds` (for example 600) to wait instead of failing.
 - A request is never retried on another console: once forwarding starts, a failure returns `502` and the client decides.
   Closing the client connection cancels the request on the console and frees its slot.
 - `Inference:UpstreamTimeoutSeconds` (900) cancels a request that is silent in both directions; prompt evaluation on a
@@ -241,7 +250,8 @@ Behaviour:
   first-token time, prompt and generation tokens per second (the console's own `timings` when it sends them) and token counts.
   `GET /api/inference/pools/{alias}/results` returns the latest of each since the companion started. Runs wait behind
   live requests for the console's slot, run one at a time per alias (`409` otherwise), and are not kept across restarts.
-  They test each console directly; they do not send traffic through the load balancer.
+  They test each console directly; they do not send traffic through the load balancer. They also overwrite the console's single
+  prompt cache, so the next agent turn there re-processes its whole prompt: avoid running them mid-session.
 - In one measured setup, slow first replies came from prompt processing on the console, not the gateway; see [docs/app-arguments.md](docs/app-arguments.md).
 - Pools from configuration stay read-only. Pools added in the dashboard are stored in `data/inference-pools.json` and apply without a restart. Each alias needs consoles loaded with the same model; this does not load models.
 - **Download to missing consoles:** the button on each pool card (and `POST /api/inference/pools/{alias}/sync`) finds a pool console

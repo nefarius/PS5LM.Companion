@@ -29,6 +29,12 @@ public sealed class InferenceOptions
     /// <summary>Largest request body the gateway reads to find the model, in mebibytes.</summary>
     public int MaxRequestBodyMegabytes { get; set; } = 32;
 
+    /// <summary>
+    /// How long a conversation keeps preferring the console that served it last, so that console's prompt cache is reused.
+    /// 0 turns affinity off.
+    /// </summary>
+    public int AffinityMinutes { get; set; } = 30;
+
     public bool Enabled => Pools.Count > 0;
 }
 

@@ -40,6 +40,11 @@ public sealed partial class InferenceOptionsValidator(IOptions<ConsolesOptions> 
             failures.Add("Inference:MaxRequestBodyMegabytes must be between 1 and 512.");
         }
 
+        if (options.AffinityMinutes is < 0 or > 1440)
+        {
+            failures.Add("Inference:AffinityMinutes must be between 0 and 1440.");
+        }
+
         foreach (var (alias, pool) in options.Pools)
         {
             if (!AliasPattern().IsMatch(alias))

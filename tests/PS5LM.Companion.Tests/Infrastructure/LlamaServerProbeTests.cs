@@ -36,6 +36,26 @@ public sealed class LlamaServerProbeTests
     }
 
     [Fact]
+    public async Task Serving_metrics_carry_the_time_the_request_was_sent()
+    {
+        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(new DateTimeOffset(2026, 10, 29, 12, 0, 0, TimeSpan.Zero));
+        var api = new FakeApi
+        {
+            Metrics = () =>
+            {
+                time.Advance(TimeSpan.FromSeconds(2)); // the answer arrives later than the request was sent
+                return Response(HttpStatusCode.OK, "tokens_predicted_total 1\n");
+            },
+            Models = () => Response(HttpStatusCode.OK, new ModelListResponse([new ModelEntry("m.gguf")])),
+        };
+
+        var result = await new LlamaServerProbe(api, time).ProbeAsync(CancellationToken.None);
+
+        Assert.Equal(LlamaServerState.Serving, result.State);
+        Assert.Equal(new DateTimeOffset(2026, 10, 29, 12, 0, 0, TimeSpan.Zero), result.MetricsObservedAt);
+    }
+
+    [Fact]
     public async Task A_503_means_the_model_is_still_loading()
     {
         var api = new FakeApi { Metrics = () => Response<string>(HttpStatusCode.ServiceUnavailable, null) };

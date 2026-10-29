@@ -17,7 +17,7 @@ namespace PS5LM.Companion.Infrastructure;
 /// Builds the FTP, HTTP and TCP clients for one console. The pooled <see cref="HttpClient"/> pipelines (with their
 /// timeouts) are shared, and only the base address differs per console.
 /// </summary>
-public sealed class ConsoleConnectorFactory(IHttpClientFactory httpClients, ILoggerFactory loggers, IConfiguration configuration) : IConsoleConnectorFactory
+public sealed class ConsoleConnectorFactory(IHttpClientFactory httpClients, ILoggerFactory loggers, IConfiguration configuration, TimeProvider time) : IConsoleConnectorFactory
 {
     public const string ArtifactClient = "artifacts";
 
@@ -51,7 +51,7 @@ public sealed class ConsoleConnectorFactory(IHttpClientFactory httpClients, ILog
 
         return new ConsoleConnectors(
             new FtpFileSystem(options, loggers.CreateLogger<FtpFileSystem>()),
-            new LlamaServerProbe(llama),
+            new LlamaServerProbe(llama, time),
             new ExporterSensorProbe(exporter),
             manager,
             manager,

@@ -6,7 +6,11 @@ namespace PS5LM.Companion.Core.Abstractions;
 /// <param name="State">Closed when nothing listens, which is the normal state before a model is loaded.</param>
 /// <param name="MetricsText">Prometheus text from <c>/metrics</c> when <see cref="LlamaServerState.Serving"/>.</param>
 /// <param name="LoadedModel">The model id from <c>/v1/models</c>, when known.</param>
-public sealed record LlamaProbeResult(LlamaServerState State, string? MetricsText, string? LoadedModel)
+/// <param name="MetricsObservedAt">
+/// When the <c>/metrics</c> request was sent: the reported counters are from that moment or later.
+/// Unset when the probe does not know.
+/// </param>
+public sealed record LlamaProbeResult(LlamaServerState State, string? MetricsText, string? LoadedModel, DateTimeOffset? MetricsObservedAt = null)
 {
     public static LlamaProbeResult Closed { get; } = new(LlamaServerState.Closed, null, null);
 }
