@@ -1,5 +1,8 @@
+using System.Globalization;
+
 using MudBlazor;
 
+using PS5LM.Companion.Core.Discovery;
 using PS5LM.Companion.Core.Domain;
 using PS5LM.Companion.Core.Transfers;
 using PS5LM.Companion.Core.Updates;
@@ -84,6 +87,31 @@ internal static class Display
         $"Pinned {update.Pinned}. {update.Detail}.";
 
     public static string? AppUpdateId(PS5Variant variant) => ComponentUpdates.AppId(variant);
+
+    /// <summary>
+    /// The <c>update</c> command for this console. Payload Manager URL and FTP port are added only when they
+    /// differ from the CLI defaults (empty URL, port 2121).
+    /// </summary>
+    public static string UpdateCommand(string host, PS5Options options, bool apps)
+    {
+        var command = $"update --host {host}";
+        if (apps)
+        {
+            command += " --apps";
+        }
+
+        if (!string.IsNullOrWhiteSpace(options.PayloadManagerUrl))
+        {
+            command += " --payload-manager-url " + options.PayloadManagerUrl.Trim();
+        }
+
+        if (options.FtpPort != 2121)
+        {
+            command += " --ftp-port " + options.FtpPort.ToString(CultureInfo.InvariantCulture);
+        }
+
+        return command;
+    }
 
     public static Color TransferColor(TransferState state) => state switch
     {

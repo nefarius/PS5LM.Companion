@@ -337,6 +337,36 @@ public sealed class DashboardTests
         Assert.Contains("PS5LM Plus", html);
         Assert.Contains("Update available", html);
         Assert.Contains("update --host 127.0.0.1 --apps", html);
+        Assert.Contains("--restart", html);
+        Assert.Contains("console reboot can recover", html);
+    }
+
+    [Fact]
+    public async Task The_status_page_update_command_includes_non_default_console_ports()
+    {
+        await using var factory = new CompanionFactory
+        {
+            Settings = new Dictionary<string, string>
+            {
+                ["PS5:Consoles:ps5:FtpPort"] = "2122",
+                ["PS5:Consoles:ps5:PayloadManagerUrl"] = "http://127.0.0.1:9000/",
+            },
+        };
+        factory.Registry.Find("ps5")!.Store.Publish(CompanionStatus.Initial with
+        {
+            UpdatedAt = DateTimeOffset.UtcNow,
+            Updates = new ComponentUpdateStatus(
+                [new ComponentUpdate("kstuff-lite", "kstuff-lite", "v1.11", "stored file differs from v1.11")],
+                DateTimeOffset.UtcNow,
+                false,
+                null),
+        });
+        using var client = factory.CreateClient();
+
+        var html = await client.GetStringAsync("/consoles/ps5");
+
+        Assert.Contains("update --host 127.0.0.1 --payload-manager-url http://127.0.0.1:9000/ --ftp-port 2122", html);
+        Assert.DoesNotContain("update --host 127.0.0.1 --apps", html);
     }
 
     [Fact]
