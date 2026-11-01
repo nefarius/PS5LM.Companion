@@ -50,6 +50,8 @@ public static class ServiceCollectionExtensions
         services
             .AddHttpClient(ConsoleConnectorFactory.WebsrvHttpClient)
             .AddResilienceHandler("websrv", builder => builder.AddTimeout(ProbeTimeout));
+        // Pinned payload and app downloads: first hash check fills setup-cache, then Recovery reuses it.
+        services.AddHttpClient(ConsoleConnectorFactory.ArtifactClient, client => client.Timeout = TimeSpan.FromMinutes(30));
 
         services.AddSingleton<IConsoleConnectorFactory, ConsoleConnectorFactory>();
         services.AddSingleton<IConsoleProbe, ConsoleConnectionProbe>();

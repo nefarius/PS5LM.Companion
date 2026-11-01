@@ -2,6 +2,7 @@ using System.Net;
 
 using PS5LM.Companion.Core.Abstractions;
 using PS5LM.Companion.Core.Domain;
+using PS5LM.Companion.Core.Setup;
 
 using Refit;
 
@@ -40,7 +41,11 @@ public sealed class PayloadManagerClient(IPayloadManagerApi api) : IPayloadCatal
                     .Where(process => !string.IsNullOrWhiteSpace(process.Name))
                     .Select(process => process.Name!)
                     .ToHashSet(StringComparer.OrdinalIgnoreCase);
-            return new PayloadCatalogSnapshot(true, true, null, installed, recorded, running);
+            var versionText = await TryAsync(api.VersionAsync, cancellationToken);
+            var managerVersion = versionText is not null && PayloadManagerVersion.TryParse(versionText.Trim(), out _)
+                ? versionText.Trim()
+                : null;
+            return new PayloadCatalogSnapshot(true, true, null, installed, recorded, running, managerVersion);
         }
         catch (Exception ex)
         {

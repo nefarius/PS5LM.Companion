@@ -2,6 +2,7 @@ using MudBlazor;
 
 using PS5LM.Companion.Core.Domain;
 using PS5LM.Companion.Core.Transfers;
+using PS5LM.Companion.Core.Updates;
 
 namespace PS5LM.Companion.App.Components;
 
@@ -75,6 +76,14 @@ internal static class Display
         DependencyHealth.Unknown or DependencyHealth.NotRunning => Color.Warning,
         _ => Color.Default,
     };
+
+    public static ComponentUpdate? UpdateFor(CompanionStatus status, string id) =>
+        status.Updates?.Outdated.FirstOrDefault(update => update.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+
+    public static string UpdateTooltip(ComponentUpdate update) =>
+        $"Pinned {update.Pinned}. {update.Detail}.";
+
+    public static string? AppUpdateId(PS5Variant variant) => ComponentUpdates.AppId(variant);
 
     public static Color TransferColor(TransferState state) => state switch
     {

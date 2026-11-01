@@ -65,6 +65,28 @@ else
         {
             <MudAlert Severity="Severity.Warning" Class="mt-2">@voidShellWarning</MudAlert>
         }
+        @if (Outdated is { Count: > 0 } outdated)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mt-2">
+                @(outdated.Count == 1 ? "1 component is" : $"{outdated.Count} components are") older than this companion's pinned versions:
+                @string.Join(", ", outdated.Select(update => update.Name)).
+                Run <code>update --host @Target.Host@(HasAppUpdate ? " --apps" : "")</code> to bring them up to date.
+                <div class="mt-2">
+                    <MudText Typo="Typo.caption">@UpdateCheckCaption</MudText>
+                    @if (Target.Updates is not null)
+                    {
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" Class="mt-1" Disabled="@(Status.Updates?.Checking == true || _checking)"
+                                   OnClick="CheckUpdatesAsync">
+                            @(_checking || Status.Updates?.Checking == true ? "Checking..." : "Check now")
+                        </MudButton>
+                    }
+                </div>
+            </MudAlert>
+        }
+        else if (Status.Updates is { Checking: true } || _checking)
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-2">Checking pinned versions against the console.</MudAlert>
+        }
     </MudItem>
 
     <MudItem xs="12">
@@ -85,7 +107,15 @@ else
                         <MudTh></MudTh>
                     </HeaderContent>
                     <RowTemplate>
-                        <MudTd DataLabel="App">@context.Name</MudTd>
+                        <MudTd DataLabel="App">
+                            @context.Name
+                            @if (Display.AppUpdateId(context.Variant) is { } appId && Display.UpdateFor(Status, appId) is { } appUpdate)
+                            {
+                                <MudTooltip Text="@Display.UpdateTooltip(appUpdate)">
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Class="ml-2">Update available</MudChip>
+                                </MudTooltip>
+                            }
+                        </MudTd>
                         <MudTd DataLabel="Title ID">@context.TitleId</MudTd>
                         <MudTd DataLabel="Installed">@(context.Installed ? "Yes" : "No")</MudTd>
                         <MudTd DataLabel="Running">
@@ -136,7 +166,15 @@ else
                     <MudTh></MudTh>
                 </HeaderContent>
                 <RowTemplate>
-                    <MudTd DataLabel="Payload">@context.Name</MudTd>
+                    <MudTd DataLabel="Payload">
+                        @context.Name
+                        @if (Display.UpdateFor(Status, context.Id) is { } payloadUpdate)
+                        {
+                            <MudTooltip Text="@Display.UpdateTooltip(payloadUpdate)">
+                                <MudChip T="string" Size="Size.Small" Color="Color.Warning" Class="ml-2">Update available</MudChip>
+                            </MudTooltip>
+                        }
+                    </MudTd>
                     <MudTd DataLabel="Need">@Display.Requirement(context.Requirement)</MudTd>
                     <MudTd DataLabel="Installed">@Display.Presence(context.Presence)</MudTd>
                     <MudTd DataLabel="State">
@@ -246,6 +284,7 @@ else
     private bool _launching;
     private bool _launchingApp;
     private bool _restarting;
+    private bool _checking;
 
     private static string RunText(AppRunState state) => state switch
     {
@@ -267,6 +306,7 @@ else
         _launching = false;
         _launchingApp = false;
         _restarting = false;
+        _checking = false;
         return Task.CompletedTask;
     }
 
@@ -373,6 +413,36 @@ else
         Checked && Status.Dependencies.FirstOrDefault(dependency => dependency.Id == PayloadDependencies.VoidShell) is { Health: DependencyHealth.Unknown } voidShell
             ? voidShell.Message
             : null;
+
+    private IReadOnlyList<ComponentUpdate> Outdated => Status.Updates?.Outdated ?? [];
+
+    private bool HasAppUpdate => Outdated.Any(update => ComponentUpdates.AppId(PS5Variant.PS5LM) == update.Id || ComponentUpdates.AppId(PS5Variant.PS5LMPlus) == update.Id);
+
+    private string UpdateCheckCaption =>
+        Status.Updates is { Checking: true } || _checking
+            ? "Checking..."
+            : Status.Updates?.HashCheckedAt is { } at
+                ? $"Last checked {at.ToLocalTime():g}."
+                : "Waiting for the first file check.";
+
+    private async Task CheckUpdatesAsync()
+    {
+        var console = Target;
+        if (console?.Updates is null || _checking)
+        {
+            return;
+        }
+
+        _checking = true;
+        try
+        {
+            await console.Updates.CheckAsync(CancellationToken.None);
+        }
+        finally
+        {
+            _checking = false;
+        }
+    }
 
     private async Task LaunchAsync(DependencyStatus dependency)
     {

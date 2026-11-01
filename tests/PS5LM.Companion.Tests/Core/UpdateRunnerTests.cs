@@ -282,6 +282,34 @@ public sealed class UpdateRunnerTests
         Assert.Empty(harness.Events);
         Assert.Equal("old page", harness.Files.Text(IndexPath));
         Assert.Equal(OldParam, harness.Files.Text(ParamPath));
+        Assert.Equal(["kstuff-lite", "voidshell", "ps5lmplus"], report.Updates.Select(update => update.Id).ToArray());
+    }
+
+    [Fact]
+    public async Task Check_lists_a_structured_update_for_an_older_payload_manager()
+    {
+        using var harness = await PreparedAsync();
+        harness.Version = "0.6.0";
+
+        var report = await Runner(harness, check: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal(3, report.ExitCode);
+        var update = Assert.Single(report.Updates);
+        Assert.Equal("pldmgr", update.Id);
+        Assert.Equal("Payload Manager", update.Name);
+        Assert.Equal(harness.Manifest.PayloadManager.Version, update.Pinned);
+    }
+
+    [Fact]
+    public async Task Check_lists_no_updates_when_everything_is_current()
+    {
+        using var harness = await PreparedAsync();
+
+        var report = await Runner(harness, apps: true, check: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal(0, report.ExitCode);
+        Assert.Equal(0, report.Pending);
+        Assert.Empty(report.Updates);
     }
 
     [Fact]

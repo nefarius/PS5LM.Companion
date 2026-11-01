@@ -3,6 +3,7 @@ using Microsoft.Extensions.Time.Testing;
 using PS5LM.Companion.Core.Abstractions;
 using PS5LM.Companion.Core.Discovery;
 using PS5LM.Companion.Core.Domain;
+using PS5LM.Companion.Core.Setup;
 using PS5LM.Companion.Core.Status;
 using PS5LM.Companion.Tests.Support;
 
@@ -20,6 +21,47 @@ public sealed class CompanionStatusServiceTests
 
     private CompanionStatusService Create(FakeFileSystem fs) =>
         new(_options, fs, _llama, _sensors, new FakePayloadCatalog(), new FakeElfldrProbe(), _tracker, _time);
+
+    [Fact]
+    public async Task An_older_payload_manager_is_flagged_on_every_refresh()
+    {
+        var catalog = new FakePayloadCatalog
+        {
+            Snapshot = new PayloadCatalogSnapshot(true, true, null, [], new HashSet<string>(), null, "0.6.0"),
+        };
+        var service = new CompanionStatusService(
+            _options, ConsoleFixtures.PS5LMInstalled(), _llama, _sensors, catalog, new FakeElfldrProbe(), _tracker, _time,
+            manifest: SetupManifest.LoadEmbedded());
+
+        var status = await service.RefreshAsync(CancellationToken.None);
+
+        var update = Assert.Single(status.Updates!.Outdated);
+        Assert.Equal(PayloadDependencies.ManagerId, update.Id);
+        Assert.Contains("0.6.0", update.Detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task An_older_voidshell_semver_is_flagged_and_a_missing_semver_is_not()
+    {
+        var older = new FakeAppProvider(AppProviderKind.VoidShell)
+        {
+            Snapshot = new AppProviderSnapshot(AppProviderKind.VoidShell, true, "V1.1", [], true, null, null, SemVer: "1.0.0-nefarius.1"),
+        };
+        var upstream = new FakeAppProvider(AppProviderKind.VoidShell)
+        {
+            Snapshot = new AppProviderSnapshot(AppProviderKind.VoidShell, true, "V1.1", [], true, null, null),
+        };
+        var manifest = SetupManifest.LoadEmbedded();
+        var olderStatus = await new CompanionStatusService(
+            _options, ConsoleFixtures.PS5LMInstalled(), _llama, _sensors, new FakePayloadCatalog(), new FakeElfldrProbe(), _tracker, _time,
+            [older], manifest).RefreshAsync(CancellationToken.None);
+        var upstreamStatus = await new CompanionStatusService(
+            _options, ConsoleFixtures.PS5LMInstalled(), _llama, _sensors, new FakePayloadCatalog(), new FakeElfldrProbe(), _tracker, _time,
+            [upstream], manifest).RefreshAsync(CancellationToken.None);
+
+        Assert.Contains(olderStatus.Updates!.Outdated, update => update.Id == PayloadDependencies.VoidShell);
+        Assert.DoesNotContain(upstreamStatus.Updates!.Outdated, update => update.Id == PayloadDependencies.VoidShell);
+    }
 
     [Fact]
     public async Task The_firmware_comes_from_an_available_VoidShell()

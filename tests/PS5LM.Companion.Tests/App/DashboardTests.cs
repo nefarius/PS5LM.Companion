@@ -275,6 +275,11 @@ public sealed class DashboardTests
             UpdatedAt = checkedAt,
             PayloadManagerAvailable = true,
             Dependencies = [],
+            Updates = new ComponentUpdateStatus(
+                [new ComponentUpdate("voidshell", "VoidShell", "v1.1.1-nefarius.4", "1.0.0 -> v1.1.1-nefarius.4")],
+                checkedAt,
+                false,
+                null),
         });
         using var client = factory.CreateClient();
 
@@ -297,6 +302,41 @@ public sealed class DashboardTests
         Assert.Contains("Unload the model on den", html);
         Assert.Contains("Payload Manager unreachable", html);
         Assert.Contains("Required payloads missing", html);
+        Assert.Contains("Updates available", html);
+    }
+
+    [Fact]
+    public async Task The_status_page_flags_outdated_payloads_and_apps()
+    {
+        await using var factory = new CompanionFactory();
+        var checkedAt = DateTimeOffset.UtcNow;
+        factory.Registry.Find("ps5")!.Store.Publish(CompanionStatus.Initial with
+        {
+            UpdatedAt = checkedAt,
+            AppControl = new AppControlStatus(
+                true,
+                "VoidShell",
+                "V1.1",
+                "",
+                [new AppVariantStatus(PS5Variant.PS5LMPlus, "PPSA99581", "PS5LM Plus", true, AppRunState.NotRunning, true)]),
+            Updates = new ComponentUpdateStatus(
+                [
+                    new ComponentUpdate("kstuff-lite", "kstuff-lite", "v1.11", "stored file differs from v1.11"),
+                    new ComponentUpdate("ps5lmplus", "PS5LM Plus", "v0.8.3", "installed build differs from v0.8.3"),
+                ],
+                checkedAt,
+                false,
+                null),
+        });
+        using var client = factory.CreateClient();
+
+        var html = await client.GetStringAsync("/consoles/ps5");
+
+        Assert.Contains("older than this companion's pinned versions", html);
+        Assert.Contains("kstuff-lite", html);
+        Assert.Contains("PS5LM Plus", html);
+        Assert.Contains("Update available", html);
+        Assert.Contains("update --host 127.0.0.1 --apps", html);
     }
 
     [Fact]

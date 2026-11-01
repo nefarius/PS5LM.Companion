@@ -2,6 +2,7 @@ using PS5LM.Companion.Core.Abstractions;
 using PS5LM.Companion.Core.Discovery;
 using PS5LM.Companion.Core.Models;
 using PS5LM.Companion.Core.Status;
+using PS5LM.Companion.Core.Updates;
 
 namespace PS5LM.Companion.Core.Consoles;
 
@@ -20,7 +21,21 @@ public sealed class ConsoleRuntime : IDisposable
         FileSystem = connectors.FileSystem;
         Store = new CompanionStatusStore();
         LoadTracker = new LoadTracker(time);
-        Status = new CompanionStatusService(options, connectors.FileSystem, connectors.Llama, connectors.Sensors, connectors.Payloads, connectors.Elfldr, LoadTracker, time, connectors.AppControl);
+        Updates = connectors.UpdateCheck is { } check && connectors.Manifest is { } manifest
+            ? new ComponentUpdateService(manifest, options, check, Store, time)
+            : null;
+        Status = new CompanionStatusService(
+            options,
+            connectors.FileSystem,
+            connectors.Llama,
+            connectors.Sensors,
+            connectors.Payloads,
+            connectors.Elfldr,
+            LoadTracker,
+            time,
+            connectors.AppControl,
+            connectors.Manifest,
+            Updates);
         Models = new ModelCatalog(connectors.FileSystem);
         Control = new ModelControlService(connectors.FileSystem, Models, Status, Store, LoadTracker, TimeSpan.FromSeconds(options.LoadGraceSeconds));
         Dependencies = new DependencyLaunchService(options, connectors.Payloads, connectors.Launcher, connectors.Elfldr, Status, Store);
@@ -49,6 +64,9 @@ public sealed class ConsoleRuntime : IDisposable
     public LoadTracker LoadTracker { get; }
 
     public CompanionStatusService Status { get; }
+
+    /// <summary>Hash comparison against the pinned manifest, or null when the manifest could not be loaded.</summary>
+    public ComponentUpdateService? Updates { get; }
 
     public ModelCatalog Models { get; }
 

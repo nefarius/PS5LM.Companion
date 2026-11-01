@@ -37,3 +37,17 @@ Exit codes: 0 current or updated, 1 bad arguments, 2 something failed, 3 `--chec
 5. With `--apps`: each installed app whose `param.json` differs from the pinned archive is overwritten in place (`param.json`
    last), then the pinned VoidShell fork is asked to rescan. An app that is not installed is never installed. A running app
    (`running_app` from that fork) is skipped with a warning, and so is one whose running state the fork cannot report.
+
+## Dashboard indication
+
+The console status page (and the overview card) flag a component when it is older than this companion's pinned
+`setup-manifest.json`. Payload Manager (`/version`) and the pinned VoidShell fork (`SemVer`) are compared on every
+status refresh. Every other payload, extra file and the installed PS5LM / PS5LM Plus app is compared by hash, the same
+way `update --check` does: the companion downloads each pin into `setup-cache` and reads the stored file over FTP.
+
+A missing component is not reported as outdated; the existing "not installed" warnings already cover that. The first
+hash pass runs shortly after the console is reachable, then every `PS5:Consoles:{id}:UpdateCheckIntervalMinutes`
+(default 360). `0` disables the background pass; live version checks still run. The pass is deferred while the console
+is disconnected, loading a model, or receiving a transfer. **Check now** on the status page, or
+`POST /api/consoles/{id}/updates/check`, runs it immediately. `GET /api/consoles/{id}/updates` returns the same
+`updates` object that is already on `GET /api/consoles/{id}/status`.

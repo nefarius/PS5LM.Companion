@@ -63,6 +63,7 @@
     private int _pollInterval = 3;
     private int _discoveryCache = 30;
     private int _loadGrace = 600;
+    private int _updateCheckInterval = 360;
     private PS5Variant _variant;
     private ConsoleProbeReport? _report;
 
@@ -118,6 +119,7 @@
         _pollInterval = options.PollIntervalSeconds;
         _discoveryCache = options.DiscoveryCacheSeconds;
         _loadGrace = options.LoadGraceSeconds;
+        _updateCheckInterval = options.UpdateCheckIntervalMinutes;
         _variant = options.Variant;
     }
 
@@ -147,6 +149,7 @@
         PollIntervalSeconds = _pollInterval,
         DiscoveryCacheSeconds = _discoveryCache,
         LoadGraceSeconds = _loadGrace,
+        UpdateCheckIntervalMinutes = _updateCheckInterval,
     };
 
     private async Task TestAsync()

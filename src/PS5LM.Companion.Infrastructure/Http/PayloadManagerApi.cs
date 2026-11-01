@@ -7,6 +7,9 @@ namespace PS5LM.Companion.Infrastructure.Http;
 /// <summary>PS5 Payload Manager on port 8084. Launches require <c>X-PLDMGR-Request</c>; reads do not.</summary>
 public interface IPayloadManagerApi
 {
+    [Get("/version")]
+    Task<IApiResponse<string>> VersionAsync(CancellationToken cancellationToken);
+
     [Get("/list_payloads")]
     Task<IApiResponse<PayloadListResponse>> ListPayloadsAsync(CancellationToken cancellationToken);
 

@@ -1,7 +1,9 @@
 using PS5LM.Companion.Core.Abstractions;
 using PS5LM.Companion.Core.Discovery;
 using PS5LM.Companion.Core.Domain;
+using PS5LM.Companion.Core.Setup;
 using PS5LM.Companion.Core.Telemetry;
+using PS5LM.Companion.Core.Updates;
 
 namespace PS5LM.Companion.Core.Status;
 
@@ -18,7 +20,9 @@ public sealed class CompanionStatusService(
     IElfldrProbe elfldr,
     LoadTracker loadTracker,
     TimeProvider time,
-    IReadOnlyList<IAppControlProvider>? appControl = null)
+    IReadOnlyList<IAppControlProvider>? appControl = null,
+    SetupManifest? manifest = null,
+    ComponentUpdateService? updates = null)
 {
     private readonly TelemetryCalculator _telemetry = new();
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
@@ -109,8 +113,19 @@ public sealed class CompanionStatusService(
             catalog.Available ? null : catalog.Message,
             PayloadDependencies.Evaluate(catalog, ftp.Reachable, sensors is not null, elfldrListening, options.ElfldrPort, voidShellAnswering, voidShellDetail),
             apps,
-            appSnapshots?.FirstOrDefault(snapshot => snapshot is { Available: true, Kind: AppProviderKind.VoidShell, Firmware: { Length: > 0 } })?.Firmware);
+            appSnapshots?.FirstOrDefault(snapshot => snapshot is { Available: true, Kind: AppProviderKind.VoidShell, Firmware: { Length: > 0 } })?.Firmware,
+            MergeUpdates(catalog.ManagerVersion, VoidShellSemVer(appSnapshots)));
     }
+
+    private ComponentUpdateStatus MergeUpdates(string? managerVersion, string? voidShellSemVer)
+    {
+        var live = ComponentUpdates.Live(manifest, managerVersion, voidShellSemVer);
+        updates?.NoteLive(live, managerVersion, voidShellSemVer);
+        return ComponentUpdates.Merge(live, updates?.Snapshot ?? ComponentUpdateSnapshot.Empty);
+    }
+
+    private static string? VoidShellSemVer(AppProviderSnapshot[]? snapshots) =>
+        snapshots?.FirstOrDefault(snapshot => snapshot is { Available: true, Kind: AppProviderKind.VoidShell })?.SemVer;
 
     private static (bool? Answering, string? Detail) VoidShellDependency(AppProviderSnapshot[]? snapshots)
     {

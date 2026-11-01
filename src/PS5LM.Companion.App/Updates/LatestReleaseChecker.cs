@@ -2,6 +2,8 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 
+using PS5LM.Companion.Core.Updates;
+
 namespace PS5LM.Companion.App.Updates;
 
 /// <summary>

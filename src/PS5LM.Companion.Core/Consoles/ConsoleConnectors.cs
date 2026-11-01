@@ -1,5 +1,6 @@
 using PS5LM.Companion.Core.Abstractions;
 using PS5LM.Companion.Core.Discovery;
+using PS5LM.Companion.Core.Setup;
 
 namespace PS5LM.Companion.Core.Consoles;
 
@@ -12,7 +13,9 @@ public sealed record ConsoleConnectors(
     IPayloadLauncher Launcher,
     IElfldrProbe Elfldr,
     IReadOnlyList<IAppControlProvider>? AppControl = null,
-    PS5LM.Companion.Core.Setup.PayloadManagerRecovery? Recovery = null);
+    PayloadManagerRecovery? Recovery = null,
+    SetupServices? UpdateCheck = null,
+    SetupManifest? Manifest = null);
 
 /// <summary>Creates the network clients for one configured console.</summary>
 public interface IConsoleConnectorFactory

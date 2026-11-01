@@ -49,25 +49,36 @@ public sealed class ConsoleConnectorFactory(IHttpClientFactory httpClients, ILog
             appControl.Add(new WebsrvClient(Client(WebsrvHttpClient, new UriBuilder(Uri.UriSchemeHttp, options.Host, options.WebsrvPort).Uri)));
         }
 
+        var files = new FtpFileSystem(options, loggers.CreateLogger<FtpFileSystem>());
+        var manifest = TryManifest();
         return new ConsoleConnectors(
-            new FtpFileSystem(options, loggers.CreateLogger<FtpFileSystem>()),
+            files,
             new LlamaServerProbe(llama, time),
             new ExporterSensorProbe(exporter),
             manager,
             manager,
             new TcpElfldrProbe(options),
             appControl,
-            Recovery(options, voidShell));
+            Recovery(options, voidShell, manifest),
+            UpdateCheck(options, files, voidShell, manifest),
+            manifest);
     }
 
-    private PayloadManagerRecovery? Recovery(PS5Options options, VoidShellClient? voidShell)
+    private SetupManifest? TryManifest()
     {
-        SetupManifest manifest;
         try
         {
-            manifest = _manifest.Value;
+            return _manifest.Value;
         }
         catch (InvalidDataException)
+        {
+            return null;
+        }
+    }
+
+    private PayloadManagerRecovery? Recovery(PS5Options options, VoidShellClient? voidShell, SetupManifest? manifest)
+    {
+        if (manifest is null)
         {
             return null;
         }
@@ -80,6 +91,25 @@ public sealed class ConsoleConnectorFactory(IHttpClientFactory httpClients, ILog
             new ElfldrSender(options.Host, options.ElfldrPort),
             new HttpArtifactStore(httpClients.CreateClient(ArtifactClient), Path.Combine(dataDirectory, "setup-cache")),
             manifest.PayloadManager);
+    }
+
+    private SetupServices? UpdateCheck(PS5Options options, IPS5FileSystem files, VoidShellClient? voidShell, SetupManifest? manifest)
+    {
+        if (manifest is null)
+        {
+            return null;
+        }
+
+        var dataDirectory = configuration["Companion:DataDirectory"] ?? "data";
+        return new SetupServices(
+            new PayloadManagerAdminClient(Client(PayloadManagerClient, options.PayloadManagerBaseAddress())),
+            new HttpArtifactStore(httpClients.CreateClient(ArtifactClient), Path.Combine(dataDirectory, "setup-cache")),
+            files,
+            new ConsoleProbe(options.Host, httpClients.CreateClient()),
+            new ElfldrSender(options.Host, options.ElfldrPort),
+            voidShell,
+            SilentSetupUi.Instance,
+            time);
     }
 
     private HttpClient Client(string name, Uri baseAddress)

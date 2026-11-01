@@ -35,6 +35,8 @@ public sealed class ConsoleSettingsBody
 
     public int LoadGraceSeconds { get; set; } = 600;
 
+    public int UpdateCheckIntervalMinutes { get; set; } = 360;
+
     public PS5Options ToOptions() => new()
     {
         DisplayName = DisplayName,
@@ -50,6 +52,7 @@ public sealed class ConsoleSettingsBody
         PollIntervalSeconds = PollIntervalSeconds,
         DiscoveryCacheSeconds = DiscoveryCacheSeconds,
         LoadGraceSeconds = LoadGraceSeconds,
+        UpdateCheckIntervalMinutes = UpdateCheckIntervalMinutes,
     };
 
     public static ConsoleSettingsBody From(PS5Options options) => new()
@@ -67,6 +70,7 @@ public sealed class ConsoleSettingsBody
         PollIntervalSeconds = options.PollIntervalSeconds,
         DiscoveryCacheSeconds = options.DiscoveryCacheSeconds,
         LoadGraceSeconds = options.LoadGraceSeconds,
+        UpdateCheckIntervalMinutes = options.UpdateCheckIntervalMinutes,
     };
 }
 

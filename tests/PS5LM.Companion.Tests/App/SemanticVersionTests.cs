@@ -1,3 +1,5 @@
+using PS5LM.Companion.Core.Updates;
+
 namespace PS5LM.Companion.Tests.App;
 
 public sealed class SemanticVersionTests
@@ -20,8 +22,8 @@ public sealed class SemanticVersionTests
     [InlineData("v1.0.0", "1.0.1")]
     public void A_higher_precedence_version_is_newer(string older, string newer)
     {
-        Assert.True(PS5LM.Companion.App.Updates.SemanticVersion.IsNewer(newer, older));
-        Assert.False(PS5LM.Companion.App.Updates.SemanticVersion.IsNewer(older, newer));
+        Assert.True(SemanticVersion.IsNewer(newer, older));
+        Assert.False(SemanticVersion.IsNewer(older, newer));
     }
 
     [Theory]
@@ -32,8 +34,8 @@ public sealed class SemanticVersionTests
     [InlineData(" 1.0.0 ", "1.0.0")]
     public void Equal_versions_are_not_newer(string left, string right)
     {
-        Assert.False(PS5LM.Companion.App.Updates.SemanticVersion.IsNewer(left, right));
-        Assert.False(PS5LM.Companion.App.Updates.SemanticVersion.IsNewer(right, left));
+        Assert.False(SemanticVersion.IsNewer(left, right));
+        Assert.False(SemanticVersion.IsNewer(right, left));
     }
 
     [Theory]
@@ -53,8 +55,8 @@ public sealed class SemanticVersionTests
     [InlineData("not-a-version")]
     public void Unparseable_versions_are_not_newer(string? raw)
     {
-        Assert.False(PS5LM.Companion.App.Updates.SemanticVersion.IsNewer(raw, "1.0.0"));
-        Assert.False(PS5LM.Companion.App.Updates.SemanticVersion.IsNewer("1.0.0", raw));
-        Assert.False(PS5LM.Companion.App.Updates.SemanticVersion.TryParse(raw, out _));
+        Assert.False(SemanticVersion.IsNewer(raw, "1.0.0"));
+        Assert.False(SemanticVersion.IsNewer("1.0.0", raw));
+        Assert.False(SemanticVersion.TryParse(raw, out _));
     }
 }

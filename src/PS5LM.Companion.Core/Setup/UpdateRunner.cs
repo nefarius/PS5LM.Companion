@@ -24,6 +24,7 @@ public sealed class UpdateRunner
     private readonly SetupServices _services;
     private readonly SetupRunner _setup;
     private readonly List<(ManifestPayload Payload, ManagedPayload Stored)> _stillOld = [];
+    private readonly List<ComponentUpdate> _updates = [];
     private int _pending;
 
     public UpdateRunner(SetupManifest manifest, UpdateOptions options, SetupServices services)
@@ -62,7 +63,7 @@ public sealed class UpdateRunner
             Add("Update", SetupStatus.Fail, ex.Message);
         }
 
-        return new UpdateReport(_setup.Lines, _options.CheckOnly, _pending);
+        return new UpdateReport(_setup.Lines, _options.CheckOnly, _pending, _updates);
     }
 
     private async Task<bool> CheckPayloadManagerAsync(CancellationToken cancellationToken)
@@ -84,7 +85,7 @@ public sealed class UpdateRunner
 
         if (_options.CheckOnly)
         {
-            Pending("Payload Manager", $"{text} -> {_manifest.PayloadManager.Version}");
+            Pending(PayloadDependencies.ManagerId, "Payload Manager", _manifest.PayloadManager.Version, $"{text} -> {_manifest.PayloadManager.Version}");
             return true;
         }
 
@@ -137,7 +138,7 @@ public sealed class UpdateRunner
 
             if (_options.CheckOnly)
             {
-                Pending(payload.Name, $"stored file differs from {payload.Version}");
+                Pending(payload.Id, payload.Name, payload.Version, $"stored file differs from {payload.Version}");
                 continue;
             }
 
@@ -296,7 +297,7 @@ public sealed class UpdateRunner
 
             if (_options.CheckOnly)
             {
-                Pending(label, $"{file.Target} differs from the pin");
+                Pending(payload.Id, payload.Name, payload.Version, $"{file.Target} differs from the pin");
                 continue;
             }
 
@@ -357,7 +358,7 @@ public sealed class UpdateRunner
 
             if (_options.CheckOnly)
             {
-                Pending(app.Name, $"installed build differs from {app.Version}");
+                Pending(app.Id, app.Name, app.Version, $"installed build differs from {app.Version}");
                 continue;
             }
 
@@ -438,10 +439,24 @@ public sealed class UpdateRunner
         return SHA256.HashData(stream).AsSpan().SequenceEqual(SHA256.HashData(remote));
     }
 
-    private void Pending(string component, string detail)
+    private void Pending(string id, string name, string pinned, string detail)
     {
         _pending++;
-        Add(component, SetupStatus.Warn, "Update available: " + detail + ".");
+        var existing = _updates.FindIndex(item => item.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+        if (existing >= 0)
+        {
+            var current = _updates[existing];
+            if (!current.Detail.Contains(detail, StringComparison.Ordinal))
+            {
+                _updates[existing] = current with { Detail = current.Detail + "; " + detail };
+            }
+        }
+        else
+        {
+            _updates.Add(new ComponentUpdate(id, name, pinned, detail));
+        }
+
+        Add(name, SetupStatus.Warn, "Update available: " + detail + ".");
     }
 
     private void Add(string component, SetupStatus status, string message) => _setup.Add(component, status, message);
