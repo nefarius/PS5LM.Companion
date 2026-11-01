@@ -1,11 +1,11 @@
 using System.Globalization;
 
-namespace PS5LM.Companion.App.Updates;
+namespace PS5LM.Companion.Core.Updates;
 
 /// <summary>
 /// Compares Semantic Version numbers, including prerelease precedence. Build metadata is ignored.
 /// </summary>
-internal readonly record struct SemanticVersion
+public readonly record struct SemanticVersion
 {
     private readonly string[] _prerelease;
 

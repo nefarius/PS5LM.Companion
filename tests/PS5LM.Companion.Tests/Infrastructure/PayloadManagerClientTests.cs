@@ -31,12 +31,14 @@ public sealed class PayloadManagerClientTests
             "/list_payloads" => Json(list),
             "/history_list" => Json("""{"history":["/data/pldmgr/payloads/repo/kstuff-lite@abcdef12/kstuff-lite_v1.11.elf"]}"""),
             "/autoload_status" => Json("""{"list":"repo/elfldr@1234abcd, repo/kstuff-lite@abcdef12","outcomes":"sf","state":"done"}"""),
+            "/version" => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("0.6.3\n") },
             _ => new HttpResponseMessage(HttpStatusCode.NotFound),
         });
 
         var snapshot = await Client(handler).ReadAsync(CancellationToken.None);
 
         Assert.True(snapshot.Available);
+        Assert.Equal("0.6.3", snapshot.ManagerVersion);
         Assert.Equal(["kstuff-lite", "elfldr"], snapshot.Installed.Select(payload => payload.Id).ToArray());
         Assert.Equal(["repo/elfldr@1234abcd", "repo/kstuff-lite@abcdef12"], snapshot.LaunchRecordedSlots.OrderBy(slot => slot, StringComparer.Ordinal).ToArray());
     }

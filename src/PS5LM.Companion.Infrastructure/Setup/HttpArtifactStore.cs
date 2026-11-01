@@ -6,7 +6,8 @@ namespace PS5LM.Companion.Infrastructure.Setup;
 
 /// <summary>
 /// Downloads artifacts into a cache directory. A cached file is reused only when its SHA-256 still matches;
-/// a download that does not match the pinned hash is deleted and reported.
+/// a download that does not match the pinned hash is deleted and reported. Each fetch writes a unique
+/// temporary file so concurrent callers cannot share a <c>.part</c> path.
 /// </summary>
 public sealed class HttpArtifactStore(HttpClient http, string cacheDirectory) : IArtifactStore
 {
@@ -20,24 +21,33 @@ public sealed class HttpArtifactStore(HttpClient http, string cacheDirectory) : 
             return path;
         }
 
-        var part = path + ".part";
-        using (var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken))
+        var part = Path.Combine(cacheDirectory, $"{sha256[..12]}-{name}.{Guid.NewGuid():N}.part");
+        try
         {
-            response.EnsureSuccessStatusCode();
-            await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
-            await using var target = File.Create(part);
-            await source.CopyToAsync(target, cancellationToken);
-        }
+            using (var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken))
+            {
+                response.EnsureSuccessStatusCode();
+                await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
+                await using var target = File.Create(part);
+                await source.CopyToAsync(target, cancellationToken);
+            }
 
-        var actual = await HashAsync(part, cancellationToken);
-        if (actual != sha256)
+            var actual = await HashAsync(part, cancellationToken);
+            if (actual != sha256)
+            {
+                throw new InvalidDataException($"{url} has SHA-256 {actual}, expected {sha256}.");
+            }
+
+            File.Move(part, path, overwrite: true);
+            return path;
+        }
+        finally
         {
-            File.Delete(part);
-            throw new InvalidDataException($"{url} has SHA-256 {actual}, expected {sha256}.");
+            if (File.Exists(part))
+            {
+                File.Delete(part);
+            }
         }
-
-        File.Move(part, path, overwrite: true);
-        return path;
     }
 
     private static async Task<string> HashAsync(string path, CancellationToken cancellationToken)

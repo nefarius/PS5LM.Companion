@@ -128,4 +128,40 @@ public sealed class EndpointTests
         Assert.Contains("hand-off", body.GetProperty("message").GetString(), StringComparison.Ordinal);
         Assert.Equal(["repo/etahen@abc"], factory.PayloadLauncher.Launched);
     }
+
+    [Fact]
+    public async Task Updates_are_part_of_the_status_and_have_their_own_route()
+    {
+        await using var factory = new CompanionFactory();
+        factory.Registry.Find("ps5")!.Store.Publish(CompanionStatus.Initial with
+        {
+            UpdatedAt = DateTimeOffset.UtcNow,
+            Updates = new ComponentUpdateStatus(
+                [new ComponentUpdate("pldmgr", "Payload Manager", "0.6.3", "0.6.0 -> 0.6.3")],
+                DateTimeOffset.UtcNow,
+                false,
+                null),
+        });
+        using var client = factory.CreateClient();
+
+        var status = (await client.GetFromJsonAsync<JsonElement>(StatusUrl)).GetProperty("status");
+        var updates = await client.GetFromJsonAsync<JsonElement>($"{Base}/updates");
+
+        Assert.Equal("pldmgr", status.GetProperty("updates").GetProperty("outdated")[0].GetProperty("id").GetString());
+        Assert.Equal("pldmgr", updates.GetProperty("outdated")[0].GetProperty("id").GetString());
+        Assert.Equal("Payload Manager", updates.GetProperty("outdated")[0].GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task A_check_without_a_manifest_is_unavailable()
+    {
+        await using var factory = new CompanionFactory();
+        using var client = factory.CreateClient();
+
+        using var response = await client.PostAsync($"{Base}/updates/check", null);
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Contains("manifest", body.GetProperty("message").GetString(), StringComparison.OrdinalIgnoreCase);
+    }
 }

@@ -89,6 +89,7 @@ public sealed class DashboardTests
     public async Task The_status_page_shows_the_console_firmware()
     {
         await using var factory = new CompanionFactory();
+        await factory.WaitForFirstCheckAsync();
         var console = factory.Registry.Find("ps5")!;
         console.Store.Publish(CompanionStatus.Initial with { FirmwareVersion = "10.01", UpdatedAt = DateTimeOffset.UtcNow });
         using var client = factory.CreateClient();
@@ -237,17 +238,7 @@ public sealed class DashboardTests
     public async Task The_overview_summarises_every_console()
     {
         await using var factory = new CompanionFactory { ConsoleIds = ["den", "room"] };
-        // The first refresh publishes on its own. Wait for it, then replace both, so the next poll (minutes away) cannot overwrite the page.
-        var deadline = DateTime.UtcNow.AddSeconds(5);
-        while (factory.Registry.All.Any(console => console.Store.Current.UpdatedAt == DateTimeOffset.MinValue))
-        {
-            if (DateTime.UtcNow > deadline)
-            {
-                throw new TimeoutException("The status monitor did not publish a first check.");
-            }
-
-            await Task.Delay(20);
-        }
+        await factory.WaitForFirstCheckAsync();
 
         var checkedAt = DateTimeOffset.UtcNow;
         factory.Registry.Find("den")!.Store.Publish(CompanionStatus.Initial with
@@ -275,6 +266,11 @@ public sealed class DashboardTests
             UpdatedAt = checkedAt,
             PayloadManagerAvailable = true,
             Dependencies = [],
+            Updates = new ComponentUpdateStatus(
+                [new ComponentUpdate("voidshell", "VoidShell", "v1.1.1-nefarius.4", "1.0.0 -> v1.1.1-nefarius.4")],
+                checkedAt,
+                false,
+                null),
         });
         using var client = factory.CreateClient();
 
@@ -297,6 +293,93 @@ public sealed class DashboardTests
         Assert.Contains("Unload the model on den", html);
         Assert.Contains("Payload Manager unreachable", html);
         Assert.Contains("Required payloads missing", html);
+        Assert.Contains("Updates available", html);
+    }
+
+    [Fact]
+    public async Task The_status_page_flags_outdated_payloads_and_apps()
+    {
+        await using var factory = new CompanionFactory();
+        await factory.WaitForFirstCheckAsync();
+        var checkedAt = DateTimeOffset.UtcNow;
+        factory.Registry.Find("ps5")!.Store.Publish(CompanionStatus.Initial with
+        {
+            UpdatedAt = checkedAt,
+            AppControl = new AppControlStatus(
+                true,
+                "VoidShell",
+                "V1.1",
+                "",
+                [new AppVariantStatus(PS5Variant.PS5LMPlus, "PPSA99581", "PS5LM Plus", true, AppRunState.NotRunning, true)]),
+            Updates = new ComponentUpdateStatus(
+                [
+                    new ComponentUpdate("kstuff-lite", "kstuff-lite", "v1.11", "stored file differs from v1.11"),
+                    new ComponentUpdate("ps5lmplus", "PS5LM Plus", "v0.8.3", "installed build differs from v0.8.3"),
+                ],
+                checkedAt,
+                false,
+                null),
+        });
+        using var client = factory.CreateClient();
+
+        var html = await client.GetStringAsync("/consoles/ps5");
+
+        Assert.Contains("differ from this companion's pinned versions", html);
+        Assert.Contains("kstuff-lite", html);
+        Assert.Contains("PS5LM Plus", html);
+        Assert.Contains("Update available", html);
+        Assert.Contains("update --host 127.0.0.1 --apps", html);
+        Assert.Contains("POSIX or cmd.exe", html);
+        Assert.Contains("--restart", html);
+        Assert.Contains("console reboot can recover", html);
+    }
+
+    [Fact]
+    public async Task The_status_page_update_command_includes_non_default_console_ports()
+    {
+        await using var factory = new CompanionFactory
+        {
+            Settings = new Dictionary<string, string>
+            {
+                ["PS5:Consoles:ps5:FtpPort"] = "2122",
+                ["PS5:Consoles:ps5:PayloadManagerUrl"] = "http://127.0.0.1:9000/",
+            },
+        };
+        await factory.WaitForFirstCheckAsync();
+        factory.Registry.Find("ps5")!.Store.Publish(CompanionStatus.Initial with
+        {
+            UpdatedAt = DateTimeOffset.UtcNow,
+            Updates = new ComponentUpdateStatus(
+                [new ComponentUpdate("kstuff-lite", "kstuff-lite", "v1.11", "stored file differs from v1.11")],
+                DateTimeOffset.UtcNow,
+                false,
+                null),
+        });
+        using var client = factory.CreateClient();
+
+        var html = await client.GetStringAsync("/consoles/ps5");
+
+        Assert.Contains("update --host 127.0.0.1 --payload-manager-url http://127.0.0.1:9000/ --ftp-port 2122", html);
+        Assert.DoesNotContain("update --host 127.0.0.1 --apps", html);
+    }
+
+    [Fact]
+    public async Task The_status_page_shows_a_failed_file_check_beside_the_last_checked_time()
+    {
+        await using var factory = new CompanionFactory();
+        await factory.WaitForFirstCheckAsync();
+        var checkedAt = new DateTimeOffset(2026, 11, 1, 12, 0, 0, TimeSpan.Zero);
+        factory.Registry.Find("ps5")!.Store.Publish(CompanionStatus.Initial with
+        {
+            UpdatedAt = checkedAt,
+            Updates = new ComponentUpdateStatus([], checkedAt, false, "ftpsrv is not answering on port 2121."),
+        });
+        using var client = factory.CreateClient();
+
+        var html = await client.GetStringAsync("/consoles/ps5");
+
+        Assert.Contains("The last file check failed: ftpsrv is not answering on port 2121.", html);
+        Assert.DoesNotContain("differ from this companion's pinned versions", html);
     }
 
     [Fact]

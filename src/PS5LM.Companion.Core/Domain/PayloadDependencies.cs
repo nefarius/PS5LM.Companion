@@ -13,13 +13,15 @@ public sealed record InstalledPayload(string Id, string Slot, string Name);
 /// <param name="Installed">Installed slots. Empty when the manager did not answer.</param>
 /// <param name="LaunchRecordedSlots">Slots whose file Payload Manager successfully handed to elfldr.</param>
 /// <param name="RunningProcesses">Process names from Payload Manager's process list, or null when the list could not be read.</param>
+/// <param name="ManagerVersion">The text from <c>/version</c>, when it parsed as a Payload Manager version.</param>
 public sealed record PayloadCatalogSnapshot(
     bool Available,
     bool Checked,
     string? Message,
     IReadOnlyList<InstalledPayload> Installed,
     IReadOnlySet<string> LaunchRecordedSlots,
-    IReadOnlySet<string>? RunningProcesses = null)
+    IReadOnlySet<string>? RunningProcesses = null,
+    string? ManagerVersion = null)
 {
     private static readonly IReadOnlySet<string> NoSlots = new HashSet<string>();
 

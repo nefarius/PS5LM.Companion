@@ -107,7 +107,8 @@ public sealed record CompanionStatus(
     string? PayloadManagerMessage,
     IReadOnlyList<DependencyStatus> Dependencies,
     AppControlStatus? AppControl = null,
-    string? FirmwareVersion = null)
+    string? FirmwareVersion = null,
+    ComponentUpdateStatus? Updates = null)
 {
     public static CompanionStatus Initial { get; } = new(
         CompanionLifecycle.Disconnected,
@@ -133,6 +134,27 @@ public sealed record CompanionStatus(
 /// <param name="Installed">Whether an available service lists the title as installed.</param>
 /// <param name="State">Whether the title is the foreground app, when a service can tell.</param>
 /// <param name="CanLaunch">Whether a Launch action can be offered.</param>
+/// <summary>One pinned component that is older on the console than this companion's setup manifest.</summary>
+/// <param name="Id">Stable id: <c>pldmgr</c>, a manifest payload id, or a manifest app id.</param>
+/// <param name="Name">Text shown to the user.</param>
+/// <param name="Pinned">The version this companion pins.</param>
+/// <param name="Detail">Why the companion concluded it differs from the pin.</param>
+public sealed record ComponentUpdate(string Id, string Name, string Pinned, string Detail);
+
+/// <summary>Live version checks plus the last comparison of stored files with the pinned manifest.</summary>
+/// <param name="Outdated">Components that differ from the pin, one row per id.</param>
+/// <param name="HashCheckedAt">When stored files were last compared by hash, or null before the first pass.</param>
+/// <param name="Checking">A hash comparison is running now.</param>
+/// <param name="Failure">Why the last hash comparison could not finish, when it failed.</param>
+public sealed record ComponentUpdateStatus(
+    IReadOnlyList<ComponentUpdate> Outdated,
+    DateTimeOffset? HashCheckedAt,
+    bool Checking,
+    string? Failure)
+{
+    public static ComponentUpdateStatus Empty { get; } = new([], null, false, null);
+}
+
 public sealed record AppVariantStatus(PS5Variant Variant, string TitleId, string Name, bool Installed, AppRunState State, bool CanLaunch);
 
 /// <summary>What the required VoidShell fork, or the websrv legacy fallback, reported about the PS5LM apps.</summary>

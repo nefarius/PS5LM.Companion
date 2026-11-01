@@ -102,6 +102,11 @@
             parts.Add("VoidShell is not answering");
         }
 
+        if (status.Updates is { Outdated.Count: > 0 })
+        {
+            parts.Add("Updates available");
+        }
+
         return parts.Count == 0 ? null : string.Join(". ", parts) + ".";
     }
 

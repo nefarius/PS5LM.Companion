@@ -1,3 +1,5 @@
+using PS5LM.Companion.Core.Domain;
+
 namespace PS5LM.Companion.Core.Setup;
 
 /// <summary>What the person asked <c>update</c> to do.</summary>
@@ -45,7 +47,7 @@ public sealed record UpdateOptions(string Host, string? AppId = null)
 /// <summary>
 /// The outcome of an update run. Exit code 2 when anything failed, 3 when <c>--check</c> found updates, else 0.
 /// </summary>
-public sealed record UpdateReport(IReadOnlyList<ReportLine> Lines, bool CheckOnly, int Pending)
+public sealed record UpdateReport(IReadOnlyList<ReportLine> Lines, bool CheckOnly, int Pending, IReadOnlyList<ComponentUpdate> Updates)
 {
     public int ExitCode =>
         Lines.Any(line => line.Status == SetupStatus.Fail) ? 2

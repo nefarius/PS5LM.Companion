@@ -62,6 +62,13 @@ public sealed class PS5Options
     [Range(1, 3600)]
     public int LoadGraceSeconds { get; set; } = 600;
 
+    /// <summary>
+    /// Minutes between hash comparisons of stored payloads with the pinned manifest. 0 disables the background
+    /// pass; live version checks for Payload Manager and VoidShell still run on every status refresh.
+    /// </summary>
+    [Range(0, 10080)]
+    public int UpdateCheckIntervalMinutes { get; set; } = 360;
+
     /// <summary>The Payload Manager base address, derived from <see cref="Host"/> when <see cref="PayloadManagerUrl"/> is empty.</summary>
     public Uri PayloadManagerBaseAddress()
     {

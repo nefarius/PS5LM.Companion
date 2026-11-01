@@ -84,6 +84,7 @@ public sealed class Program
             // is always spent in full. Nothing here needs more than a few seconds to stop.
             builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = TimeSpan.FromSeconds(3));
             builder.Services.AddHostedService<StatusMonitor>();
+            builder.Services.AddHostedService<ComponentUpdateMonitor>();
             builder.Services.AddHostedService<TransferWorker>();
 
             var app = builder.Build();
