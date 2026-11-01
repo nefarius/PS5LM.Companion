@@ -27,4 +27,22 @@ public sealed class DisplayTests
             "update --host 10.0.0.8 --payload-manager-url http://10.0.0.8:9000/ --ftp-port 2122",
             Display.UpdateCommand("10.0.0.8", options, apps: false));
     }
+
+    [Fact]
+    public void Update_command_quotes_host_and_url_that_need_a_shell()
+    {
+        var options = new PS5Options
+        {
+            Host = "ps5.local",
+            PayloadManagerUrl = "http://127.0.0.1:9000/api;a/",
+        };
+
+        Assert.Equal(
+            "update --host ps5.local --payload-manager-url 'http://127.0.0.1:9000/api;a/'",
+            Display.UpdateCommand("ps5.local", options, apps: false));
+        Assert.Equal(
+            "update --host 'ps5 host'",
+            Display.UpdateCommand("ps5 host", new PS5Options { Host = "ps5 host" }, apps: false));
+        Assert.Equal("'it'\\''s'", Display.QuoteForShell("it's"));
+    }
 }

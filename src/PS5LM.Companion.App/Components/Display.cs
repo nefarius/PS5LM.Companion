@@ -94,7 +94,7 @@ internal static class Display
     /// </summary>
     public static string UpdateCommand(string host, PS5Options options, bool apps)
     {
-        var command = $"update --host {host}";
+        var command = "update --host " + QuoteForShell(host);
         if (apps)
         {
             command += " --apps";
@@ -102,7 +102,7 @@ internal static class Display
 
         if (!string.IsNullOrWhiteSpace(options.PayloadManagerUrl))
         {
-            command += " --payload-manager-url " + options.PayloadManagerUrl.Trim();
+            command += " --payload-manager-url " + QuoteForShell(options.PayloadManagerUrl.Trim());
         }
 
         if (options.FtpPort != 2121)
@@ -111,6 +111,33 @@ internal static class Display
         }
 
         return command;
+    }
+
+    /// <summary>
+    /// Quotes a value for a POSIX shell so copy-paste keeps it as one argument. Typical hosts and
+    /// <c>http://host:port/</c> URLs stay unquoted.
+    /// </summary>
+    internal static string QuoteForShell(string value)
+    {
+        if (value.Length > 0 && IsSafeUnquoted(value))
+        {
+            return value;
+        }
+
+        return "'" + value.Replace("'", "'\\''", StringComparison.Ordinal) + "'";
+    }
+
+    private static bool IsSafeUnquoted(string value)
+    {
+        foreach (var c in value)
+        {
+            if (!char.IsAsciiLetterOrDigit(c) && c is not ('.' or ':' or '/' or '-' or '_'))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     public static Color TransferColor(TransferState state) => state switch

@@ -49,6 +49,23 @@ internal sealed class CompanionFactory : WebApplicationFactory<PS5LM.Companion.A
 
     public IConsoleRegistry Registry => Services.GetRequiredService<IConsoleRegistry>();
 
+    /// <summary>
+    /// The first refresh publishes on its own. Wait for it before replacing fixtures so the next poll cannot overwrite them.
+    /// </summary>
+    public async Task WaitForFirstCheckAsync()
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (Registry.All.Any(console => console.Store.Current.UpdatedAt == DateTimeOffset.MinValue))
+        {
+            if (DateTime.UtcNow > deadline)
+            {
+                throw new TimeoutException("The status monitor did not publish a first check.");
+            }
+
+            await Task.Delay(20);
+        }
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         foreach (var id in ConsoleIds)

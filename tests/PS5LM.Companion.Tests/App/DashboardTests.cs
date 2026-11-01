@@ -89,6 +89,7 @@ public sealed class DashboardTests
     public async Task The_status_page_shows_the_console_firmware()
     {
         await using var factory = new CompanionFactory();
+        await factory.WaitForFirstCheckAsync();
         var console = factory.Registry.Find("ps5")!;
         console.Store.Publish(CompanionStatus.Initial with { FirmwareVersion = "10.01", UpdatedAt = DateTimeOffset.UtcNow });
         using var client = factory.CreateClient();
@@ -237,17 +238,7 @@ public sealed class DashboardTests
     public async Task The_overview_summarises_every_console()
     {
         await using var factory = new CompanionFactory { ConsoleIds = ["den", "room"] };
-        // The first refresh publishes on its own. Wait for it, then replace both, so the next poll (minutes away) cannot overwrite the page.
-        var deadline = DateTime.UtcNow.AddSeconds(5);
-        while (factory.Registry.All.Any(console => console.Store.Current.UpdatedAt == DateTimeOffset.MinValue))
-        {
-            if (DateTime.UtcNow > deadline)
-            {
-                throw new TimeoutException("The status monitor did not publish a first check.");
-            }
-
-            await Task.Delay(20);
-        }
+        await factory.WaitForFirstCheckAsync();
 
         var checkedAt = DateTimeOffset.UtcNow;
         factory.Registry.Find("den")!.Store.Publish(CompanionStatus.Initial with
@@ -309,6 +300,7 @@ public sealed class DashboardTests
     public async Task The_status_page_flags_outdated_payloads_and_apps()
     {
         await using var factory = new CompanionFactory();
+        await factory.WaitForFirstCheckAsync();
         var checkedAt = DateTimeOffset.UtcNow;
         factory.Registry.Find("ps5")!.Store.Publish(CompanionStatus.Initial with
         {
@@ -352,6 +344,7 @@ public sealed class DashboardTests
                 ["PS5:Consoles:ps5:PayloadManagerUrl"] = "http://127.0.0.1:9000/",
             },
         };
+        await factory.WaitForFirstCheckAsync();
         factory.Registry.Find("ps5")!.Store.Publish(CompanionStatus.Initial with
         {
             UpdatedAt = DateTimeOffset.UtcNow,
@@ -373,6 +366,7 @@ public sealed class DashboardTests
     public async Task The_status_page_shows_a_failed_file_check_beside_the_last_checked_time()
     {
         await using var factory = new CompanionFactory();
+        await factory.WaitForFirstCheckAsync();
         var checkedAt = new DateTimeOffset(2026, 11, 1, 12, 0, 0, TimeSpan.Zero);
         factory.Registry.Find("ps5")!.Store.Publish(CompanionStatus.Initial with
         {
