@@ -40,10 +40,13 @@ Exit codes: 0 current or updated, 1 bad arguments, 2 something failed, 3 `--chec
 
 ## Dashboard indication
 
-The console status page (and the overview card) flag a component when it is older than this companion's pinned
+The console status page (and the overview card) flag a component when it is out of sync with this companion's pinned
 `setup-manifest.json`. Payload Manager (`/version`) and the pinned VoidShell fork (`SemVer`) are compared on every
-status refresh. Every other payload, extra file and the installed PS5LM / PS5LM Plus app is compared by hash, the same
-way `update --check` does: the companion downloads each pin into `setup-cache` and reads the stored file over FTP.
+status refresh and flagged only when they are older than the pin. A current VoidShell version can still show as out of
+sync when its extra file (`index.html`) differs from the pin. Every other payload and extra file is compared by
+SHA-256 with the pinned download, the same way `update --check` does: the companion downloads each pin into
+`setup-cache` and reads the stored file over FTP. The installed PS5LM / PS5LM Plus app is not hashed as a whole; its
+`sce_sys/param.json` is compared with the `param.json` inside the pinned archive.
 
 A missing component is not reported as outdated; the existing "not installed" warnings already cover that. The first
 hash pass runs shortly after the console is reachable, then every `PS5:Consoles:{id}:UpdateCheckIntervalMinutes`

@@ -51,6 +51,7 @@ public sealed class ConsoleConnectorFactory(IHttpClientFactory httpClients, ILog
 
         var files = new FtpFileSystem(options, loggers.CreateLogger<FtpFileSystem>());
         var manifest = TryManifest();
+        var artifacts = manifest is null ? null : Artifacts();
         return new ConsoleConnectors(
             files,
             new LlamaServerProbe(llama, time),
@@ -59,8 +60,8 @@ public sealed class ConsoleConnectorFactory(IHttpClientFactory httpClients, ILog
             manager,
             new TcpElfldrProbe(options),
             appControl,
-            Recovery(options, voidShell, manifest),
-            UpdateCheck(options, files, voidShell, manifest),
+            Recovery(options, voidShell, manifest, artifacts),
+            UpdateCheck(options, files, voidShell, manifest, artifacts),
             manifest);
     }
 
@@ -76,34 +77,38 @@ public sealed class ConsoleConnectorFactory(IHttpClientFactory httpClients, ILog
         }
     }
 
-    private PayloadManagerRecovery? Recovery(PS5Options options, VoidShellClient? voidShell, SetupManifest? manifest)
+    private IArtifactStore Artifacts()
     {
-        if (manifest is null)
+        var dataDirectory = configuration["Companion:DataDirectory"] ?? "data";
+        return new HttpArtifactStore(httpClients.CreateClient(ArtifactClient), Path.Combine(dataDirectory, "setup-cache"));
+    }
+
+    private PayloadManagerRecovery? Recovery(PS5Options options, VoidShellClient? voidShell, SetupManifest? manifest, IArtifactStore? artifacts)
+    {
+        if (manifest is null || artifacts is null)
         {
             return null;
         }
 
-        var dataDirectory = configuration["Companion:DataDirectory"] ?? "data";
         return new PayloadManagerRecovery(
             new PayloadManagerAdminClient(Client(PayloadManagerClient, options.PayloadManagerBaseAddress())),
             new ConsoleProbe(options.Host, httpClients.CreateClient()),
             voidShell,
             new ElfldrSender(options.Host, options.ElfldrPort),
-            new HttpArtifactStore(httpClients.CreateClient(ArtifactClient), Path.Combine(dataDirectory, "setup-cache")),
+            artifacts,
             manifest.PayloadManager);
     }
 
-    private SetupServices? UpdateCheck(PS5Options options, IPS5FileSystem files, VoidShellClient? voidShell, SetupManifest? manifest)
+    private SetupServices? UpdateCheck(PS5Options options, IPS5FileSystem files, VoidShellClient? voidShell, SetupManifest? manifest, IArtifactStore? artifacts)
     {
-        if (manifest is null)
+        if (manifest is null || artifacts is null)
         {
             return null;
         }
 
-        var dataDirectory = configuration["Companion:DataDirectory"] ?? "data";
         return new SetupServices(
             new PayloadManagerAdminClient(Client(PayloadManagerClient, options.PayloadManagerBaseAddress())),
-            new HttpArtifactStore(httpClients.CreateClient(ArtifactClient), Path.Combine(dataDirectory, "setup-cache")),
+            artifacts,
             files,
             new ConsoleProbe(options.Host, httpClients.CreateClient()),
             new ElfldrSender(options.Host, options.ElfldrPort),

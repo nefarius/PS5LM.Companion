@@ -46,6 +46,24 @@ public sealed class ComponentUpdateServiceTests
     }
 
     [Fact]
+    public async Task A_failed_check_keeps_the_previous_updates()
+    {
+        using var harness = await PreparedAsync();
+        harness.Files.AddFile(harness.Stored.Single(stored => stored.FileName == "kstuff-lite.elf").Path!, "old build");
+        var store = new CompanionStatusStore();
+        store.Publish(CompanionStatus.Initial with { UpdatedAt = DateTimeOffset.UtcNow });
+        var service = Service(harness, store);
+        await service.CheckAsync(CancellationToken.None);
+        harness.Ports.Remove(8084);
+
+        var status = await service.CheckAsync(CancellationToken.None);
+
+        Assert.Equal(["kstuff-lite"], status.Outdated.Select(item => item.Id).ToArray());
+        Assert.NotNull(status.Failure);
+        Assert.False(status.Checking);
+    }
+
+    [Fact]
     public async Task A_current_console_clears_previous_updates()
     {
         using var harness = await PreparedAsync();

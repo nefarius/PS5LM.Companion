@@ -138,11 +138,11 @@ public sealed record CompanionStatus(
 /// <param name="Id">Stable id: <c>pldmgr</c>, a manifest payload id, or a manifest app id.</param>
 /// <param name="Name">Text shown to the user.</param>
 /// <param name="Pinned">The version this companion pins.</param>
-/// <param name="Detail">Why the companion concluded it is out of date.</param>
+/// <param name="Detail">Why the companion concluded it differs from the pin.</param>
 public sealed record ComponentUpdate(string Id, string Name, string Pinned, string Detail);
 
-/// <summary>Live version checks plus the last hash comparison of stored files with the pinned manifest.</summary>
-/// <param name="Outdated">Components that are older than the pin, one row per id.</param>
+/// <summary>Live version checks plus the last comparison of stored files with the pinned manifest.</summary>
+/// <param name="Outdated">Components that differ from the pin, one row per id.</param>
 /// <param name="HashCheckedAt">When stored files were last compared by hash, or null before the first pass.</param>
 /// <param name="Checking">A hash comparison is running now.</param>
 /// <param name="Failure">Why the last hash comparison could not finish, when it failed.</param>

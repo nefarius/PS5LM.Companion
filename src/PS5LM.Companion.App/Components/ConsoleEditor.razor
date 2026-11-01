@@ -33,7 +33,8 @@
                     <MudSelectItem T="PS5Variant" Value="PS5Variant.PS5LM">PS5LM</MudSelectItem>
                     <MudSelectItem T="PS5Variant" Value="PS5Variant.PS5LMPlus">PS5LM Plus</MudSelectItem>
                 </MudSelect>
-                <MudNumericField @bind-Value="_pollInterval" Label="Status poll (seconds)" Min="1" Max="300" />
+                <MudNumericField @bind-Value="_pollInterval" Label="Status poll (seconds)" Min="1" Max="300" Class="mb-2" />
+                <MudNumericField @bind-Value="_updateCheckInterval" Label="Update checks (minutes)" Min="0" Max="10080" />
             </MudExpansionPanel>
         </MudExpansionPanels>
         <ProbeChecks Report="@_report" />

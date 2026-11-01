@@ -56,11 +56,20 @@ public static class ComponentUpdates
         return result;
     }
 
-    /// <summary>A component is outdated when either source says so. Duplicate ids keep the first name and pin and join details.</summary>
-    public static ComponentUpdateStatus Merge(IReadOnlyList<ComponentUpdate> live, ComponentUpdateSnapshot snapshot)
+    /// <summary>
+    /// A component is outdated when either source says so. Duplicate ids keep the first name and pin and join details.
+    /// When a live Payload Manager version was read, that result replaces any hash-check row for it.
+    /// </summary>
+    public static ComponentUpdateStatus Merge(
+        IReadOnlyList<ComponentUpdate> live,
+        ComponentUpdateSnapshot snapshot,
+        bool liveManagerVersion = false)
     {
+        var hash = liveManagerVersion
+            ? snapshot.Updates.Where(item => !item.Id.Equals(PayloadDependencies.ManagerId, StringComparison.OrdinalIgnoreCase))
+            : snapshot.Updates;
         var byId = new Dictionary<string, ComponentUpdate>(StringComparer.OrdinalIgnoreCase);
-        foreach (var item in live.Concat(snapshot.Updates))
+        foreach (var item in live.Concat(hash))
         {
             if (byId.TryGetValue(item.Id, out var existing))
             {

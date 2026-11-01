@@ -68,20 +68,26 @@ else
         @if (Outdated is { Count: > 0 } outdated)
         {
             <MudAlert Severity="Severity.Warning" Class="mt-2">
-                @(outdated.Count == 1 ? "1 component is" : $"{outdated.Count} components are") older than this companion's pinned versions:
+                @(outdated.Count == 1 ? "1 component differs" : $"{outdated.Count} components differ") from this companion's pinned versions:
                 @string.Join(", ", outdated.Select(update => update.Name)).
-                Run <code>update --host @Target.Host@(HasAppUpdate ? " --apps" : "")</code> to bring them up to date.
-                <div class="mt-2">
-                    <MudText Typo="Typo.caption">@UpdateCheckCaption</MudText>
-                    @if (Target.Updates is not null)
-                    {
-                        <MudButton Variant="Variant.Outlined" Size="Size.Small" Class="mt-1" Disabled="@(Status.Updates?.Checking == true || _checking)"
-                                   OnClick="CheckUpdatesAsync">
-                            @(_checking || Status.Updates?.Checking == true ? "Checking..." : "Check now")
-                        </MudButton>
-                    }
-                </div>
+                Run <code>update --host @Target.Host@(HasAppUpdate ? " --apps" : "")</code> to bring them in line.
             </MudAlert>
+        }
+        @if (Status.Updates?.Failure is { Length: > 0 } failure)
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-2">
+                The last file check failed: @failure
+            </MudAlert>
+        }
+        @if (Target.Updates is not null)
+        {
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mt-2">
+                <MudText Typo="Typo.caption">@UpdateCheckCaption</MudText>
+                <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@(Status.Updates?.Checking == true || _checking)"
+                           OnClick="CheckUpdatesAsync">
+                    @(_checking || Status.Updates?.Checking == true ? "Checking..." : "Check now")
+                </MudButton>
+            </MudStack>
         }
         else if (Status.Updates is { Checking: true } || _checking)
         {

@@ -56,4 +56,41 @@ public sealed class ComponentUpdatesTests
         Assert.Contains(merged.Outdated, update => update.Id == "kstuff-lite");
         Assert.Equal(DateTimeOffset.UnixEpoch, merged.HashCheckedAt);
     }
+
+    [Fact]
+    public void A_live_payload_manager_version_replaces_a_stale_hash_row()
+    {
+        var hash = new ComponentUpdateSnapshot(
+            [
+                new ComponentUpdate(PayloadDependencies.ManagerId, "Payload Manager", "0.6.3", "0.6.0 -> 0.6.3"),
+                new ComponentUpdate("kstuff-lite", "kstuff-lite", "v1.11", "stored file differs from v1.11"),
+            ],
+            DateTimeOffset.UnixEpoch,
+            false,
+            null);
+
+        var current = ComponentUpdates.Merge([], hash, liveManagerVersion: true);
+        var older = ComponentUpdates.Merge(
+            [new ComponentUpdate(PayloadDependencies.ManagerId, "Payload Manager", "0.6.3", "0.6.1 -> 0.6.3")],
+            hash,
+            liveManagerVersion: true);
+
+        Assert.DoesNotContain(current.Outdated, update => update.Id == PayloadDependencies.ManagerId);
+        Assert.Contains(current.Outdated, update => update.Id == "kstuff-lite");
+        Assert.Equal("0.6.1 -> 0.6.3", Assert.Single(older.Outdated, update => update.Id == PayloadDependencies.ManagerId).Detail);
+    }
+
+    [Fact]
+    public void A_missing_live_payload_manager_version_keeps_the_hash_row()
+    {
+        var hash = new ComponentUpdateSnapshot(
+            [new ComponentUpdate(PayloadDependencies.ManagerId, "Payload Manager", "0.6.3", "0.6.0 -> 0.6.3")],
+            DateTimeOffset.UnixEpoch,
+            false,
+            null);
+
+        var merged = ComponentUpdates.Merge([], hash);
+
+        Assert.Equal(PayloadDependencies.ManagerId, Assert.Single(merged.Outdated).Id);
+    }
 }

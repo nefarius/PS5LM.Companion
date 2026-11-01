@@ -1,4 +1,3 @@
-using PS5LM.Companion.Core.Abstractions;
 using PS5LM.Companion.Core.Discovery;
 using PS5LM.Companion.Core.Domain;
 using PS5LM.Companion.Core.Setup;
@@ -87,7 +86,7 @@ public sealed class ComponentUpdateService
     {
         lock (_stateGate)
         {
-            return ComponentUpdates.Merge(_live, _snapshot);
+            return ComponentUpdates.Merge(_live, _snapshot, PayloadManagerVersion.TryParse(_managerVersion, out _));
         }
     }
 
@@ -132,7 +131,9 @@ public sealed class ComponentUpdateService
             };
             var report = await new UpdateRunner(_manifest, options, _services).RunAsync(cancellationToken);
             var failure = report.Lines.FirstOrDefault(line => line.Status == SetupStatus.Fail)?.Message;
-            SetSnapshot(_ => new ComponentUpdateSnapshot(report.Updates, _time.GetUtcNow(), false, failure));
+            SetSnapshot(current => failure is null
+                ? new ComponentUpdateSnapshot(report.Updates, _time.GetUtcNow(), false, null)
+                : current with { Checking = false, Failure = failure, CheckedAt = _time.GetUtcNow() });
             return Publish();
         }
         catch (OperationCanceledException)
@@ -141,7 +142,7 @@ public sealed class ComponentUpdateService
             Publish();
             throw;
         }
-        catch (Exception ex) when (ex is IOException or HttpRequestException or ConsoleUnreachableException or InvalidDataException)
+        catch (Exception ex)
         {
             SetSnapshot(current => current with { Checking = false, Failure = ex.Message, CheckedAt = _time.GetUtcNow() });
             return Publish();

@@ -332,11 +332,29 @@ public sealed class DashboardTests
 
         var html = await client.GetStringAsync("/consoles/ps5");
 
-        Assert.Contains("older than this companion's pinned versions", html);
+        Assert.Contains("differ from this companion's pinned versions", html);
         Assert.Contains("kstuff-lite", html);
         Assert.Contains("PS5LM Plus", html);
         Assert.Contains("Update available", html);
         Assert.Contains("update --host 127.0.0.1 --apps", html);
+    }
+
+    [Fact]
+    public async Task The_status_page_shows_a_failed_file_check_beside_the_last_checked_time()
+    {
+        await using var factory = new CompanionFactory();
+        var checkedAt = new DateTimeOffset(2026, 11, 1, 12, 0, 0, TimeSpan.Zero);
+        factory.Registry.Find("ps5")!.Store.Publish(CompanionStatus.Initial with
+        {
+            UpdatedAt = checkedAt,
+            Updates = new ComponentUpdateStatus([], checkedAt, false, "ftpsrv is not answering on port 2121."),
+        });
+        using var client = factory.CreateClient();
+
+        var html = await client.GetStringAsync("/consoles/ps5");
+
+        Assert.Contains("The last file check failed: ftpsrv is not answering on port 2121.", html);
+        Assert.DoesNotContain("differ from this companion's pinned versions", html);
     }
 
     [Fact]

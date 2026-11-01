@@ -121,7 +121,10 @@ public sealed class CompanionStatusService(
     {
         var live = ComponentUpdates.Live(manifest, managerVersion, voidShellSemVer);
         updates?.NoteLive(live, managerVersion, voidShellSemVer);
-        return ComponentUpdates.Merge(live, updates?.Snapshot ?? ComponentUpdateSnapshot.Empty);
+        return ComponentUpdates.Merge(
+            live,
+            updates?.Snapshot ?? ComponentUpdateSnapshot.Empty,
+            PayloadManagerVersion.TryParse(managerVersion, out _));
     }
 
     private static string? VoidShellSemVer(AppProviderSnapshot[]? snapshots) =>
