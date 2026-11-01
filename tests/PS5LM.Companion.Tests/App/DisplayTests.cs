@@ -41,8 +41,33 @@ public sealed class DisplayTests
             "update --host ps5.local --payload-manager-url 'http://127.0.0.1:9000/api;a/'",
             Display.UpdateCommand("ps5.local", options, apps: false));
         Assert.Equal(
+            "update --host ps5.local --payload-manager-url \"http://127.0.0.1:9000/api;a/\"",
+            Display.TryUpdateCommand("ps5.local", options, apps: false, Display.CommandShell.Cmd));
+        Assert.Equal(
             "update --host 'ps5 host'",
             Display.UpdateCommand("ps5 host", new PS5Options { Host = "ps5 host" }, apps: false));
+        Assert.Equal(
+            "update --host \"ps5 host\"",
+            Display.TryUpdateCommand("ps5 host", new PS5Options { Host = "ps5 host" }, apps: false, Display.CommandShell.Cmd));
         Assert.Equal("'it'\\''s'", Display.QuoteForShell("it's"));
+        Assert.Equal("\"it\"\"s\"", Display.QuoteForShell("it\"s", Display.CommandShell.Cmd));
+        Assert.Null(Display.QuoteForShell("http://127.0.0.1/%2F", Display.CommandShell.Cmd));
+        Assert.Null(Display.QuoteForShell("a\nb"));
+        Assert.Equal(
+            [
+                new Display.ShellCommand(
+                    "update --host ps5.local --payload-manager-url 'http://127.0.0.1:9000/api;a/'",
+                    "POSIX"),
+                new Display.ShellCommand(
+                    "update --host ps5.local --payload-manager-url \"http://127.0.0.1:9000/api;a/\"",
+                    "cmd.exe"),
+            ],
+            Display.UpdateCommandLines("ps5.local", options, apps: false));
+        Assert.Equal(
+            [new Display.ShellCommand("update --host 10.0.0.8", "POSIX or cmd.exe")],
+            Display.UpdateCommandLines("10.0.0.8", new PS5Options { Host = "10.0.0.8" }, apps: false));
+        Assert.Equal(
+            "Run <code>update --host 10.0.0.8</code> (POSIX or cmd.exe) to bring them in line.",
+            Display.UpdateCommandGuidance("10.0.0.8", new PS5Options { Host = "10.0.0.8" }, apps: false).Value);
     }
 }

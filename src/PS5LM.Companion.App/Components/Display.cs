@@ -1,4 +1,7 @@
 using System.Globalization;
+using System.Text.Encodings.Web;
+
+using Microsoft.AspNetCore.Components;
 
 using MudBlazor;
 
@@ -88,13 +91,78 @@ internal static class Display
 
     public static string? AppUpdateId(PS5Variant variant) => ComponentUpdates.AppId(variant);
 
+    internal enum CommandShell
+    {
+        Posix,
+        Cmd,
+    }
+
+    internal readonly record struct ShellCommand(string Command, string Label);
+
     /// <summary>
     /// The <c>update</c> command for this console. Payload Manager URL and FTP port are added only when they
     /// differ from the CLI defaults (empty URL, port 2121).
     /// </summary>
-    public static string UpdateCommand(string host, PS5Options options, bool apps)
+    public static string UpdateCommand(string host, PS5Options options, bool apps) =>
+        TryUpdateCommand(host, options, apps, CommandShell.Posix)
+        ?? throw new ArgumentException("The host or Payload Manager URL cannot be represented in a POSIX shell.");
+
+    /// <summary>
+    /// Labeled <c>update</c> commands for each shell that can represent the host and Payload Manager URL.
+    /// Identical POSIX and cmd.exe lines are shown once.
+    /// </summary>
+    internal static IReadOnlyList<ShellCommand> UpdateCommandLines(string host, PS5Options options, bool apps)
     {
-        var command = "update --host " + QuoteForShell(host);
+        var posix = TryUpdateCommand(host, options, apps, CommandShell.Posix);
+        var cmd = TryUpdateCommand(host, options, apps, CommandShell.Cmd);
+        if (posix is not null && posix == cmd)
+        {
+            return [new ShellCommand(posix, "POSIX or cmd.exe")];
+        }
+
+        var lines = new List<ShellCommand>(2);
+        if (posix is not null)
+        {
+            lines.Add(new ShellCommand(posix, "POSIX"));
+        }
+
+        if (cmd is not null)
+        {
+            lines.Add(new ShellCommand(cmd, "cmd.exe"));
+        }
+
+        return lines;
+    }
+
+    /// <summary>Dashboard sentence that labels each copy-paste <c>update</c> command with its target shell.</summary>
+    internal static MarkupString UpdateCommandGuidance(string host, PS5Options options, bool apps)
+    {
+        var lines = UpdateCommandLines(host, options, apps);
+        if (lines.Count == 0)
+        {
+            return new MarkupString();
+        }
+
+        var first = Code(lines[0].Command) + " (" + Html(lines[0].Label) + ")";
+        var html = lines.Count == 1
+            ? "Run " + first + " to bring them in line."
+            : "Run " + first + " or " + Code(lines[1].Command) + " (" + Html(lines[1].Label) + ") to bring them in line.";
+        return new MarkupString(html);
+    }
+
+    private static string Code(string value) => "<code>" + Html(value) + "</code>";
+
+    private static string Html(string value) => HtmlEncoder.Default.Encode(value);
+
+    internal static string? TryUpdateCommand(string host, PS5Options options, bool apps, CommandShell shell)
+    {
+        var quotedHost = QuoteForShell(host, shell);
+        if (quotedHost is null)
+        {
+            return null;
+        }
+
+        var command = "update --host " + quotedHost;
         if (apps)
         {
             command += " --apps";
@@ -102,7 +170,13 @@ internal static class Display
 
         if (!string.IsNullOrWhiteSpace(options.PayloadManagerUrl))
         {
-            command += " --payload-manager-url " + QuoteForShell(options.PayloadManagerUrl.Trim());
+            var quotedUrl = QuoteForShell(options.PayloadManagerUrl.Trim(), shell);
+            if (quotedUrl is null)
+            {
+                return null;
+            }
+
+            command += " --payload-manager-url " + quotedUrl;
         }
 
         if (options.FtpPort != 2121)
@@ -114,17 +188,29 @@ internal static class Display
     }
 
     /// <summary>
-    /// Quotes a value for a POSIX shell so copy-paste keeps it as one argument. Typical hosts and
-    /// <c>http://host:port/</c> URLs stay unquoted.
+    /// Quotes a value so copy-paste keeps it as one argument. Typical hosts and
+    /// <c>http://host:port/</c> URLs stay unquoted. Returns <see langword="null"/> when the selected
+    /// shell cannot represent the value (NUL, CR/LF, or <c>%</c> on cmd.exe).
     /// </summary>
-    internal static string QuoteForShell(string value)
+    internal static string? QuoteForShell(string value, CommandShell shell = CommandShell.Posix)
     {
+        if (value.AsSpan().IndexOfAny('\0', '\r', '\n') >= 0)
+        {
+            return null;
+        }
+
         if (value.Length > 0 && IsSafeUnquoted(value))
         {
             return value;
         }
 
-        return "'" + value.Replace("'", "'\\''", StringComparison.Ordinal) + "'";
+        return shell switch
+        {
+            CommandShell.Posix => "'" + value.Replace("'", "'\\''", StringComparison.Ordinal) + "'",
+            CommandShell.Cmd when value.Contains('%') => null,
+            CommandShell.Cmd => "\"" + value.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"",
+            _ => null,
+        };
     }
 
     private static bool IsSafeUnquoted(string value)

@@ -329,6 +329,7 @@ public sealed class DashboardTests
         Assert.Contains("PS5LM Plus", html);
         Assert.Contains("Update available", html);
         Assert.Contains("update --host 127.0.0.1 --apps", html);
+        Assert.Contains("POSIX or cmd.exe", html);
         Assert.Contains("--restart", html);
         Assert.Contains("console reboot can recover", html);
     }

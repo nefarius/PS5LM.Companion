@@ -70,7 +70,7 @@ else
             <MudAlert Severity="Severity.Warning" Class="mt-2">
                 @(outdated.Count == 1 ? "1 component differs" : $"{outdated.Count} components differ") from this companion's pinned versions:
                 @string.Join(", ", outdated.Select(update => update.Name)).
-                Run <code>@Display.UpdateCommand(Target.Host, Target.Options, HasAppUpdate)</code> to bring them in line.
+                @Display.UpdateCommandGuidance(Target.Host, Target.Options, HasAppUpdate)
                 Add <code>--restart</code> to replace a differing stored VoidShell build by stopping and relaunching it.
                 Stored files that already match the pin are skipped; a console reboot can recover a still-running older copy.
             </MudAlert>
