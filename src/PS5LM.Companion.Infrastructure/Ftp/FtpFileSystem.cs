@@ -73,7 +73,7 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
                 }
 
                 using var stream = new MemoryStream();
-                return await client.DownloadStream(stream, path, token: cancellationToken)
+                return await DownloadAsync(client, stream, path, cancellationToken)
                     ? Encoding.UTF8.GetString(stream.ToArray())
                     : null;
             },
@@ -89,9 +89,22 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
                 }
 
                 using var stream = new MemoryStream();
-                return await client.DownloadStream(stream, path, token: cancellationToken) ? stream.ToArray() : null;
+                return await DownloadAsync(client, stream, path, cancellationToken) ? stream.ToArray() : null;
             },
             cancellationToken);
+
+    // FluentFTP reports a refused RETR (ftpsrv answers 550 Invalid argument at times) as false, not as an exception, so
+    // without this line a failed read leaves no trace.
+    private async Task<bool> DownloadAsync(AsyncFtpClient client, Stream destination, string path, CancellationToken cancellationToken)
+    {
+        if (await client.DownloadStream(destination, path, token: cancellationToken))
+        {
+            return true;
+        }
+
+        logger.LogWarning("FTP download of {Path} from {Host}:{Port} failed without an error from the console", path, options.Host, options.FtpPort);
+        return false;
+    }
 
     public Task WriteTextAsync(string path, string content, CancellationToken cancellationToken) =>
         RunAsync(

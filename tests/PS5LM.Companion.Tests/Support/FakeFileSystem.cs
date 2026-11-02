@@ -23,6 +23,9 @@ internal sealed class FakeFileSystem : IPS5FileSystem
     /// <summary>Runs after a directory move succeeds, to simulate the console reacting to the new folder.</summary>
     public Action? AfterMove { get; set; }
 
+    /// <summary>Paths that are listed but whose download fails, as an ftpsrv that answers RETR with 550.</summary>
+    public HashSet<string> Unreadable { get; } = new(StringComparer.Ordinal);
+
     public IReadOnlyDictionary<string, byte[]> Files => _files;
 
     public FakeFileSystem AddDirectory(string path)
@@ -68,10 +71,10 @@ internal sealed class FakeFileSystem : IPS5FileSystem
         });
 
     public Task<string?> ReadTextAsync(string path, int maxBytes, CancellationToken cancellationToken) =>
-        Run(() => _files.TryGetValue(path, out var bytes) && bytes.Length <= maxBytes ? Encoding.UTF8.GetString(bytes) : null);
+        Run(() => !Unreadable.Contains(path) && _files.TryGetValue(path, out var bytes) && bytes.Length <= maxBytes ? Encoding.UTF8.GetString(bytes) : null);
 
     public Task<byte[]?> ReadBytesAsync(string path, int maxBytes, CancellationToken cancellationToken) =>
-        Run(() => _files.TryGetValue(path, out var bytes) && bytes.Length <= maxBytes ? bytes : null);
+        Run(() => !Unreadable.Contains(path) && _files.TryGetValue(path, out var bytes) && bytes.Length <= maxBytes ? bytes : null);
 
     public Task WriteTextAsync(string path, string content, CancellationToken cancellationToken) =>
         Run(() =>
