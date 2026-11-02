@@ -185,6 +185,8 @@ public sealed class CompanionStatusServiceTests
 
         public Task<IReadOnlyList<RemoteEntry>> ListAsync(string path, CancellationToken cancellationToken) => HangAsync<IReadOnlyList<RemoteEntry>>(cancellationToken);
 
+        public Task<IReadOnlyList<RemoteEntry>?> TryListAsync(string path, CancellationToken cancellationToken) => HangAsync<IReadOnlyList<RemoteEntry>?>(cancellationToken);
+
         public Task<string?> ReadTextAsync(string path, int maxBytes, CancellationToken cancellationToken) => HangAsync<string?>(cancellationToken);
 
         public Task<byte[]?> ReadBytesAsync(string path, int maxBytes, CancellationToken cancellationToken) => HangAsync<byte[]?>(cancellationToken);

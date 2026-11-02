@@ -23,6 +23,12 @@ internal sealed class FakeFileSystem : IPS5FileSystem
     /// <summary>Runs after a directory move succeeds, to simulate the console reacting to the new folder.</summary>
     public Action? AfterMove { get; set; }
 
+    /// <summary>Paths that are listed but whose download fails, as an ftpsrv that answers RETR with 550.</summary>
+    public HashSet<string> Unreadable { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>Folders whose listing fails with 550: they and their files look absent, as in FtpFileSystem.</summary>
+    public HashSet<string> Unlistable { get; } = new(StringComparer.Ordinal);
+
     public IReadOnlyDictionary<string, byte[]> Files => _files;
 
     public FakeFileSystem AddDirectory(string path)
@@ -49,15 +55,29 @@ internal sealed class FakeFileSystem : IPS5FileSystem
     public string? Text(string path) => _files.TryGetValue(path, out var bytes) ? Encoding.UTF8.GetString(bytes) : null;
 
     public Task<bool> DirectoryExistsAsync(string path, CancellationToken cancellationToken) =>
-        Run(() => _directories.Contains(path.TrimEnd('/')));
+        Run(() =>
+        {
+            // Like FtpFileSystem: a folder exists when its parent's listing shows it, whether or not it can be listed itself.
+            var trimmed = path.TrimEnd('/');
+            return trimmed.Length == 0 || (!Unlistable.Contains(trimmed[..trimmed.LastIndexOf('/')]) && _directories.Contains(trimmed));
+        });
 
     public Task<bool> FileExistsAsync(string path, CancellationToken cancellationToken) =>
-        Run(() => _files.ContainsKey(path));
+        Run(() => _files.ContainsKey(path) && !Unlistable.Contains(path[..path.LastIndexOf('/')]));
 
-    public Task<IReadOnlyList<RemoteEntry>> ListAsync(string path, CancellationToken cancellationToken) =>
-        Run<IReadOnlyList<RemoteEntry>>(() =>
+    public async Task<IReadOnlyList<RemoteEntry>> ListAsync(string path, CancellationToken cancellationToken) =>
+        await TryListAsync(path, cancellationToken) ?? [];
+
+    public Task<IReadOnlyList<RemoteEntry>?> TryListAsync(string path, CancellationToken cancellationToken) =>
+        Run<IReadOnlyList<RemoteEntry>?>(() =>
         {
-            var prefix = path.TrimEnd('/') + "/";
+            var trimmed = path.TrimEnd('/');
+            if (Unlistable.Contains(trimmed) || (trimmed.Length > 0 && !_directories.Contains(trimmed)))
+            {
+                return null;
+            }
+
+            var prefix = trimmed + "/";
             var files = _files
                 .Where(f => f.Key.StartsWith(prefix, StringComparison.Ordinal) && !f.Key[prefix.Length..].Contains('/'))
                 .Select(f => new RemoteEntry(f.Key[prefix.Length..], f.Key, false, f.Value.Length, null));
@@ -68,10 +88,10 @@ internal sealed class FakeFileSystem : IPS5FileSystem
         });
 
     public Task<string?> ReadTextAsync(string path, int maxBytes, CancellationToken cancellationToken) =>
-        Run(() => _files.TryGetValue(path, out var bytes) && bytes.Length <= maxBytes ? Encoding.UTF8.GetString(bytes) : null);
+        Run(() => !Unreadable.Contains(path) && _files.TryGetValue(path, out var bytes) && bytes.Length <= maxBytes ? Encoding.UTF8.GetString(bytes) : null);
 
     public Task<byte[]?> ReadBytesAsync(string path, int maxBytes, CancellationToken cancellationToken) =>
-        Run(() => _files.TryGetValue(path, out var bytes) && bytes.Length <= maxBytes ? bytes : null);
+        Run(() => !Unreadable.Contains(path) && _files.TryGetValue(path, out var bytes) && bytes.Length <= maxBytes ? bytes : null);
 
     public Task WriteTextAsync(string path, string content, CancellationToken cancellationToken) =>
         Run(() =>

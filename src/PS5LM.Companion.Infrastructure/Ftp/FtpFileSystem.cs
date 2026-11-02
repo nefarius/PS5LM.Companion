@@ -36,17 +36,15 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
     public Task<bool> FileExistsAsync(string path, CancellationToken cancellationToken) =>
         RunAsync(async client => await FindAsync(client, path, cancellationToken) is { Type: FtpObjectType.File }, cancellationToken);
 
-    public Task<IReadOnlyList<RemoteEntry>> ListAsync(string path, CancellationToken cancellationToken) =>
-        RunAsync<IReadOnlyList<RemoteEntry>>(
+    public async Task<IReadOnlyList<RemoteEntry>> ListAsync(string path, CancellationToken cancellationToken) =>
+        await TryListAsync(path, cancellationToken) ?? [];
+
+    public Task<IReadOnlyList<RemoteEntry>?> TryListAsync(string path, CancellationToken cancellationToken) =>
+        RunAsync<IReadOnlyList<RemoteEntry>?>(
             async client =>
             {
                 var items = await TryListAsync(client, path, cancellationToken);
-                if (items is null)
-                {
-                    return [];
-                }
-
-                return items
+                return items?
                     .Where(i => i.Name is not "." and not ".." && i.Type is FtpObjectType.File or FtpObjectType.Directory)
                     .Select(i => new RemoteEntry(
                         i.Name,
@@ -73,7 +71,7 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
                 }
 
                 using var stream = new MemoryStream();
-                return await client.DownloadStream(stream, path, token: cancellationToken)
+                return await DownloadAsync(client, stream, path, cancellationToken)
                     ? Encoding.UTF8.GetString(stream.ToArray())
                     : null;
             },
@@ -89,9 +87,22 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
                 }
 
                 using var stream = new MemoryStream();
-                return await client.DownloadStream(stream, path, token: cancellationToken) ? stream.ToArray() : null;
+                return await DownloadAsync(client, stream, path, cancellationToken) ? stream.ToArray() : null;
             },
             cancellationToken);
+
+    // FluentFTP reports a refused RETR (ftpsrv answers 550 Invalid argument at times) as false, not as an exception, so
+    // without this line a failed read leaves no trace.
+    private async Task<bool> DownloadAsync(AsyncFtpClient client, Stream destination, string path, CancellationToken cancellationToken)
+    {
+        if (await client.DownloadStream(destination, path, token: cancellationToken))
+        {
+            return true;
+        }
+
+        logger.LogWarning("FTP download of {Path} from {Host}:{Port} failed without an error from the console", path, options.Host, options.FtpPort);
+        return false;
+    }
 
     public Task WriteTextAsync(string path, string content, CancellationToken cancellationToken) =>
         RunAsync(

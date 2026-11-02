@@ -136,6 +136,14 @@ public sealed class UpdateRunner
                 continue;
             }
 
+            // A null read is only "absent" when the folder listing succeeds and does not show the file; a failed
+            // listing also looks like absence and must not lead to an upload that overwrites without comparing.
+            if (remote is null && !await IsConfirmedAbsentAsync(stored.Path, cancellationToken))
+            {
+                Add(payload.Name, SetupStatus.Warn, UnreadableMessage(stored.Path));
+                continue;
+            }
+
             if (_options.CheckOnly)
             {
                 Pending(payload.Id, payload.Name, payload.Version, $"stored file differs from {payload.Version}");
@@ -289,6 +297,12 @@ public sealed class UpdateRunner
                 continue;
             }
 
+            if (remote is null && await IsUnreadableAsync(file.Target, cancellationToken))
+            {
+                Add(label, SetupStatus.Warn, UnreadableMessage(file.Target));
+                continue;
+            }
+
             if (remote is null)
             {
                 Add(label, SetupStatus.Warn, $"{file.Target} is missing. Run setup to place it.");
@@ -349,8 +363,15 @@ public sealed class UpdateRunner
                 continue;
             }
 
-            // An installed param.json over the read limit comes back as null: it cannot be equal, so it is stale.
-            if (installed is not null && installed.Trim() == wanted.Trim())
+            if (installed is null)
+            {
+                // It exists (checked above) but came back empty-handed: the read failed or it is over the limit.
+                // That says nothing about its version, so it is neither current nor stale.
+                Add(app.Name, SetupStatus.Warn, UnreadableMessage($"/data/homebrew/{app.TitleId}/{ParamSuffix}"));
+                continue;
+            }
+
+            if (installed.Trim() == wanted.Trim())
             {
                 Add(app.Name, SetupStatus.Ok, $"{app.Version} is current.");
                 continue;
@@ -432,6 +453,24 @@ public sealed class UpdateRunner
         && path.Length > PayloadStorageRoot.Length
         && !path.EndsWith('/')
         && path[PayloadStorageRoot.Length..].Split('/').All(segment => segment.Length > 0 && segment is not "." and not "..");
+
+    /// <summary>
+    /// A null read is ambiguous: the file may be missing, over the limit, or the download may have failed (ftpsrv
+    /// answers some transfers with 550 and the client sees no exception). Only a file that is listed but not
+    /// readable says nothing about the stored version.
+    /// </summary>
+    private async Task<bool> IsUnreadableAsync(string path, CancellationToken cancellationToken) =>
+        await _services.Files.FileExistsAsync(path, cancellationToken);
+
+    // TryListAsync is null when the listing fails; an empty successful listing means the stored file is gone.
+    private async Task<bool> IsConfirmedAbsentAsync(string path, CancellationToken cancellationToken)
+    {
+        var entries = await _services.Files.TryListAsync(path[..path.LastIndexOf('/')], cancellationToken);
+        return entries is not null && entries.All(entry => entry.Name != path[(path.LastIndexOf('/') + 1)..]);
+    }
+
+    private static string UnreadableMessage(string path) =>
+        $"Could not read {path} over FTP, so it was not compared or replaced. Run update again.";
 
     private static bool HashEquals(byte[] remote, string localPath)
     {

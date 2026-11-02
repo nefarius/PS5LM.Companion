@@ -301,6 +301,93 @@ public sealed class UpdateRunnerTests
     }
 
     [Fact]
+    public async Task Check_does_not_flag_payloads_whose_stored_file_cannot_be_downloaded()
+    {
+        using var harness = await PreparedAsync();
+        foreach (var stored in harness.Stored)
+        {
+            harness.Files.Unreadable.Add(stored.Path!);
+        }
+
+        var report = await Runner(harness, check: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal(0, report.Pending);
+        Assert.Empty(report.Updates);
+        Assert.Empty(harness.Events);
+        Assert.Contains(report.Lines, l => l.Component == "kstuff-lite" && l.Status == SetupStatus.Warn && l.Message.StartsWith("Could not read", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Update_does_not_overwrite_a_stored_file_it_could_not_read()
+    {
+        using var harness = await PreparedAsync();
+        var path = harness.Stored.Single(s => s.FileName == "kstuff-lite.elf").Path!;
+        harness.Files.Unreadable.Add(path);
+
+        await Runner(harness).RunAsync(CancellationToken.None);
+
+        Assert.Empty(harness.Events);
+    }
+
+    [Fact]
+    public async Task Update_leaves_a_payload_alone_when_its_folder_cannot_be_listed()
+    {
+        using var harness = await PreparedAsync();
+        var path = harness.Stored.Single(s => s.FileName == "kstuff-lite.elf").Path!;
+        harness.Files.Unreadable.Add(path);
+        harness.Files.Unlistable.Add(path[..path.LastIndexOf('/')]);
+
+        var report = await Runner(harness).RunAsync(CancellationToken.None);
+
+        Assert.Empty(harness.Events);
+        Assert.Contains(report.Lines, l => l.Component == "kstuff-lite" && l.Status == SetupStatus.Warn);
+    }
+
+    [Fact]
+    public async Task Check_flags_a_payload_whose_folder_lists_successfully_but_is_empty()
+    {
+        using var harness = await PreparedAsync();
+        var stored = harness.Stored.Single(s => s.FileName == "kstuff-lite.elf");
+        const string folder = "/data/pldmgr/payloads/local/kstuff-lite";
+        harness.Stored[harness.Stored.IndexOf(stored)] = stored with { Path = folder + "/kstuff-lite.elf" };
+        harness.Files.AddDirectory(folder);
+        var listing = await harness.Files.TryListAsync(folder, CancellationToken.None);
+        Assert.NotNull(listing);
+        Assert.Empty(listing);
+
+        var report = await Runner(harness, check: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal("kstuff-lite", Assert.Single(report.Updates).Id);
+        Assert.Empty(harness.Events);
+    }
+
+    [Fact]
+    public async Task Check_does_not_flag_an_unreadable_extra_file_or_param_json()
+    {
+        using var harness = await PreparedAsync();
+        harness.Files.AddFile(ParamPath, OldParam);
+        harness.Files.Unreadable.Add(IndexPath);
+        harness.Files.Unreadable.Add(ParamPath);
+
+        var report = await Runner(harness, apps: true, check: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal(0, report.Pending);
+        Assert.Empty(report.Updates);
+        Assert.Contains(report.Lines, l => l.Component == "PS5LM Plus" && l.Status == SetupStatus.Warn);
+    }
+
+    [Fact]
+    public async Task Check_still_flags_a_stored_file_that_is_readable_but_different()
+    {
+        using var harness = await PreparedAsync();
+        Stale(harness, "kstuff-lite.elf");
+
+        var report = await Runner(harness, check: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal("kstuff-lite", Assert.Single(report.Updates).Id);
+    }
+
+    [Fact]
     public async Task Check_lists_no_updates_when_everything_is_current()
     {
         using var harness = await PreparedAsync();

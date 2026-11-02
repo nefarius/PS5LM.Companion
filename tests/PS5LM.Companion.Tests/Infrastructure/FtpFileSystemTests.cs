@@ -55,6 +55,10 @@ public sealed class FtpFileSystemTests : IAsyncLifetime
         Assert.Equal(1234, file.Size);
         Assert.Contains(entries, e => e is { IsDirectory: true, Name: "sub" });
         Assert.Empty(missing);
+        Assert.Null(await _fs.TryListAsync("/data/PS5LM/nothing", CancellationToken.None));
+        var empty = await _fs.TryListAsync("/data/PS5LM/models/sub", CancellationToken.None);
+        Assert.NotNull(empty);
+        Assert.Empty(empty);
     }
 
     [Fact]
