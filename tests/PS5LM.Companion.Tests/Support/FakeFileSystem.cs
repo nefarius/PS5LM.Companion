@@ -65,15 +65,19 @@ internal sealed class FakeFileSystem : IPS5FileSystem
     public Task<bool> FileExistsAsync(string path, CancellationToken cancellationToken) =>
         Run(() => _files.ContainsKey(path) && !Unlistable.Contains(path[..path.LastIndexOf('/')]));
 
-    public Task<IReadOnlyList<RemoteEntry>> ListAsync(string path, CancellationToken cancellationToken) =>
-        Run<IReadOnlyList<RemoteEntry>>(() =>
+    public async Task<IReadOnlyList<RemoteEntry>> ListAsync(string path, CancellationToken cancellationToken) =>
+        await TryListAsync(path, cancellationToken) ?? [];
+
+    public Task<IReadOnlyList<RemoteEntry>?> TryListAsync(string path, CancellationToken cancellationToken) =>
+        Run<IReadOnlyList<RemoteEntry>?>(() =>
         {
-            if (Unlistable.Contains(path.TrimEnd('/')))
+            var trimmed = path.TrimEnd('/');
+            if (Unlistable.Contains(trimmed) || (trimmed.Length > 0 && !_directories.Contains(trimmed)))
             {
-                return [];
+                return null;
             }
 
-            var prefix = path.TrimEnd('/') + "/";
+            var prefix = trimmed + "/";
             var files = _files
                 .Where(f => f.Key.StartsWith(prefix, StringComparison.Ordinal) && !f.Key[prefix.Length..].Contains('/'))
                 .Select(f => new RemoteEntry(f.Key[prefix.Length..], f.Key, false, f.Value.Length, null));

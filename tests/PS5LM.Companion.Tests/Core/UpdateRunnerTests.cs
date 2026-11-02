@@ -344,6 +344,19 @@ public sealed class UpdateRunnerTests
     }
 
     [Fact]
+    public async Task Check_flags_a_payload_whose_folder_lists_successfully_but_is_empty()
+    {
+        using var harness = await PreparedAsync();
+        var path = harness.Stored.Single(s => s.FileName == "kstuff-lite.elf").Path!;
+        await harness.Files.DeleteAsync(path, CancellationToken.None);
+
+        var report = await Runner(harness, check: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal("kstuff-lite", Assert.Single(report.Updates).Id);
+        Assert.Empty(harness.Events);
+    }
+
+    [Fact]
     public async Task Check_does_not_flag_an_unreadable_extra_file_or_param_json()
     {
         using var harness = await PreparedAsync();

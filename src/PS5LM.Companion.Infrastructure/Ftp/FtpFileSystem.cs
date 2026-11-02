@@ -36,17 +36,15 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
     public Task<bool> FileExistsAsync(string path, CancellationToken cancellationToken) =>
         RunAsync(async client => await FindAsync(client, path, cancellationToken) is { Type: FtpObjectType.File }, cancellationToken);
 
-    public Task<IReadOnlyList<RemoteEntry>> ListAsync(string path, CancellationToken cancellationToken) =>
-        RunAsync<IReadOnlyList<RemoteEntry>>(
+    public async Task<IReadOnlyList<RemoteEntry>> ListAsync(string path, CancellationToken cancellationToken) =>
+        await TryListAsync(path, cancellationToken) ?? [];
+
+    public Task<IReadOnlyList<RemoteEntry>?> TryListAsync(string path, CancellationToken cancellationToken) =>
+        RunAsync<IReadOnlyList<RemoteEntry>?>(
             async client =>
             {
                 var items = await TryListAsync(client, path, cancellationToken);
-                if (items is null)
-                {
-                    return [];
-                }
-
-                return items
+                return items?
                     .Where(i => i.Name is not "." and not ".." && i.Type is FtpObjectType.File or FtpObjectType.Directory)
                     .Select(i => new RemoteEntry(
                         i.Name,

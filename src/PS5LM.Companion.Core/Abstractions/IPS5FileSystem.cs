@@ -30,8 +30,11 @@ public interface IPS5FileSystem
 
     Task<bool> FileExistsAsync(string path, CancellationToken cancellationToken);
 
-    /// <summary>Lists a directory; an empty list when it does not exist.</summary>
+    /// <summary>Lists a directory; an empty list when it does not exist or the listing fails.</summary>
     Task<IReadOnlyList<RemoteEntry>> ListAsync(string path, CancellationToken cancellationToken);
+
+    /// <summary>Lists a directory; <see langword="null"/> when the listing fails or the folder is missing.</summary>
+    Task<IReadOnlyList<RemoteEntry>?> TryListAsync(string path, CancellationToken cancellationToken);
 
     /// <summary>Reads a text file of at most <paramref name="maxBytes"/>; <see langword="null"/> when missing or larger.</summary>
     Task<string?> ReadTextAsync(string path, int maxBytes, CancellationToken cancellationToken);
