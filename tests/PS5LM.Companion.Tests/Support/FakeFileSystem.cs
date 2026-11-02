@@ -26,6 +26,9 @@ internal sealed class FakeFileSystem : IPS5FileSystem
     /// <summary>Paths that are listed but whose download fails, as an ftpsrv that answers RETR with 550.</summary>
     public HashSet<string> Unreadable { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>Folders whose listing fails with 550: they and their files look absent, as in FtpFileSystem.</summary>
+    public HashSet<string> Unlistable { get; } = new(StringComparer.Ordinal);
+
     public IReadOnlyDictionary<string, byte[]> Files => _files;
 
     public FakeFileSystem AddDirectory(string path)
@@ -52,10 +55,10 @@ internal sealed class FakeFileSystem : IPS5FileSystem
     public string? Text(string path) => _files.TryGetValue(path, out var bytes) ? Encoding.UTF8.GetString(bytes) : null;
 
     public Task<bool> DirectoryExistsAsync(string path, CancellationToken cancellationToken) =>
-        Run(() => _directories.Contains(path.TrimEnd('/')));
+        Run(() => !Unlistable.Contains(path.TrimEnd('/')) && _directories.Contains(path.TrimEnd('/')));
 
     public Task<bool> FileExistsAsync(string path, CancellationToken cancellationToken) =>
-        Run(() => _files.ContainsKey(path));
+        Run(() => _files.ContainsKey(path) && !Unlistable.Contains(path[..path.LastIndexOf('/')]));
 
     public Task<IReadOnlyList<RemoteEntry>> ListAsync(string path, CancellationToken cancellationToken) =>
         Run<IReadOnlyList<RemoteEntry>>(() =>

@@ -136,7 +136,9 @@ public sealed class UpdateRunner
                 continue;
             }
 
-            if (remote is null && await IsUnreadableAsync(stored.Path, cancellationToken))
+            // A null read is only "absent" when the folder listing succeeds and does not show the file; a failed
+            // listing also looks like absence and must not lead to an upload that overwrites without comparing.
+            if (remote is null && !await IsConfirmedAbsentAsync(stored.Path, cancellationToken))
             {
                 Add(payload.Name, SetupStatus.Warn, UnreadableMessage(stored.Path));
                 continue;
@@ -459,6 +461,10 @@ public sealed class UpdateRunner
     /// </summary>
     private async Task<bool> IsUnreadableAsync(string path, CancellationToken cancellationToken) =>
         await _services.Files.FileExistsAsync(path, cancellationToken);
+
+    private async Task<bool> IsConfirmedAbsentAsync(string path, CancellationToken cancellationToken) =>
+        !await _services.Files.FileExistsAsync(path, cancellationToken)
+        && await _services.Files.DirectoryExistsAsync(path[..path.LastIndexOf('/')], cancellationToken);
 
     private static string UnreadableMessage(string path) =>
         $"Could not read {path} over FTP, so it was not compared or replaced. Run update again.";

@@ -330,6 +330,20 @@ public sealed class UpdateRunnerTests
     }
 
     [Fact]
+    public async Task Update_leaves_a_payload_alone_when_its_folder_cannot_be_listed()
+    {
+        using var harness = await PreparedAsync();
+        var path = harness.Stored.Single(s => s.FileName == "kstuff-lite.elf").Path!;
+        harness.Files.Unreadable.Add(path);
+        harness.Files.Unlistable.Add(path[..path.LastIndexOf('/')]);
+
+        var report = await Runner(harness).RunAsync(CancellationToken.None);
+
+        Assert.Empty(harness.Events);
+        Assert.Contains(report.Lines, l => l.Component == "kstuff-lite" && l.Status == SetupStatus.Warn);
+    }
+
+    [Fact]
     public async Task Check_does_not_flag_an_unreadable_extra_file_or_param_json()
     {
         using var harness = await PreparedAsync();
