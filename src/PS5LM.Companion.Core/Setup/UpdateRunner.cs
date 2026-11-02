@@ -462,9 +462,13 @@ public sealed class UpdateRunner
     private async Task<bool> IsUnreadableAsync(string path, CancellationToken cancellationToken) =>
         await _services.Files.FileExistsAsync(path, cancellationToken);
 
-    private async Task<bool> IsConfirmedAbsentAsync(string path, CancellationToken cancellationToken) =>
-        !await _services.Files.FileExistsAsync(path, cancellationToken)
-        && await _services.Files.DirectoryExistsAsync(path[..path.LastIndexOf('/')], cancellationToken);
+    // A failed folder listing comes back as an empty one, and a folder shows up in its parent even when it cannot be
+    // listed, so only a listing that has entries but not this file proves the file is gone.
+    private async Task<bool> IsConfirmedAbsentAsync(string path, CancellationToken cancellationToken)
+    {
+        var entries = await _services.Files.ListAsync(path[..path.LastIndexOf('/')], cancellationToken);
+        return entries.Count > 0 && entries.All(entry => entry.Name != path[(path.LastIndexOf('/') + 1)..]);
+    }
 
     private static string UnreadableMessage(string path) =>
         $"Could not read {path} over FTP, so it was not compared or replaced. Run update again.";

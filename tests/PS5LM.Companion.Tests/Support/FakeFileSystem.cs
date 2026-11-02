@@ -55,7 +55,12 @@ internal sealed class FakeFileSystem : IPS5FileSystem
     public string? Text(string path) => _files.TryGetValue(path, out var bytes) ? Encoding.UTF8.GetString(bytes) : null;
 
     public Task<bool> DirectoryExistsAsync(string path, CancellationToken cancellationToken) =>
-        Run(() => !Unlistable.Contains(path.TrimEnd('/')) && _directories.Contains(path.TrimEnd('/')));
+        Run(() =>
+        {
+            // Like FtpFileSystem: a folder exists when its parent's listing shows it, whether or not it can be listed itself.
+            var trimmed = path.TrimEnd('/');
+            return trimmed.Length == 0 || (!Unlistable.Contains(trimmed[..trimmed.LastIndexOf('/')]) && _directories.Contains(trimmed));
+        });
 
     public Task<bool> FileExistsAsync(string path, CancellationToken cancellationToken) =>
         Run(() => _files.ContainsKey(path) && !Unlistable.Contains(path[..path.LastIndexOf('/')]));
@@ -63,6 +68,11 @@ internal sealed class FakeFileSystem : IPS5FileSystem
     public Task<IReadOnlyList<RemoteEntry>> ListAsync(string path, CancellationToken cancellationToken) =>
         Run<IReadOnlyList<RemoteEntry>>(() =>
         {
+            if (Unlistable.Contains(path.TrimEnd('/')))
+            {
+                return [];
+            }
+
             var prefix = path.TrimEnd('/') + "/";
             var files = _files
                 .Where(f => f.Key.StartsWith(prefix, StringComparison.Ordinal) && !f.Key[prefix.Length..].Contains('/'))
