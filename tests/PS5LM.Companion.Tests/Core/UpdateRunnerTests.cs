@@ -347,8 +347,13 @@ public sealed class UpdateRunnerTests
     public async Task Check_flags_a_payload_whose_folder_lists_successfully_but_is_empty()
     {
         using var harness = await PreparedAsync();
-        var path = harness.Stored.Single(s => s.FileName == "kstuff-lite.elf").Path!;
-        await harness.Files.DeleteAsync(path, CancellationToken.None);
+        var stored = harness.Stored.Single(s => s.FileName == "kstuff-lite.elf");
+        const string folder = "/data/pldmgr/payloads/local/kstuff-lite";
+        harness.Stored[harness.Stored.IndexOf(stored)] = stored with { Path = folder + "/kstuff-lite.elf" };
+        harness.Files.AddDirectory(folder);
+        var listing = await harness.Files.TryListAsync(folder, CancellationToken.None);
+        Assert.NotNull(listing);
+        Assert.Empty(listing);
 
         var report = await Runner(harness, check: true).RunAsync(CancellationToken.None);
 
