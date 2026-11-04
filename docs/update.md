@@ -5,7 +5,11 @@ newer upstream releases; those arrive by [bumping a pin](setup.md#bumping-a-pin)
 
 ```sh
 dotnet PS5LM.Companion.App.dll update --host <console> [--apps] [--variant ps5lm|ps5lmplus] [--check] [options]
+docker run -it --rm --pull always -v ps5lm-companion:/data containinger/ps5lm-companion \
+  update --host <console> [--apps] [--variant ps5lm|ps5lmplus] [--check] [--restart] [options]
 ```
+
+The `docker` line uses the published [`containinger/ps5lm-companion`](https://hub.docker.com/r/containinger/ps5lm-companion) image. `-it` keeps the coloured report. `--pull always` fetches the current `:latest` before the command runs, so the pins compared against the console are the ones in the current release. Mount `/data` so downloads are cached. The `dotnet` line is for a build from source.
 
 | Option | Purpose |
 |---|---|

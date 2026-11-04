@@ -51,6 +51,17 @@ works before any model exists. It needs no changes to either app.
 
 ## Quick start
 
+The published image is [`containinger/ps5lm-companion`](https://hub.docker.com/r/containinger/ps5lm-companion). `:latest` follows stable releases. Pin a version (`containinger/ps5lm-companion:1.8.1`) to stay on one. Prereleases are published as their own tags and leave `:latest` where it is.
+
+```sh
+docker run -d -p 8080:8080 -v ps5lm-companion:/data \
+  -e PS5__Consoles__ps5__Host=192.168.1.50 \
+  -e Companion__AccessToken=change-me \
+  containinger/ps5lm-companion
+```
+
+### Building from source
+
 ```sh
 dotnet tool restore
 version=$(dotnet minver --tag-prefix v)
@@ -64,6 +75,8 @@ docker run -p 8080:8080 -v ps5lm-companion:/data \
 ```
 
 The image build excludes `.git`, so MinVer cannot calculate a version inside Docker. `MINVERVERSIONOVERRIDE` is required. The command above uses the pinned MinVer CLI, which produces the same version as `dotnet build`.
+
+A locally tagged `ps5lm-companion` image is a separate repository from `containinger/ps5lm-companion`. A command that names `ps5lm-companion` runs that local tag, which stays at the commit it was built from.
 
 ## Configuration
 
@@ -109,12 +122,28 @@ come from a pinned manifest with SHA-256 checksums. Details: [docs/setup.md](doc
 
 ```sh
 dotnet PS5LM.Companion.App.dll setup --host 192.168.1.50 --variant ps5lmplus
-docker run --rm -v ps5lm-companion:/data ps5lm-companion setup --host 192.168.1.50 --variant ps5lm --upgrade-payload-manager
+docker run -it --rm --pull always -v ps5lm-companion:/data containinger/ps5lm-companion \
+  setup --host 192.168.1.50 --variant ps5lm --upgrade-payload-manager
 ```
+
+`-it` keeps the coloured report. `--pull always` fetches the current `:latest` before the command runs, so the pins in the image match the current release. The `dotnet` line is for a build from source.
 
 Setup installs the required [nefarius/voidshell fork](docs/setup.md#voidshell-fork-build) because upstream v1.1.1 does not start on some firmware (e.g. 13.40). The companion expects that build on port 7007 afterwards. Setup fails if it does not come up.
 
 Exit code 0: nothing failed. 2: a component is not working. 1: bad arguments or manifest.
+
+## Updating a console
+
+`update` compares the console with the pins baked into the image and replaces only what differs. A plain `setup` rerun skips payloads that are already stored, so an older VoidShell (or any other pinned payload) stays in place until `update` replaces it. Details: [docs/update.md](docs/update.md).
+
+```sh
+docker run -it --rm --pull always -v ps5lm-companion:/data containinger/ps5lm-companion \
+  update --host 192.168.1.50 --check
+docker run -it --rm --pull always -v ps5lm-companion:/data containinger/ps5lm-companion \
+  update --host 192.168.1.50 --restart
+```
+
+`--check` reports what is out of date and changes nothing. `--restart` stops a running VoidShell and launches the uploaded build. Add `--apps` to update an installed PS5LM or PS5LM Plus app, and `--variant ps5lm` or `--variant ps5lmplus` to limit that to one title.
 
 ## Dashboard
 
