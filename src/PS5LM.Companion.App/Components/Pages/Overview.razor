@@ -104,14 +104,7 @@ else
 
     private Task AddAsync() => ConsoleEditor.ShowAsync(Dialogs, null);
 
-    private async Task ScanAsync()
-    {
-        var host = await NetworkScanDialog.ShowAsync(Dialogs);
-        if (host is not null)
-        {
-            await ConsoleEditor.ShowAsync(Dialogs, null, host);
-        }
-    }
+    private Task ScanAsync() => NetworkScanDialog.ShowAsync(Dialogs);
 
     private void Recount()
     {

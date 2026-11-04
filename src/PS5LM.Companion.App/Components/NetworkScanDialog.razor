@@ -1,5 +1,7 @@
 @implements IDisposable
 @inject IConsoleDiscovery Discovery
+@inject IConsoleRegistry Registry
+@inject IDialogService Dialogs
 
 <MudDialog>
     <DialogContent>
@@ -17,7 +19,8 @@
         }
         @foreach (var console in _results)
         {
-            <MudPaper Outlined="true" Class="pa-3 mb-2">
+            var added = IsConfigured(console);
+            <MudPaper Outlined="true" Class="pa-3 mb-2" Style="@(added ? "opacity: 0.6" : null)">
                 <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Baseline">
                     <MudText Typo="Typo.body1">@(console.HostName ?? console.Host)</MudText>
                     @if (console.HostName is not null)
@@ -39,22 +42,28 @@
                 {
                     <MudText Typo="Typo.caption" Class="d-block">not the nefarius fork</MudText>
                 }
-                <MudStack Row="true" Spacing="1" Class="mt-2">
-                    @if (console.HostName is not null)
-                    {
+                @if (added)
+                {
+                    <MudChip T="string" Size="Size.Small" Class="mt-2">Already added</MudChip>
+                }
+                else if (console.HostName is not null)
+                {
+                    <MudStack Row="true" Spacing="1" Class="mt-2">
                         <MudButton Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled" OnClick="@(() => UseHostName(console))">Use hostname</MudButton>
                         <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => Pick(console.Host))">Use IP</MudButton>
-                    }
-                    else
-                    {
+                    </MudStack>
+                }
+                else
+                {
+                    <MudStack Row="true" Spacing="1" Class="mt-2">
                         <MudButton Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled" OnClick="@(() => Pick(console.Host))">Use IP</MudButton>
-                    }
-                </MudStack>
+                    </MudStack>
+                }
             </MudPaper>
         }
     </DialogContent>
     <DialogActions>
-        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton OnClick="Close">Close</MudButton>
         <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="ScanAsync" Disabled="_busy">Scan</MudButton>
     </DialogActions>
 </MudDialog>
@@ -71,13 +80,12 @@
     [CascadingParameter]
     private IMudDialogInstance MudDialog { get; set; } = default!;
 
-    public static async Task<string?> ShowAsync(IDialogService dialogs)
+    public static async Task ShowAsync(IDialogService dialogs)
     {
         var dialog = await dialogs.ShowAsync<NetworkScanDialog>(
             "Scan network",
             new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true });
-        var result = await dialog.Result;
-        return result is { Canceled: false, Data: string host } ? host : null;
+        await dialog.Result;
     }
 
     private static string Describe(DiscoveredConsole console)
@@ -123,17 +131,26 @@
         }
     }
 
-    private void UseHostName(DiscoveredConsole console)
+    private bool IsConfigured(DiscoveredConsole console) =>
+        Registry.All.Any(existing => SameHost(existing.Host, console.Host) || SameHost(existing.Host, console.HostName));
+
+    private static bool SameHost(string configured, string? found) =>
+        !string.IsNullOrWhiteSpace(found)
+        && string.Equals(configured.Trim(), found.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private Task UseHostName(DiscoveredConsole console) =>
+        console.HostName is { } name ? Pick(name) : Task.CompletedTask;
+
+    private async Task Pick(string host)
     {
-        if (console.HostName is { } name)
+        await ConsoleEditor.ShowAsync(Dialogs, null, host);
+        if (!_disposed)
         {
-            Pick(name);
+            StateHasChanged();
         }
     }
 
-    private void Pick(string host) => MudDialog.Close(DialogResult.Ok(host));
-
-    private void Cancel()
+    private void Close()
     {
         _cancel.Cancel();
         MudDialog.Cancel();
