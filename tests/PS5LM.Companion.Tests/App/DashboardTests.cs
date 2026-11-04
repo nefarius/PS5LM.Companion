@@ -14,6 +14,7 @@ using PS5LM.Companion.App.Updates;
 using PS5LM.Companion.Core.Consoles;
 using PS5LM.Companion.Core.Discovery;
 using PS5LM.Companion.Core.Domain;
+using PS5LM.Companion.Core.Transfers;
 using PS5LM.Companion.Tests.Support;
 
 namespace PS5LM.Companion.Tests.App;
@@ -71,7 +72,10 @@ public sealed class DashboardTests
         await using var ctx = new BunitContext();
         ctx.JSInterop.Mode = JSRuntimeMode.Loose;
         ctx.Services.AddSingleton(checker);
-        ctx.Services.AddSingleton<IConsoleRegistry>(new EmptyRegistry());
+        var registry = new EmptyRegistry();
+        ctx.Services.AddSingleton<IConsoleRegistry>(registry);
+        ctx.Services.AddSingleton(new TransferService(
+            new FakeHub(), registry, new MemoryTransferStore(), new TransferOptions(), TimeProvider.System));
         ctx.Services.AddMudServices();
 
         var cut = ctx.Render<PS5LM.Companion.App.Components.Layout.MainLayout>();
@@ -96,9 +100,9 @@ public sealed class DashboardTests
         await using var ctx = new BunitContext();
         ctx.JSInterop.Mode = JSRuntimeMode.Loose;
         ctx.Services.AddSingleton(checker);
-        ctx.Services.AddSingleton<IConsoleRegistry>(new FixedRegistry(
-            NavConsole("den", "Den"),
-            NavConsole("living-room", "Living room")));
+        var registry = new FixedRegistry(NavConsole("den", "Den"), NavConsole("living-room", "Living room"));
+        ctx.Services.AddSingleton<IConsoleRegistry>(registry);
+        ctx.Services.AddSingleton(IdleTransfers(registry));
         ctx.Services.AddMudServices();
 
         var cut = ctx.Render<PS5LM.Companion.App.Components.Layout.MainLayout>();
@@ -125,9 +129,9 @@ public sealed class DashboardTests
         ctx.JSInterop.Setup<string?>("sessionStorage.getItem", "ps5lm.nav.open")
             .SetResult("""{"den":true,"living-room":false}""");
         ctx.Services.AddSingleton(checker);
-        ctx.Services.AddSingleton<IConsoleRegistry>(new FixedRegistry(
-            NavConsole("den", "Den"),
-            NavConsole("living-room", "Living room")));
+        var registry = new FixedRegistry(NavConsole("den", "Den"), NavConsole("living-room", "Living room"));
+        ctx.Services.AddSingleton<IConsoleRegistry>(registry);
+        ctx.Services.AddSingleton(IdleTransfers(registry));
         ctx.Services.AddMudServices();
 
         var cut = ctx.Render<PS5LM.Companion.App.Components.Layout.MainLayout>();
@@ -163,9 +167,9 @@ public sealed class DashboardTests
         ctx.JSInterop.Setup<string?>("sessionStorage.getItem", "ps5lm.nav.open")
             .SetResult("""{"den":true}""");
         ctx.Services.AddSingleton(checker);
-        ctx.Services.AddSingleton<IConsoleRegistry>(new FixedRegistry(
-            NavConsole("den", "Den"),
-            NavConsole("living-room", "Living room")));
+        var registry = new FixedRegistry(NavConsole("den", "Den"), NavConsole("living-room", "Living room"));
+        ctx.Services.AddSingleton<IConsoleRegistry>(registry);
+        ctx.Services.AddSingleton(IdleTransfers(registry));
         ctx.Services.AddMudServices();
 
         var cut = ctx.Render<PS5LM.Companion.App.Components.Layout.MainLayout>();
@@ -506,6 +510,9 @@ public sealed class DashboardTests
     {
         public string? TryGetVersion() => version;
     }
+
+    private static TransferService IdleTransfers(IConsoleRegistry registry) =>
+        new(new FakeHub(), registry, new MemoryTransferStore(), new TransferOptions(), TimeProvider.System);
 
     private static ConsoleRuntime NavConsole(string id, string name) =>
         new(id, new PS5Options { Host = "10.0.0.8", DisplayName = name }, new FakeConsole().ToConnectors(), TimeProvider.System, ConsoleSource.User);
