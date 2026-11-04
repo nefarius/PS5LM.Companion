@@ -127,7 +127,7 @@ pages, and the top bar names the console the page shows. Every console keeps bei
 - **Models** (`/consoles/{id}/models`): models on the console with Load, Unload and Delete. Delete removes the selected file; see [Deleting models](docs/model-deletion.md).
 - **Downloads** (`/consoles/{id}/downloads`): search Hugging Face, queue a file, watch download and upload progress, cancel.
 - **Inference** (`/inference`): add, edit, rename and delete pools, see which consoles can serve each, run the self-test and benchmark, and download a pool's model to consoles that lack it.
-- **Manage consoles** (`/settings/consoles`): add, edit, rename and remove consoles, scan the local network for them, and test settings before saving.
+- **Manage consoles** (`/settings/consoles`): add, edit, rename and remove consoles, scan the local network for them, and test settings before saving. A scan confirms over FTP, and through VoidShell on port 7007 when FTP is closed or the login fails (including a console that has neither app installed yet). When reverse DNS yields a name that points back at the address, that name is offered and the address can still be chosen.
 
 With `Companion:AccessToken` set, the browser is sent to `/login` once and keeps an HttpOnly cookie.
 
@@ -142,7 +142,7 @@ Console-scoped routes live under `/api/consoles/{consoleId}`; an unknown id retu
 | `GET /api/consoles` | Configured consoles with their lifecycle and whether each came from configuration or was added in the companion |
 | `POST /api/consoles` | Add a console. An id that already exists returns `409` |
 | `POST /api/consoles/test` | Check unsaved settings: FTP and the installed app, Payload Manager, elfldr, the required VoidShell fork, ps5-exporter, and llama-server (a closed llama port is not a failure). A VoidShell port of 0 is rejected |
-| `POST /api/consoles/discover` | Scan the local IPv4 networks, or `{ "cidr": "192.168.1.0/24" }`, for consoles. A prefix wider than /22 is capped |
+| `POST /api/consoles/discover` | Scan the local IPv4 networks, or `{ "cidr": "192.168.1.0/24" }`, for consoles. A prefix wider than /22 is capped. FTP confirms a console; VoidShell on port 7007 does when FTP is closed or the login fails. `hostName` is set when that name resolves back to the address |
 | `GET /api/consoles/{consoleId}/settings` | That console's settings and whether they came from configuration |
 | `PUT /api/consoles/{consoleId}` | Replace a user console's settings. An optional `id` renames it, and the response then includes `Location: /api/consoles/{newId}`. A configuration console, an id that already exists, a queued or running transfer, or a configuration pool that still lists the console returns `409` |
 | `DELETE /api/consoles/{consoleId}` | Remove a user console. A configuration console, or one with a queued or running transfer, returns `409` |
