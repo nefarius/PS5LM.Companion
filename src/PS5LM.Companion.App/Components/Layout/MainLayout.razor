@@ -1,6 +1,9 @@
 @inherits LayoutComponentBase
 @implements IDisposable
+@using System.Text.Json
+@using Microsoft.JSInterop
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 @inject IConsoleRegistry Registry
 @inject TransferService Transfers
 @inject LatestReleaseChecker VersionChecker
@@ -45,7 +48,17 @@
         <MudNavMenu>
             <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Overview</MudNavLink>
             <MudNavLink Href="inference" Icon="@Icons.Material.Filled.AltRoute">Inference</MudNavLink>
-            <MudNavLink Href="settings/consoles" Icon="@Icons.Material.Filled.Settings">Manage consoles</MudNavLink>
+            <MudMenu ActivationEvent="@MouseEvent.RightClick" PositionAtCursor="true" Class="d-block" Dense="true">
+                <ActivatorContent>
+                    <div class="d-block" @oncontextmenu="context.ToggleAsync" @oncontextmenu:preventDefault="true">
+                        <MudNavLink Href="settings/consoles" Icon="@Icons.Material.Filled.Settings">Manage consoles</MudNavLink>
+                    </div>
+                </ActivatorContent>
+                <ChildContent>
+                    <MudMenuItem Icon="@Icons.Material.Filled.UnfoldMore" OnClick="@(() => SetAllOpen(true))" Disabled="@(!Registry.All.Any())">Expand all consoles</MudMenuItem>
+                    <MudMenuItem Icon="@Icons.Material.Filled.UnfoldLess" OnClick="@(() => SetAllOpen(false))" Disabled="@(!Registry.All.Any())">Collapse all consoles</MudMenuItem>
+                </ChildContent>
+            </MudMenu>
             @foreach (var console in Registry.All)
             {
                 var status = console.Store.Current;
@@ -98,7 +111,10 @@
 </div>
 
 @code {
+    private const string NavOpenStorageKey = "ps5lm.nav.open";
+
     private readonly Dictionary<string, bool> _open = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _chosen = new(StringComparer.Ordinal);
 
     // Last seen transfer activity per console, so progress ticks do not re-render the drawer.
     private readonly Dictionary<string, (bool Running, int Queued)> _transfers = new(StringComparer.Ordinal);
@@ -107,6 +123,7 @@
     private bool _drawerOpen = true;
     private bool _dark = true;
     private bool _versionCheckStarted;
+    private bool _navOpenReady;
 
     protected override void OnInitialized()
     {
@@ -125,6 +142,11 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender)
+        {
+            await RestoreNavOpenAsync();
+        }
+
         if (!firstRender || _versionCheckStarted)
         {
             return;
@@ -155,12 +177,23 @@
             if (change.IsRename && change.Previous is { } from && _open.Remove(from.Id, out var open))
             {
                 _open[current.Id] = open;
+                if (_chosen.Remove(from.Id))
+                {
+                    _chosen.Add(current.Id);
+                }
             }
             else
             {
                 _open.TryAdd(current.Id, false);
             }
         }
+        else if (change.Previous is { } removed)
+        {
+            _open.Remove(removed.Id);
+            _chosen.Remove(removed.Id);
+        }
+
+        RememberNavOpen();
 
         RefreshCurrent();
         try
@@ -242,7 +275,7 @@
     private void RefreshCurrent()
     {
         _current = FindFromUri();
-        if (_current is not null)
+        if (_current is not null && _navOpenReady && !_chosen.Contains(_current.Id))
         {
             _open[_current.Id] = true;
         }
@@ -271,7 +304,105 @@
 
     private bool IsOpen(string id) => _open.TryGetValue(id, out var open) && open;
 
-    private void SetOpen(string id, bool open) => _open[id] = open;
+    private void SetOpen(string id, bool open)
+    {
+        _open[id] = open;
+        _chosen.Add(id);
+        RememberNavOpen();
+    }
+
+    private void SetAllOpen(bool open)
+    {
+        foreach (var console in Registry.All)
+        {
+            _open[console.Id] = open;
+            _chosen.Add(console.Id);
+        }
+
+        RememberNavOpen();
+    }
+
+    private async Task RestoreNavOpenAsync()
+    {
+        var storedCurrent = false;
+        var pendingChoice = false;
+        try
+        {
+            var json = await JS.InvokeAsync<string?>("sessionStorage.getItem", NavOpenStorageKey);
+            // A toggle during the read is already in _chosen and must win over the stored value.
+            pendingChoice = _chosen.Count > 0;
+            if (!string.IsNullOrWhiteSpace(json))
+            {
+                var stored = JsonSerializer.Deserialize<Dictionary<string, bool>>(json);
+                if (stored is not null)
+                {
+                    foreach (var (id, open) in stored)
+                    {
+                        if (Registry.Find(id) is not { } console || _chosen.Contains(console.Id))
+                        {
+                            continue;
+                        }
+
+                        _open[console.Id] = open;
+                        _chosen.Add(console.Id);
+                        if (_current is not null && string.Equals(console.Id, _current.Id, StringComparison.OrdinalIgnoreCase))
+                        {
+                            storedCurrent = true;
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // Session storage is unavailable while the circuit is starting or already gone.
+            pendingChoice = _chosen.Count > 0;
+        }
+
+        // A console page opens its group until the user has stored a choice for it.
+        if (_current is not null && !storedCurrent && !_chosen.Contains(_current.Id))
+        {
+            _open[_current.Id] = true;
+        }
+
+        _navOpenReady = true;
+        if (pendingChoice)
+        {
+            RememberNavOpen();
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void RememberNavOpen()
+    {
+        if (!_navOpenReady)
+        {
+            return;
+        }
+
+        _ = PersistNavOpenAsync();
+    }
+
+    private async Task PersistNavOpenAsync()
+    {
+        try
+        {
+            var snapshot = new Dictionary<string, bool>(StringComparer.Ordinal);
+            foreach (var console in Registry.All)
+            {
+                if (_chosen.Contains(console.Id))
+                {
+                    snapshot[console.Id] = IsOpen(console.Id);
+                }
+            }
+            await JS.InvokeVoidAsync("sessionStorage.setItem", NavOpenStorageKey, JsonSerializer.Serialize(snapshot));
+        }
+        catch (Exception)
+        {
+            // The in-memory state still applies for this circuit.
+        }
+    }
 
     public void Dispose()
     {

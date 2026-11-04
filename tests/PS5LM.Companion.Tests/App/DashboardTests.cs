@@ -4,6 +4,9 @@ using System.Text;
 
 using Bunit;
 
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
+
 using Microsoft.Extensions.DependencyInjection;
 
 using MudBlazor.Services;
@@ -86,6 +89,133 @@ public sealed class DashboardTests
             Assert.Equal("_blank", chip.GetAttribute("target"));
             Assert.Contains("noopener", chip.GetAttribute("rel"));
             Assert.Contains("v1.0.0 · v9.9.9 available", chip.TextContent);
+        });
+    }
+
+    [Fact]
+    public async Task The_nav_menu_expands_and_collapses_every_console()
+    {
+        var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
+        var http = new HttpClient(handler, disposeHandler: false);
+        var checker = new LatestReleaseChecker(http, new FixedVersion("1.0.0"));
+        await using var ctx = new BunitContext();
+        ctx.JSInterop.Mode = JSRuntimeMode.Loose;
+        ctx.Services.AddSingleton(checker);
+        var registry = new FixedRegistry(NavConsole("den", "Den"), NavConsole("living-room", "Living room"));
+        ctx.Services.AddSingleton<IConsoleRegistry>(registry);
+        ctx.Services.AddSingleton(IdleTransfers(registry));
+        ctx.Services.AddMudServices();
+
+        var cut = ctx.Render<PS5LM.Companion.App.Components.Layout.MainLayout>();
+
+        Assert.Empty(cut.FindAll(".mud-nav-group .mud-expanded"));
+
+        await OpenConsoleMenu(cut);
+        MenuItem(cut, "Expand all consoles").Click();
+        cut.WaitForAssertion(() => Assert.Equal(2, cut.FindAll(".mud-nav-group .mud-expanded").Count));
+
+        await OpenConsoleMenu(cut);
+        MenuItem(cut, "Collapse all consoles").Click();
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll(".mud-nav-group .mud-expanded")));
+    }
+
+    [Fact]
+    public async Task The_nav_menu_restores_each_consoles_expansion_and_saves_a_change()
+    {
+        var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
+        var http = new HttpClient(handler, disposeHandler: false);
+        var checker = new LatestReleaseChecker(http, new FixedVersion("1.0.0"));
+        await using var ctx = new BunitContext();
+        ctx.JSInterop.Mode = JSRuntimeMode.Loose;
+        ctx.JSInterop.Setup<string?>("sessionStorage.getItem", "ps5lm.nav.open")
+            .SetResult("""{"den":true,"living-room":false}""");
+        ctx.Services.AddSingleton(checker);
+        var registry = new FixedRegistry(NavConsole("den", "Den"), NavConsole("living-room", "Living room"));
+        ctx.Services.AddSingleton<IConsoleRegistry>(registry);
+        ctx.Services.AddSingleton(IdleTransfers(registry));
+        ctx.Services.AddMudServices();
+
+        var cut = ctx.Render<PS5LM.Companion.App.Components.Layout.MainLayout>();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.NotNull(cut.Find(".mud-nav-group[aria-label='Den'] .mud-expanded"));
+            Assert.Empty(cut.FindAll(".mud-nav-group[aria-label='Living room'] .mud-expanded"));
+        });
+        Assert.DoesNotContain(ctx.JSInterop.Invocations, call => call.Identifier == "sessionStorage.setItem");
+
+        cut.Find(".mud-nav-group[aria-label='Den'] button").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            var saved = ctx.JSInterop.Invocations
+                .Last(call => call.Identifier == "sessionStorage.setItem")
+                .Arguments[1]?.ToString();
+            Assert.Contains("\"den\":false", saved, StringComparison.Ordinal);
+            Assert.Contains("\"living-room\":false", saved, StringComparison.Ordinal);
+            Assert.Empty(cut.FindAll(".mud-nav-group .mud-expanded"));
+        });
+    }
+
+    [Fact]
+    public async Task The_nav_menu_leaves_an_untouched_console_out_of_the_saved_choice()
+    {
+        var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
+        var http = new HttpClient(handler, disposeHandler: false);
+        var checker = new LatestReleaseChecker(http, new FixedVersion("1.0.0"));
+        await using var ctx = new BunitContext();
+        ctx.JSInterop.Mode = JSRuntimeMode.Loose;
+        ctx.JSInterop.Setup<string?>("sessionStorage.getItem", "ps5lm.nav.open")
+            .SetResult("""{"den":true}""");
+        ctx.Services.AddSingleton(checker);
+        var registry = new FixedRegistry(NavConsole("den", "Den"), NavConsole("living-room", "Living room"));
+        ctx.Services.AddSingleton<IConsoleRegistry>(registry);
+        ctx.Services.AddSingleton(IdleTransfers(registry));
+        ctx.Services.AddMudServices();
+
+        var cut = ctx.Render<PS5LM.Companion.App.Components.Layout.MainLayout>();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.NotNull(cut.Find(".mud-nav-group[aria-label='Den'] .mud-expanded"));
+            Assert.Empty(cut.FindAll(".mud-nav-group[aria-label='Living room'] .mud-expanded"));
+        });
+
+        cut.Find(".mud-nav-group[aria-label='Den'] button").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            var saved = ctx.JSInterop.Invocations
+                .Last(call => call.Identifier == "sessionStorage.setItem")
+                .Arguments[1]?.ToString();
+            Assert.Contains("\"den\":false", saved, StringComparison.Ordinal);
+            Assert.DoesNotContain("living-room", saved, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public async Task The_nav_menu_opens_the_current_console_when_it_has_no_saved_choice()
+    {
+        var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
+        var http = new HttpClient(handler, disposeHandler: false);
+        var checker = new LatestReleaseChecker(http, new FixedVersion("1.0.0"));
+        await using var ctx = new BunitContext();
+        ctx.JSInterop.Mode = JSRuntimeMode.Loose;
+        ctx.JSInterop.Setup<string?>("sessionStorage.getItem", "ps5lm.nav.open")
+            .SetResult("""{"den":true}""");
+        ctx.Services.AddSingleton(checker);
+        var registry = new FixedRegistry(NavConsole("den", "Den"), NavConsole("living-room", "Living room"));
+        ctx.Services.AddSingleton<IConsoleRegistry>(registry);
+        ctx.Services.AddSingleton(IdleTransfers(registry));
+        ctx.Services.AddMudServices();
+        ctx.Services.GetRequiredService<NavigationManager>().NavigateTo("/consoles/living-room");
+
+        var cut = ctx.Render<PS5LM.Companion.App.Components.Layout.MainLayout>();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.NotNull(cut.Find(".mud-nav-group[aria-label='Living room'] .mud-expanded"));
+            Assert.DoesNotContain(ctx.JSInterop.Invocations, call => call.Identifier == "sessionStorage.setItem");
         });
     }
 
@@ -406,6 +536,37 @@ public sealed class DashboardTests
     private sealed class FixedVersion(string? version) : IAssemblyVersionSource
     {
         public string? TryGetVersion() => version;
+    }
+
+    private static TransferService IdleTransfers(IConsoleRegistry registry) =>
+        new(new FakeHub(), registry, new MemoryTransferStore(), new TransferOptions(), TimeProvider.System);
+
+    private static ConsoleRuntime NavConsole(string id, string name) =>
+        new(id, new PS5Options { Host = "10.0.0.8", DisplayName = name }, new FakeConsole().ToConnectors(), TimeProvider.System, ConsoleSource.User);
+
+    private static async Task OpenConsoleMenu(IRenderedComponent<PS5LM.Companion.App.Components.Layout.MainLayout> cut)
+    {
+        await cut.Find(".mud-menu-activator > div").TriggerEventAsync("oncontextmenu", new MouseEventArgs { Button = 2, ClientX = 12, ClientY = 24 });
+        cut.WaitForAssertion(() => Assert.Contains("Expand all consoles", cut.Markup, StringComparison.Ordinal));
+    }
+
+    private static AngleSharp.Dom.IElement MenuItem(IRenderedComponent<PS5LM.Companion.App.Components.Layout.MainLayout> cut, string label) =>
+        cut.FindAll(".mud-menu-item").Single(item => item.TextContent.Contains(label, StringComparison.Ordinal));
+
+    private sealed class FixedRegistry(params ConsoleRuntime[] consoles) : IConsoleRegistry
+    {
+        public IReadOnlyList<ConsoleRuntime> All { get; } = consoles;
+
+        public event Action<ConsoleChange>? Changed { add { } remove { } }
+
+        public ConsoleRuntime? Find(string? id) =>
+            consoles.FirstOrDefault(console => string.Equals(console.Id, id, StringComparison.OrdinalIgnoreCase));
+
+        public ConsoleEditResult Add(string id, PS5Options options) => throw new NotSupportedException();
+
+        public ConsoleEditResult Update(string id, PS5Options options, string? newId = null) => throw new NotSupportedException();
+
+        public ConsoleEditResult Remove(string id) => throw new NotSupportedException();
     }
 
     private sealed class EmptyRegistry : IConsoleRegistry
