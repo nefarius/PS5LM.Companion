@@ -153,6 +153,42 @@ public sealed class DashboardTests
     }
 
     [Fact]
+    public async Task The_nav_menu_leaves_an_untouched_console_out_of_the_saved_choice()
+    {
+        var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
+        var http = new HttpClient(handler, disposeHandler: false);
+        var checker = new LatestReleaseChecker(http, new FixedVersion("1.0.0"));
+        await using var ctx = new BunitContext();
+        ctx.JSInterop.Mode = JSRuntimeMode.Loose;
+        ctx.JSInterop.Setup<string?>("sessionStorage.getItem", "ps5lm.nav.open")
+            .SetResult("""{"den":true}""");
+        ctx.Services.AddSingleton(checker);
+        ctx.Services.AddSingleton<IConsoleRegistry>(new FixedRegistry(
+            NavConsole("den", "Den"),
+            NavConsole("living-room", "Living room")));
+        ctx.Services.AddMudServices();
+
+        var cut = ctx.Render<PS5LM.Companion.App.Components.Layout.MainLayout>();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.NotNull(cut.Find(".mud-nav-group[aria-label='Den'] .mud-expanded"));
+            Assert.Empty(cut.FindAll(".mud-nav-group[aria-label='Living room'] .mud-expanded"));
+        });
+
+        cut.Find(".mud-nav-group[aria-label='Den'] button").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            var saved = ctx.JSInterop.Invocations
+                .Last(call => call.Identifier == "sessionStorage.setItem")
+                .Arguments[1]?.ToString();
+            Assert.Contains("\"den\":false", saved, StringComparison.Ordinal);
+            Assert.DoesNotContain("living-room", saved, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
     public async Task The_status_page_shows_the_console_firmware()
     {
         await using var factory = new CompanionFactory();
