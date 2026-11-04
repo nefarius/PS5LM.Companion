@@ -2,6 +2,7 @@
 @implements IDisposable
 @inject NavigationManager Navigation
 @inject IConsoleRegistry Registry
+@inject TransferService Transfers
 @inject LatestReleaseChecker VersionChecker
 
 <MudThemeProvider @bind-IsDarkMode="_dark" />
@@ -47,20 +48,38 @@
             <MudNavLink Href="settings/consoles" Icon="@Icons.Material.Filled.Settings">Manage consoles</MudNavLink>
             @foreach (var console in Registry.All)
             {
-                var lifecycle = console.Store.Current.Lifecycle;
+                var status = console.Store.Current;
+                var modelLabel = Display.ModelActivity(status);
+                var (running, queued) = Display.TransferActivity(Transfers.Snapshot(console.Id));
+                var downloadLabel = DownloadActivityLabel(running, queued);
                 <MudNavGroup Title="@console.Name"
                              @bind-Expanded:get="@IsOpen(console.Id)"
                              @bind-Expanded:set="@(open => SetOpen(console.Id, open))">
                     <TitleContent>
-                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
-                            <LifecycleDot Lifecycle="@lifecycle" />
+                        <span class="nav-activity-row">
+                            <LifecycleDot Lifecycle="@status.Lifecycle" />
                             <MudText Typo="Typo.body1">@console.Name</MudText>
-                        </MudStack>
+                            @if (!IsOpen(console.Id))
+                            {
+                                <NavActivity Busy="@(modelLabel is not null || running)" Pending="@(downloadLabel is not null)"
+                                             Label="@GroupActivityLabel(modelLabel, downloadLabel)" />
+                            }
+                        </span>
                     </TitleContent>
                     <ChildContent>
                         <MudNavLink Href="@($"consoles/{console.Id}")" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Status</MudNavLink>
-                        <MudNavLink Href="@($"consoles/{console.Id}/models")" Icon="@Icons.Material.Filled.Memory">Models</MudNavLink>
-                        <MudNavLink Href="@($"consoles/{console.Id}/downloads")" Icon="@Icons.Material.Filled.CloudDownload">Downloads</MudNavLink>
+                        <MudNavLink Href="@($"consoles/{console.Id}/models")" Icon="@Icons.Material.Filled.Memory">
+                            <span class="nav-activity-row">
+                                Models
+                                <NavActivity Busy="@(modelLabel is not null)" Label="@modelLabel" />
+                            </span>
+                        </MudNavLink>
+                        <MudNavLink Href="@($"consoles/{console.Id}/downloads")" Icon="@Icons.Material.Filled.CloudDownload">
+                            <span class="nav-activity-row">
+                                Downloads
+                                <NavActivity Busy="@running" Pending="@(downloadLabel is not null)" Label="@downloadLabel" />
+                            </span>
+                        </MudNavLink>
                     </ChildContent>
                 </MudNavGroup>
             }
@@ -80,6 +99,9 @@
 
 @code {
     private readonly Dictionary<string, bool> _open = new(StringComparer.Ordinal);
+
+    // Last seen transfer activity per console, so progress ticks do not re-render the drawer.
+    private readonly Dictionary<string, (bool Running, int Queued)> _transfers = new(StringComparer.Ordinal);
     private VersionCheckStatus _versionStatus = new(null, null, false, null);
     private ConsoleRuntime? _current;
     private bool _drawerOpen = true;
@@ -91,6 +113,7 @@
         _versionStatus = VersionChecker.GetLocalStatus();
         Navigation.LocationChanged += OnLocationChanged;
         Registry.Changed += OnRegistryChanged;
+        Transfers.Changed += OnTransfersChanged;
         foreach (var console in Registry.All)
         {
             _open[console.Id] = false;
@@ -156,6 +179,62 @@
         _ = InvokeAsync(StateHasChanged);
     }
 
+    private void OnTransfersChanged()
+    {
+        if (!TransferActivityChanged())
+        {
+            return;
+        }
+
+        try
+        {
+            _ = InvokeAsync(StateHasChanged);
+        }
+        catch (ObjectDisposedException)
+        {
+            // The circuit ended.
+        }
+    }
+
+    /// <summary>Updates the transfer cache and reports whether any console's indicator would change.</summary>
+    private bool TransferActivityChanged()
+    {
+        var changed = false;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var console in Registry.All)
+        {
+            seen.Add(console.Id);
+            var activity = Display.TransferActivity(Transfers.Snapshot(console.Id));
+            if (!_transfers.TryGetValue(console.Id, out var previous) || previous != activity)
+            {
+                _transfers[console.Id] = activity;
+                changed = true;
+            }
+        }
+
+        foreach (var id in _transfers.Keys.Where(id => !seen.Contains(id)).ToList())
+        {
+            _transfers.Remove(id);
+            changed = true;
+        }
+
+        return changed;
+    }
+
+    private static string? DownloadActivityLabel(bool running, int queued)
+    {
+        if (running)
+        {
+            return queued > 0 ? $"Downloading, {queued} queued" : "Downloading";
+        }
+
+        return queued > 0 ? $"{queued} queued" : null;
+    }
+
+    private static string GroupActivityLabel(string? modelLabel, string? downloadLabel) =>
+        modelLabel is null ? downloadLabel ?? "" :
+        downloadLabel is null ? modelLabel : $"{modelLabel}, {downloadLabel.ToLowerInvariant()}";
+
     private void OnStatusChanged(CompanionStatus status)
     {
         try
@@ -206,6 +285,7 @@
     {
         Navigation.LocationChanged -= OnLocationChanged;
         Registry.Changed -= OnRegistryChanged;
+        Transfers.Changed -= OnTransfersChanged;
         foreach (var console in Registry.All)
         {
             console.Store.Changed -= OnStatusChanged;

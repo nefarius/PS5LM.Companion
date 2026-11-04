@@ -226,6 +226,41 @@ internal static class Display
         return true;
     }
 
+    /// <summary>
+    /// Why the Models entry should show a spinner, or <see langword="null"/> when nothing is happening.
+    /// A load shows as <see cref="CompanionLifecycle.Loading"/>; an unload only shows while its command file
+    /// is still waiting on the console.
+    /// </summary>
+    public static string? ModelActivity(CompanionStatus status)
+    {
+        if (status.Lifecycle == CompanionLifecycle.Loading)
+        {
+            return "Loading model";
+        }
+
+        return status.CommandPending ? "Command pending (load or unload)" : null;
+    }
+
+    /// <summary>Whether a transfer is moving data, and how many more are waiting behind it.</summary>
+    public static (bool Running, int Queued) TransferActivity(IReadOnlyList<Transfer> transfers)
+    {
+        var running = false;
+        var queued = 0;
+        foreach (var transfer in transfers)
+        {
+            if (transfer.State == TransferState.Queued)
+            {
+                queued++;
+            }
+            else if (transfer.IsActive)
+            {
+                running = true;
+            }
+        }
+
+        return (running, queued);
+    }
+
     public static Color TransferColor(TransferState state) => state switch
     {
         TransferState.Completed => Color.Success,
