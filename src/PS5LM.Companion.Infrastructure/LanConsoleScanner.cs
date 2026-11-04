@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 
@@ -25,7 +26,7 @@ public sealed class LanConsoleScanner(IConsoleConnectorFactory factory, IConsole
 
     public async Task<IReadOnlyList<DiscoveredConsole>> ScanAsync(string? cidr, CancellationToken cancellationToken)
     {
-        var configured = registry.All.Select(console => console.Host).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var configured = await ConfiguredHostsAsync(cancellationToken);
         var hosts = string.IsNullOrWhiteSpace(cidr) ? InterfaceHosts() : ScanRanges.Expand(cidr);
         var candidates = hosts
             .Where(host => !configured.Contains(host))
@@ -74,6 +75,34 @@ public sealed class LanConsoleScanner(IConsoleConnectorFactory factory, IConsole
         });
 
         return found.OrderBy(console => console.Host, StringComparer.Ordinal).ToList();
+    }
+
+    /// <summary>
+    /// Configured host strings plus the IPv4 addresses they resolve to, so a console saved as a hostname
+    /// is not offered again when the scan finds that address.
+    /// </summary>
+    private async Task<HashSet<string>> ConfiguredHostsAsync(CancellationToken cancellationToken)
+    {
+        var configured = registry.All.Select(console => console.Host).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var resolved = new ConcurrentBag<IPAddress>();
+        await Parallel.ForEachAsync(configured.ToArray(), new ParallelOptions
+        {
+            MaxDegreeOfParallelism = ConfirmParallelism,
+            CancellationToken = cancellationToken,
+        }, async (host, token) =>
+        {
+            foreach (var address in await hostNames.AddressesAsync(host, token))
+            {
+                resolved.Add(address);
+            }
+        });
+
+        foreach (var address in resolved)
+        {
+            configured.Add(address.ToString());
+        }
+
+        return configured;
     }
 
     /// <summary>

@@ -1,3 +1,6 @@
+using System.Net;
+using System.Net.Sockets;
+
 using PS5LM.Companion.Core.Abstractions;
 using PS5LM.Companion.Core.Consoles;
 using PS5LM.Companion.Core.Discovery;
@@ -101,6 +104,36 @@ public sealed class LanConsoleScannerTests
         Assert.Null(found);
     }
 
+    [Fact]
+    public async Task A_hostname_that_resolves_to_a_scanned_address_is_not_offered_again()
+    {
+        using var ftp = Listen(2121);
+        using var shell = Listen(7007);
+        using var registry = Registry("ps5.lan");
+        var scanner = new LanConsoleScanner(new FakeConnectorFactory(), registry, new StubResolver(null, Addresses("ps5.lan", "127.0.0.1")));
+
+        var found = await scanner.ScanAsync("127.0.0.1/32", CancellationToken.None);
+
+        Assert.Empty(found);
+        Assert.False(ftp.Pending());
+        Assert.False(shell.Pending());
+    }
+
+    [Fact]
+    public async Task An_unresolvable_configured_host_leaves_the_address_in_the_scan()
+    {
+        using var ftp = Listen(2121);
+        using var shell = Listen(7007);
+        using var registry = Registry("missing.lan");
+        var scanner = new LanConsoleScanner(new FakeConnectorFactory(), registry, new StubResolver(null));
+
+        var found = await scanner.ScanAsync("127.0.0.1/32", CancellationToken.None);
+
+        var console = Assert.Single(found);
+        Assert.Equal("127.0.0.1", console.Host);
+        Assert.True(ftp.Pending());
+    }
+
     private static LanConsoleScanner Scanner(FakeConnectorFactory factory, IHostNameResolver? hostNames = null) =>
         new(factory, new ConsoleRegistry(new ConsolesOptions(), factory, TimeProvider.System), hostNames ?? new StubResolver(null));
 
@@ -109,8 +142,35 @@ public sealed class LanConsoleScannerTests
 
     private static IReadOnlySet<string> None { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-    private sealed class StubResolver(string? name) : IHostNameResolver
+    private static ConsoleRegistry Registry(string host)
+    {
+        var registry = new ConsoleRegistry(new ConsolesOptions(), new FakeConnectorFactory(), TimeProvider.System);
+        Assert.True(registry.Add("den", new PS5Options { Host = host }).Succeeded);
+        return registry;
+    }
+
+    private static TcpListener Listen(int port)
+    {
+        var listener = new TcpListener(IPAddress.Loopback, port);
+        listener.Start();
+        return listener;
+    }
+
+    private static Dictionary<string, string> Addresses(string host, string address) =>
+        new(StringComparer.OrdinalIgnoreCase) { [host] = address };
+
+    private sealed class StubResolver(string? name, IReadOnlyDictionary<string, string>? addresses = null) : IHostNameResolver
     {
         public Task<string?> ResolveAsync(string host, CancellationToken cancellationToken) => Task.FromResult(name);
+
+        public Task<IReadOnlyList<IPAddress>> AddressesAsync(string host, CancellationToken cancellationToken)
+        {
+            if (addresses is not null && addresses.TryGetValue(host, out var mapped) && IPAddress.TryParse(mapped, out var address))
+            {
+                return Task.FromResult<IReadOnlyList<IPAddress>>([address]);
+            }
+
+            return Task.FromResult<IReadOnlyList<IPAddress>>([]);
+        }
     }
 }
