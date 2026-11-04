@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Sockets;
 
 using PS5LM.Companion.Infrastructure;
 
@@ -34,5 +35,14 @@ public sealed class DnsHostNameResolverTests
         var addresses = await new DnsHostNameResolver().AddressesAsync("invalid.", CancellationToken.None);
 
         Assert.Empty(addresses);
+    }
+
+    [Fact]
+    public async Task A_hostname_resolves_to_an_ipv4_address()
+    {
+        var addresses = await new DnsHostNameResolver().AddressesAsync("localhost", CancellationToken.None);
+
+        Assert.Contains(IPAddress.Loopback, addresses);
+        Assert.All(addresses, address => Assert.Equal(AddressFamily.InterNetwork, address.AddressFamily));
     }
 }
