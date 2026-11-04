@@ -69,6 +69,24 @@ public abstract class LiveComponent : ComponentBase, IDisposable
 
     private void OnRegistryChanged(ConsoleChange change)
     {
+        if (change.IsRename
+            && change.Previous is { } renamedFrom
+            && change.Current is { } renamedTo
+            && string.Equals(renamedFrom.Id, ConsoleId, StringComparison.OrdinalIgnoreCase))
+        {
+            var target = PathWithConsoleId(renamedFrom.Id, renamedTo.Id) ?? $"/consoles/{renamedTo.Id}";
+            try
+            {
+                _ = InvokeAsync(() => Navigation.NavigateTo(target));
+            }
+            catch (ObjectDisposedException)
+            {
+                // The circuit ended.
+            }
+
+            return;
+        }
+
         if (change.Kind == ConsoleChangeKind.Removed
             && change.Previous is { } removed
             && string.Equals(removed.Id, ConsoleId, StringComparison.OrdinalIgnoreCase))
@@ -107,6 +125,36 @@ public abstract class LiveComponent : ComponentBase, IDisposable
                 // The circuit ended.
             }
         }
+    }
+
+    /// <summary>The current address with the route's console id replaced, including a query or fragment.</summary>
+    private string? PathWithConsoleId(string previousId, string newId)
+    {
+        var relative = Navigation.ToBaseRelativePath(Navigation.Uri);
+        var suffix = string.Empty;
+        var cut = relative.IndexOfAny(['?', '#']);
+        if (cut >= 0)
+        {
+            suffix = relative[cut..];
+            relative = relative[..cut];
+        }
+
+        const string prefix = "consoles/";
+        if (!relative.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var rest = relative[prefix.Length..];
+        var slash = rest.IndexOf('/');
+        var id = slash < 0 ? rest : rest[..slash];
+        if (!string.Equals(id, previousId, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var tail = slash < 0 ? string.Empty : rest[slash..];
+        return $"/{prefix}{newId}{tail}{suffix}";
     }
 
     private void SubscribeToTarget()

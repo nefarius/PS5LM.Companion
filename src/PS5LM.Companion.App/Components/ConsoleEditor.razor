@@ -1,5 +1,6 @@
 @using PS5LM.Companion.Core.Discovery
 @inject IConsoleRegistry Registry
+@inject ConsoleSettingsService Settings
 @inject IConsoleProbe Probe
 
 <MudDialog>
@@ -9,15 +10,8 @@
             <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3">@string.Join(" ", _errors)</MudAlert>
         }
         <MudTextField T="string" Value="@_displayName" ValueChanged="NameChanged" Label="Name" Class="mb-2" />
-        @if (_adding)
-        {
-            <MudTextField @bind-Value="_id" Label="Id" HelperText="Used in the address. Suggested from the name." Class="mb-2"
-                          Immediate="true" OnBlur="TouchId" />
-        }
-        else
-        {
-            <MudTextField Value="@_id" Label="Id" ReadOnly="true" Class="mb-2" />
-        }
+        <MudTextField @bind-Value="_id" Label="Id" Immediate="true" OnBlur="TouchId" Class="mb-2"
+                      HelperText="@(_adding ? "Used in the address. Suggested from the name." : "Changing it changes the console's addresses and API paths.")" />
         <MudTextField @bind-Value="_host" Label="Host" Required="true" Class="mb-2" />
         <MudExpansionPanels Class="mt-2">
             <MudExpansionPanel Text="Advanced">
@@ -178,7 +172,7 @@
     private void SaveAsync()
     {
         _errors.Clear();
-        var id = (_adding ? _id : ConsoleId ?? _id).Trim().ToLowerInvariant();
+        var id = _id.Trim().ToLowerInvariant();
         var options = ToOptions();
         var errors = ConsoleSettings.Errors(id, options);
         if (errors.Count > 0)
@@ -187,7 +181,7 @@
             return;
         }
 
-        var result = _adding ? Registry.Add(id, options) : Registry.Update(id, options);
+        var result = _adding ? Registry.Add(id, options) : Settings.Update(ConsoleId ?? id, options, id);
         if (!result.Succeeded)
         {
             _errors.Add(result.Message ?? "Could not save the console.");

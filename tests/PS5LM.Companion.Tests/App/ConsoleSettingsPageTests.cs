@@ -2,6 +2,18 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 
+using Bunit;
+
+using Microsoft.Extensions.DependencyInjection;
+
+using MudBlazor;
+using MudBlazor.Services;
+
+using PS5LM.Companion.App.Components;
+using PS5LM.Companion.Core.Consoles;
+using PS5LM.Companion.Core.Discovery;
+using PS5LM.Companion.Core.Inference;
+using PS5LM.Companion.Core.Transfers;
 using PS5LM.Companion.Tests.Support;
 
 namespace PS5LM.Companion.Tests.App;
@@ -77,5 +89,57 @@ public sealed class ConsoleSettingsPageTests
         Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
         Assert.Equal(HttpStatusCode.OK, none.StatusCode);
         Assert.Equal(0, found.GetArrayLength());
+    }
+}
+
+public sealed class ConsoleEditorDialogTests : BunitContext, IAsyncLifetime
+{
+    public ConsoleEditorDialogTests()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        Services.AddMudServices(options => options.PopoverOptions.CheckForPopoverProvider = false);
+    }
+
+    public Task InitializeAsync() => Task.CompletedTask;
+
+    async Task IAsyncLifetime.DisposeAsync() => await DisposeAsync();
+
+    /// <summary>MudBlazor services only dispose asynchronously. xUnit also calls <see cref="IDisposable.Dispose"/>.</summary>
+    protected override void Dispose(bool disposing)
+    {
+    }
+
+    [Fact]
+    public async Task The_id_can_be_edited_on_an_existing_console()
+    {
+        using var registry = new ConsoleRegistry(new ConsolesOptions(), new FakeConnectorFactory(), TimeProvider.System);
+        Assert.True(registry.Add("den", new PS5Options { Host = "10.0.0.8", DisplayName = "Den" }).Succeeded);
+        Services.AddSingleton<IConsoleRegistry>(registry);
+        Services.AddSingleton<IConsoleProbe, UnusedProbe>();
+        Services.AddSingleton(new ConsoleSettingsService(
+            registry,
+            new TransferService(new FakeHub(), registry, new MemoryTransferStore(), new TransferOptions(), TimeProvider.System),
+            new HybridInferencePools(new InferenceOptions(), registry)));
+
+        var cut = Render<MudDialogProvider>();
+        var dialogs = Services.GetRequiredService<IDialogService>();
+        var parameters = new DialogParameters<ConsoleEditor> { { editor => editor.ConsoleId, "den" } };
+        await cut.InvokeAsync(() => dialogs.ShowAsync<ConsoleEditor>("Edit console", parameters));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Changing it changes the console's addresses and API paths.", cut.Markup, StringComparison.Ordinal);
+            var id = cut.FindAll(".mud-input-control").Single(control => control.TextContent.Contains("Changing it changes the console's addresses", StringComparison.Ordinal));
+            var input = id.QuerySelector("input");
+            Assert.NotNull(input);
+            Assert.False(input!.HasAttribute("readonly"));
+            Assert.Equal("den", input.GetAttribute("value"));
+        });
+    }
+
+    private sealed class UnusedProbe : IConsoleProbe
+    {
+        public Task<ConsoleProbeReport> TestAsync(PS5Options options, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
     }
 }

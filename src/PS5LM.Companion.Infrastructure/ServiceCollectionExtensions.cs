@@ -97,6 +97,7 @@ public static class ServiceCollectionExtensions
             sp.GetRequiredService<IOptions<InferenceOptions>>().Value,
             sp.GetRequiredService<IInferencePoolSource>(),
             sp.GetService<TimeProvider>()));
+        services.AddSingleton<ConsoleSettingsService>();
         return services;
     }
 

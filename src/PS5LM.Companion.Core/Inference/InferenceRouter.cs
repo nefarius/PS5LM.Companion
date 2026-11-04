@@ -99,6 +99,7 @@ public sealed class InferenceRouter
         _options = options;
         _pools = pools;
         _time = time ?? TimeProvider.System;
+        _registry.Changed += OnRegistryChanged;
         if (pools is not null)
         {
             pools.Changed += OnPoolsChanged;
@@ -378,6 +379,28 @@ public sealed class InferenceRouter
             }
 
             node = next;
+        }
+    }
+
+    private void OnRegistryChanged(ConsoleChange change)
+    {
+        if (!change.IsRename || change.Previous is null || change.Current is null)
+        {
+            return;
+        }
+
+        var from = change.Previous.Id;
+        var to = change.Current.Id;
+        lock (_gate)
+        {
+            foreach (var key in _affinity.Keys.ToList())
+            {
+                var entry = _affinity[key];
+                if (string.Equals(entry.ConsoleId, from, StringComparison.OrdinalIgnoreCase))
+                {
+                    _affinity[key] = entry with { ConsoleId = to };
+                }
+            }
         }
     }
 

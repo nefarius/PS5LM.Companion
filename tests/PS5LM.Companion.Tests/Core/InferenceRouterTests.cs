@@ -265,6 +265,33 @@ public sealed class InferenceRouterTests
     }
 
     [Fact]
+    public async Task Renaming_a_console_keeps_the_conversation_on_it()
+    {
+        var registry = new ConsoleRegistry(new ConsolesOptions(), new FakeConnectorFactory(), TimeProvider.System);
+        Assert.True(registry.Add("den", new PS5Options { Host = "10.0.0.8" }).Succeeded);
+        Assert.True(registry.Add("other", new PS5Options { Host = "10.0.0.9" }).Succeeded);
+        var pools = new HybridInferencePools(new InferenceOptions(), registry);
+        Assert.True(pools.Add("chat", Model, ["den", "other"]).Succeeded);
+        var options = new InferenceOptions { QueueTimeoutSeconds = 5, AffinityMinutes = 30 };
+        var router = new InferenceRouter(registry, options, pools);
+        Serve(registry, "den");
+        Serve(registry, "other");
+
+        var first = await router.AcquireAsync("chat", CancellationToken.None, onlyConsole: "den", affinityKey: "session");
+        Assert.Equal("den", first.Lease!.Console.Id);
+        first.Lease.Release();
+
+        Assert.True(registry.Update("den", new PS5Options { Host = "10.0.0.8" }, "living-room").Succeeded);
+        Serve(registry, "living-room");
+
+        var second = await router.AcquireAsync("chat", CancellationToken.None, affinityKey: "session");
+
+        Assert.Equal(AffinityOutcome.Hit, second.Affinity);
+        Assert.Equal("living-room", second.Lease!.Console.Id);
+        second.Lease.Release();
+    }
+
+    [Fact]
     public async Task Requests_without_a_key_keep_rotating()
     {
         var (router, registry, _) = CreateTimed(["a", "b"]);

@@ -161,6 +161,50 @@ public sealed class InferencePoolSourceTests
     }
 
     [Fact]
+    public void Renaming_a_console_rewrites_user_pools_and_hidden_ones()
+    {
+        var registry = Registry();
+        Assert.True(registry.Add("den", new PS5Options { Host = "10.0.0.8" }).Succeeded);
+        var store = new MemoryPoolStore
+        {
+            Pools = [new StoredInferencePool("chat", "other.gguf", ["den"])],
+        };
+        var options = new InferenceOptions();
+        options.Pools["chat"] = new InferencePoolOptions { Model = "qwen.gguf", Consoles = ["a"] };
+        var pools = new HybridInferencePools(options, registry, store, _ => { });
+        Assert.True(pools.Add("extra", "b.gguf", ["den", "a"]).Succeeded);
+
+        Assert.True(registry.Update("den", new PS5Options { Host = "10.0.0.9" }, "living-room").Succeeded);
+
+        Assert.Equal(["living-room", "a"], pools.Find("extra")!.Consoles);
+        Assert.Equal(["a"], pools.Find("chat")!.Consoles);
+        Assert.Equal(["living-room"], store.Pools.Single(pool => pool.Alias == "chat").Consoles);
+        Assert.Equal(["living-room", "a"], store.Pools.Single(pool => pool.Alias == "extra").Consoles);
+    }
+
+    [Fact]
+    public void A_failed_pool_save_during_a_rename_keeps_the_new_id_and_warns()
+    {
+        var registry = Registry();
+        Assert.True(registry.Add("den", new PS5Options { Host = "10.0.0.8" }).Succeeded);
+        var warnings = new List<string>();
+        var store = new MemoryPoolStore();
+        var pools = new HybridInferencePools(new InferenceOptions(), registry, store, warnings.Add);
+        Assert.True(pools.Add("extra", "b.gguf", ["den"]).Succeeded);
+        var followed = false;
+        registry.Changed += _ => followed = true;
+        store.FailNextSave = true;
+
+        var renamed = registry.Update("den", new PS5Options { Host = "10.0.0.8" }, "living-room");
+
+        Assert.True(renamed.Succeeded);
+        Assert.True(followed);
+        Assert.Equal(["living-room"], pools.Find("extra")!.Consoles);
+        Assert.Equal(["den"], Assert.Single(store.Pools).Consoles);
+        Assert.Contains("living-room", Assert.Single(warnings), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void A_stored_pool_whose_names_clash_with_configuration_is_hidden()
     {
         var warnings = new List<string>();
@@ -182,8 +226,19 @@ public sealed class InferencePoolSourceTests
     {
         public List<StoredInferencePool> Pools { get; set; } = [];
 
+        public bool FailNextSave { get; set; }
+
         public IReadOnlyList<StoredInferencePool> Load() => Pools.ToList();
 
-        public void Save(IReadOnlyList<StoredInferencePool> pools) => Pools = pools.ToList();
+        public void Save(IReadOnlyList<StoredInferencePool> pools)
+        {
+            if (FailNextSave)
+            {
+                FailNextSave = false;
+                throw new IOException("No space left on device.");
+            }
+
+            Pools = pools.ToList();
+        }
     }
 }

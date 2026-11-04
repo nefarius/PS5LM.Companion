@@ -19,8 +19,16 @@ public enum ConsoleChangeKind
     Replaced = 2,
 }
 
-/// <summary>A console was added, removed, or replaced by a new runtime with the same id.</summary>
-public sealed record ConsoleChange(ConsoleChangeKind Kind, ConsoleRuntime? Previous, ConsoleRuntime? Current);
+/// <summary>A console was added, removed, or replaced. A replacement may also change the id.</summary>
+public sealed record ConsoleChange(ConsoleChangeKind Kind, ConsoleRuntime? Previous, ConsoleRuntime? Current)
+{
+    /// <summary>The replacement moved this console to another id. Subscribers keying state by id must follow it.</summary>
+    public bool IsRename =>
+        Kind == ConsoleChangeKind.Replaced
+        && Previous is not null
+        && Current is not null
+        && !string.Equals(Previous.Id, Current.Id, StringComparison.Ordinal);
+}
 
 public enum ConsoleEditStatus
 {
@@ -50,8 +58,8 @@ public interface IConsoleRegistry
     /// <summary>Adds a user console. The id is stored in lower case.</summary>
     ConsoleEditResult Add(string id, PS5Options options);
 
-    /// <summary>Replaces a user console's settings. The id does not change.</summary>
-    ConsoleEditResult Update(string id, PS5Options options);
+    /// <summary>Replaces a user console's settings. A <paramref name="newId"/> different from <paramref name="id"/> renames it; null keeps the id.</summary>
+    ConsoleEditResult Update(string id, PS5Options options, string? newId = null);
 
     /// <summary>Removes a user console.</summary>
     ConsoleEditResult Remove(string id);
