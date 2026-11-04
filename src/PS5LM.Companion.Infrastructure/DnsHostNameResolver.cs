@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Sockets;
 
 namespace PS5LM.Companion.Infrastructure;
 
@@ -6,6 +7,9 @@ namespace PS5LM.Companion.Infrastructure;
 public interface IHostNameResolver
 {
     Task<string?> ResolveAsync(string host, CancellationToken cancellationToken);
+
+    /// <summary>The IPv4 addresses of a configured host. A literal address is returned as itself. A name that does not resolve yields an empty list.</summary>
+    Task<IReadOnlyList<IPAddress>> AddressesAsync(string host, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -41,6 +45,26 @@ public sealed class DnsHostNameResolver : IHostNameResolver
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             return null;
+        }
+    }
+
+    public async Task<IReadOnlyList<IPAddress>> AddressesAsync(string host, CancellationToken cancellationToken)
+    {
+        if (IPAddress.TryParse(host, out var literal))
+        {
+            return [literal];
+        }
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(LookupTimeout);
+        try
+        {
+            var resolved = await Dns.GetHostAddressesAsync(host, timeout.Token);
+            return resolved.Where(address => address.AddressFamily == AddressFamily.InterNetwork).ToList();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            return [];
         }
     }
 
