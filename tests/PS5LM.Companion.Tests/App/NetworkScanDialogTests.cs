@@ -90,18 +90,41 @@ public sealed class NetworkScanDialogTests : BunitContext, IAsyncLifetime
     [Fact]
     public async Task Adding_a_console_marks_it_without_dismissing_the_scan()
     {
+        var cut = RenderDialog(WithHostName(), new DiscoveredConsole("10.0.0.6", true, false, false, false, false));
+        var pending = Show(cut);
+        await ScanAsync(cut);
+
+        Click(cut, "Use hostname");
+        cut.WaitForAssertion(() => Assert.Contains("Add a console", cut.Markup, StringComparison.Ordinal));
+        SetText(cut, "Name", "Den");
+        Click(cut, "Save");
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.DoesNotContain("Add a console", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Already added", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("ps5.lan", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("10.0.0.6", cut.Markup, StringComparison.Ordinal);
+        });
+        Assert.False(pending.IsCompleted);
+        Assert.Contains(_registry.All, console => console.Host == "ps5.lan");
+
+        Click(cut, "Use IP");
+        cut.WaitForAssertion(() => Assert.Contains("Add a console", cut.Markup, StringComparison.Ordinal));
+        Assert.Equal("10.0.0.6", HostValue(cut));
+    }
+
+    [Fact]
+    public async Task A_console_added_elsewhere_is_marked_on_the_open_scan()
+    {
         var cut = RenderDialog(WithHostName());
         var pending = Show(cut);
         await ScanAsync(cut);
 
-        Click(cut, "Use IP");
-        cut.WaitForAssertion(() => Assert.Contains("Add a console", cut.Markup, StringComparison.Ordinal));
         Assert.True(_registry.Add("den", new PS5Options { Host = "10.0.0.5" }).Succeeded);
 
-        Click(cut, "Cancel");
         cut.WaitForAssertion(() =>
         {
-            Assert.DoesNotContain("Add a console", cut.Markup, StringComparison.Ordinal);
             Assert.Contains("Already added", cut.Markup, StringComparison.Ordinal);
             Assert.DoesNotContain("Use hostname", cut.Markup, StringComparison.Ordinal);
             Assert.DoesNotContain("Use IP", cut.Markup, StringComparison.Ordinal);
@@ -167,6 +190,13 @@ public sealed class NetworkScanDialogTests : BunitContext, IAsyncLifetime
 
     private static void Click(IRenderedComponent<MudDialogProvider> cut, string label) =>
         cut.FindAll("button").Single(button => button.TextContent.Contains(label, StringComparison.Ordinal)).Click();
+
+    private static void SetText(IRenderedComponent<MudDialogProvider> cut, string label, string value)
+    {
+        var control = cut.FindAll(".mud-input-control").Single(item => item.TextContent.Contains(label, StringComparison.Ordinal));
+        var input = control.QuerySelector("input") ?? throw new InvalidOperationException($"No input for {label}.");
+        input.Change(value);
+    }
 
     private static string? HostValue(IRenderedComponent<MudDialogProvider> cut)
     {

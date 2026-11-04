@@ -80,6 +80,8 @@
     [CascadingParameter]
     private IMudDialogInstance MudDialog { get; set; } = default!;
 
+    protected override void OnInitialized() => Registry.Changed += OnRegistryChanged;
+
     public static async Task ShowAsync(IDialogService dialogs)
     {
         var dialog = await dialogs.ShowAsync<NetworkScanDialog>(
@@ -143,7 +145,32 @@
 
     private async Task Pick(string host)
     {
+        // A button rendered before another tab saved this host must not open the editor.
+        if (_results.Any(console =>
+                (SameHost(host, console.Host) || SameHost(host, console.HostName)) && IsConfigured(console)))
+        {
+            Refresh();
+            return;
+        }
+
         await ConsoleEditor.ShowAsync(Dialogs, null, host);
+        Refresh();
+    }
+
+    private void OnRegistryChanged(ConsoleChange change)
+    {
+        try
+        {
+            _ = InvokeAsync(Refresh);
+        }
+        catch (ObjectDisposedException)
+        {
+            // The circuit ended.
+        }
+    }
+
+    private void Refresh()
+    {
         if (!_disposed)
         {
             StateHasChanged();
@@ -164,6 +191,7 @@
         }
 
         _disposed = true;
+        Registry.Changed -= OnRegistryChanged;
         _cancel.Cancel();
         _cancel.Dispose();
     }
