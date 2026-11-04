@@ -34,7 +34,7 @@ public sealed class NavActivityTests
     [Fact]
     public async Task Work_in_progress_wins_over_pending()
     {
-        var (markup, _) = await Render(busy: true, pending: true, "Downloading, 2 queued");
+        var (markup, _) = await Render(busy: true, pending: true, "Transfer in progress, 2 queued");
 
         Assert.Contains("mud-progress-circular", markup);
         Assert.DoesNotContain("nav-activity-dot", markup);
@@ -82,6 +82,16 @@ public sealed class NavActivityTests
     public void Transfer_activity_counts_verifying_and_uploading_as_running()
     {
         Assert.Equal((true, 0), Display.TransferActivity([Sample(TransferState.Verifying), Sample(TransferState.Uploading)]));
+    }
+
+    [Theory]
+    [InlineData(true, 0, "Transfer in progress")]
+    [InlineData(true, 2, "Transfer in progress, 2 queued")]
+    [InlineData(false, 1, "1 queued")]
+    [InlineData(false, 0, null)]
+    public void Transfer_activity_label_names_a_running_transfer_without_a_phase(bool running, int queued, string? expected)
+    {
+        Assert.Equal(expected, Display.TransferActivityLabel(running, queued));
     }
 
     [Fact]

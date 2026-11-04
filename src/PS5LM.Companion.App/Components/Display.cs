@@ -261,6 +261,20 @@ internal static class Display
         return (running, queued);
     }
 
+    /// <summary>
+    /// Tooltip for the Downloads indicator. A running transfer may be downloading, verifying or uploading,
+    /// so the label names the transfer rather than one phase.
+    /// </summary>
+    public static string? TransferActivityLabel(bool running, int queued)
+    {
+        if (running)
+        {
+            return queued > 0 ? $"Transfer in progress, {queued} queued" : "Transfer in progress";
+        }
+
+        return queued > 0 ? $"{queued} queued" : null;
+    }
+
     public static Color TransferColor(TransferState state) => state switch
     {
         TransferState.Completed => Color.Success,

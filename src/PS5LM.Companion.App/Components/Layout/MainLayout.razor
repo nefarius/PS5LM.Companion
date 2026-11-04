@@ -51,7 +51,7 @@
                 var status = console.Store.Current;
                 var modelLabel = Display.ModelActivity(status);
                 var (running, queued) = Display.TransferActivity(Transfers.Snapshot(console.Id));
-                var downloadLabel = DownloadActivityLabel(running, queued);
+                var downloadLabel = Display.TransferActivityLabel(running, queued);
                 <MudNavGroup Title="@console.Name"
                              @bind-Expanded:get="@IsOpen(console.Id)"
                              @bind-Expanded:set="@(open => SetOpen(console.Id, open))">
@@ -181,14 +181,16 @@
 
     private void OnTransfersChanged()
     {
-        if (!TransferActivityChanged())
-        {
-            return;
-        }
-
         try
         {
-            _ = InvokeAsync(StateHasChanged);
+            // The comparison writes the cache, so it has to run on the renderer thread with the render it gates.
+            _ = InvokeAsync(() =>
+            {
+                if (TransferActivityChanged())
+                {
+                    StateHasChanged();
+                }
+            });
         }
         catch (ObjectDisposedException)
         {
@@ -219,16 +221,6 @@
         }
 
         return changed;
-    }
-
-    private static string? DownloadActivityLabel(bool running, int queued)
-    {
-        if (running)
-        {
-            return queued > 0 ? $"Downloading, {queued} queued" : "Downloading";
-        }
-
-        return queued > 0 ? $"{queued} queued" : null;
     }
 
     private static string GroupActivityLabel(string? modelLabel, string? downloadLabel) =>
