@@ -49,6 +49,9 @@ public sealed class ConsoleConnectionProbeTests
             ["FTP", "Payload Manager", "elfldr", "VoidShell", "ps5-exporter", "llama-server"],
             report.Checks.Select(check => check.Name));
         Assert.Equal(ProbeOutcome.Skipped, report.Checks.Single(check => check.Name == "llama-server").Outcome);
+        var exporter = report.Checks.Single(check => check.Name == "ps5-exporter");
+        Assert.Equal(ProbeOutcome.Skipped, exporter.Outcome);
+        Assert.Contains("starts with the PS5LM app", exporter.Detail, StringComparison.Ordinal);
     }
 
     [Fact]
