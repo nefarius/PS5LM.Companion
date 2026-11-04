@@ -91,7 +91,7 @@ docker run -it --rm --pull always -v ps5lm-companion:/data containinger/ps5lm-co
   update --host <console> --restart
 ```
 
-If the restart reports that another copy still holds the port, reboot the console or relaunch VoidShell from Payload Manager so the new build is the one running.
+If the restart reports that another copy still holds the port, reboot the console. The copy that still answers keeps port 7007, and autoload after the reboot starts the uploaded build.
 
 To go back to upstream once it ships the fix: repin `version`, `url`, `sha256` and the `index.html` entry of `voidshell` in the manifest,
 then run `setup --verify-manifest`. Leave `voidshell` required. A custom manifest may mark a different payload `"optional": true`

@@ -56,11 +56,15 @@ The published image is [`containinger/ps5lm-companion`](https://hub.docker.com/r
 ```sh
 docker run -d -p 8080:8080 -v ps5lm-companion:/data \
   -e PS5__Consoles__ps5__Host=192.168.1.50 \
-  -e Companion__AccessToken=change-me \
+  -e Companion__AccessToken=unique-secret \
   containinger/ps5lm-companion
 ```
 
+Replace `unique-secret` with a unique secret before publishing port 8080. The command under [Building from source](#building-from-source) uses the same placeholder.
+
 ### Building from source
+
+Prerequisite: Docker Engine or the Docker CLI (`docker build` and `docker run`), and the [.NET SDK 10.0.100 or newer](#build) (`global.json`).
 
 ```sh
 dotnet tool restore
@@ -70,7 +74,7 @@ docker build -f docker/Dockerfile \
   -t ps5lm-companion .
 docker run -p 8080:8080 -v ps5lm-companion:/data \
   -e PS5__Consoles__ps5__Host=192.168.1.50 \
-  -e Companion__AccessToken=change-me \
+  -e Companion__AccessToken=unique-secret \
   ps5lm-companion
 ```
 
