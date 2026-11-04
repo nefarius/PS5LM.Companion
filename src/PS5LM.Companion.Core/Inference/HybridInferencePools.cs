@@ -225,7 +225,6 @@ public sealed class HybridInferencePools : IInferencePoolSource
                 }
             }
 
-            var hiddenBackup = _hidden.ToList();
             var hiddenChanged = false;
             for (var index = 0; index < _hidden.Count; index++)
             {
@@ -241,22 +240,20 @@ public sealed class HybridInferencePools : IInferencePoolSource
                 return;
             }
 
-            var backup = _state;
+            if (poolsChanged)
+            {
+                _state = State.From(next);
+            }
+
+            // The console rename has already been stored. A disk fault must not undo the pool list in memory
+            // or stop subscribers that still have to follow the new id. The next pool save tries again.
             try
             {
-                if (poolsChanged)
-                {
-                    _state = State.From(next);
-                }
-
                 Persist();
             }
-            catch
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                _state = backup;
-                _hidden.Clear();
-                _hidden.AddRange(hiddenBackup);
-                throw;
+                _warn?.Invoke($"Could not save inference pools after renaming console '{from}' to '{to}': {ex.Message}");
             }
         }
 
