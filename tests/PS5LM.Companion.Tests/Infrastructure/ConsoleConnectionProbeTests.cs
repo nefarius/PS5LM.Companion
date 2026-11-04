@@ -17,14 +17,16 @@ public sealed class ConsoleConnectionProbeTests
         fake.Payloads.Snapshot = new PayloadCatalogSnapshot(true, true, null, [], new HashSet<string>());
         fake.Elfldr.Listening = true;
         fake.VoidShell.SetUp([]);
-        fake.Websrv.SetUp([]);
         fake.Sensors.Sensors = new ConsoleSensors(40, null, null, null, []);
         var probe = new ConsoleConnectionProbe(connectors);
 
         var report = await probe.TestAsync(new PS5Options { Host = "10.0.0.8" }, CancellationToken.None);
 
         Assert.Equal(
-            [ProbeOutcome.Pass, ProbeOutcome.Pass, ProbeOutcome.Pass, ProbeOutcome.Pass, ProbeOutcome.Pass, ProbeOutcome.Pass, ProbeOutcome.Skipped],
+            ["FTP", "Payload Manager", "elfldr", "VoidShell", "ps5-exporter", "llama-server"],
+            report.Checks.Select(check => check.Name));
+        Assert.Equal(
+            [ProbeOutcome.Pass, ProbeOutcome.Pass, ProbeOutcome.Pass, ProbeOutcome.Pass, ProbeOutcome.Pass, ProbeOutcome.Skipped],
             report.Checks.Select(check => check.Outcome));
         Assert.Contains("PS5LM", report.Checks[0].Detail, StringComparison.Ordinal);
         Assert.Contains("Closed until a model is loaded", report.Checks[^1].Detail, StringComparison.Ordinal);
@@ -37,30 +39,16 @@ public sealed class ConsoleConnectionProbeTests
         connectors[ConsoleConnectionProbe.ProbeId].FileSystem.Unreachable = true;
         var probe = new ConsoleConnectionProbe(connectors);
 
-        var report = await probe.TestAsync(new PS5Options { Host = "10.0.0.9", VoidShellPort = 0, WebsrvPort = 0 }, CancellationToken.None);
+        var report = await probe.TestAsync(new PS5Options { Host = "10.0.0.9", VoidShellPort = 0 }, CancellationToken.None);
 
         Assert.Equal(ProbeOutcome.Fail, report.Checks.Single(check => check.Name == "FTP").Outcome);
         var voidShell = report.Checks.Single(check => check.Name == "VoidShell");
         Assert.Equal(ProbeOutcome.Fail, voidShell.Outcome);
         Assert.Contains("required", voidShell.Detail, StringComparison.OrdinalIgnoreCase);
-        Assert.Equal(ProbeOutcome.Skipped, report.Checks.Single(check => check.Name == "websrv").Outcome);
+        Assert.Equal(
+            ["FTP", "Payload Manager", "elfldr", "VoidShell", "ps5-exporter", "llama-server"],
+            report.Checks.Select(check => check.Name));
         Assert.Equal(ProbeOutcome.Skipped, report.Checks.Single(check => check.Name == "llama-server").Outcome);
-    }
-
-    [Fact]
-    public async Task A_websrv_that_does_not_answer_is_skipped_while_VoidShell_works_and_fails_without_it()
-    {
-        var withVoidShell = new FakeConnectorFactory();
-        withVoidShell[ConsoleConnectionProbe.ProbeId].VoidShell.SetUp([]);
-        var without = new FakeConnectorFactory();
-
-        var covered = await new ConsoleConnectionProbe(withVoidShell).TestAsync(new PS5Options { Host = "10.0.0.8" }, CancellationToken.None);
-        var uncovered = await new ConsoleConnectionProbe(without).TestAsync(new PS5Options { Host = "10.0.0.8" }, CancellationToken.None);
-
-        var skipped = covered.Checks.Single(check => check.Name == "websrv");
-        Assert.Equal(ProbeOutcome.Skipped, skipped.Outcome);
-        Assert.Contains("VoidShell", skipped.Detail, StringComparison.Ordinal);
-        Assert.Equal(ProbeOutcome.Fail, uncovered.Checks.Single(check => check.Name == "websrv").Outcome);
     }
 
     [Fact]

@@ -6,9 +6,9 @@ using PS5LM.Companion.Core.Models;
 namespace PS5LM.Companion.Core.Status;
 
 /// <summary>
-/// Launches PS5LM or PS5LM Plus through the required VoidShell fork, or through websrv when that fork does not
-/// answer. A VoidShell answer that omits the title is final. Only a title the chosen service lists as installed is
-/// launched, and a second request while one runs is refused.
+/// Launches PS5LM or PS5LM Plus through the required VoidShell fork. A VoidShell answer that omits the title is
+/// final. Only a title the chosen service lists as installed is launched, and a second request while one runs is
+/// refused.
 /// </summary>
 public sealed class AppLaunchService(
     IReadOnlyList<IAppControlProvider> providers,
@@ -71,11 +71,7 @@ public sealed class AppLaunchService(
 
             return reachable
                 ? new OperationResult(OperationOutcome.NotFound, $"{profile.DisplayName} ({profile.TitleId}) is not installed on the console.")
-                : new OperationResult(
-                    OperationOutcome.Unavailable,
-                    providers.Any(provider => provider.Kind == AppProviderKind.Websrv)
-                        ? "The fixed VoidShell fork is not reachable, and websrv (legacy fallback) is not reachable either."
-                        : "The fixed VoidShell fork is not reachable.");
+                : new OperationResult(OperationOutcome.Unavailable, "The fixed VoidShell fork is not reachable.");
         }
         finally
         {
@@ -83,9 +79,5 @@ public sealed class AppLaunchService(
         }
     }
 
-    private static string ProviderLabel(AppProviderKind kind) => kind switch
-    {
-        AppProviderKind.Websrv => "websrv (legacy fallback)",
-        _ => kind.ToString(),
-    };
+    private static string ProviderLabel(AppProviderKind kind) => kind.ToString();
 }

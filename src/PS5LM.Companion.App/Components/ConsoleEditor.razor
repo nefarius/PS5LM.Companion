@@ -21,7 +21,6 @@
                 <MudNumericField @bind-Value="_elfldrPort" Label="elfldr port" Min="1" Max="65535" Class="mb-2" />
                 <MudTextField @bind-Value="_payloadManagerUrl" Label="Payload Manager URL" HelperText="Empty uses http://host:8084." Class="mb-2" />
                 <MudNumericField @bind-Value="_voidShellPort" Label="VoidShell port" Min="1" Max="65535" HelperText="Required. The pinned fork listens on 7007 after setup." Class="mb-2" />
-                <MudNumericField @bind-Value="_websrvPort" Label="websrv port" Min="0" Max="65535" HelperText="Legacy fallback. 0 disables it." Class="mb-2" />
                 <MudSelect T="PS5Variant" @bind-Value="_variant" Label="App" Class="mb-2">
                     <MudSelectItem T="PS5Variant" Value="PS5Variant.Unknown">Detect</MudSelectItem>
                     <MudSelectItem T="PS5Variant" Value="PS5Variant.PS5LM">PS5LM</MudSelectItem>
@@ -54,7 +53,6 @@
     private int _exporterPort = 9100;
     private int _elfldrPort = 9021;
     private int _voidShellPort = 7007;
-    private int _websrvPort = 8080;
     private int _pollInterval = 3;
     private int _discoveryCache = 30;
     private int _loadGrace = 600;
@@ -110,7 +108,6 @@
         _exporterPort = options.ExporterPort;
         _elfldrPort = options.ElfldrPort;
         _voidShellPort = options.VoidShellPort;
-        _websrvPort = options.WebsrvPort;
         _pollInterval = options.PollIntervalSeconds;
         _discoveryCache = options.DiscoveryCacheSeconds;
         _loadGrace = options.LoadGraceSeconds;
@@ -139,7 +136,6 @@
         ElfldrPort = _elfldrPort,
         PayloadManagerUrl = string.IsNullOrWhiteSpace(_payloadManagerUrl) ? null : _payloadManagerUrl.Trim(),
         VoidShellPort = _voidShellPort,
-        WebsrvPort = _websrvPort,
         Variant = _variant,
         PollIntervalSeconds = _pollInterval,
         DiscoveryCacheSeconds = _discoveryCache,

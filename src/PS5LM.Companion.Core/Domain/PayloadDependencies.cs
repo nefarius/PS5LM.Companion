@@ -70,7 +70,7 @@ public static class PayloadDependencies
     /// <summary>
     /// Turns a catalog read and the port checks into the rows the dashboard shows.
     /// <paramref name="voidShellAnswering"/> is null before the VoidShell probe, true when its API answered,
-    /// and false when the required fork is missing or unreachable. A websrv answer does not count.
+    /// and false when the required fork is missing or unreachable.
     /// </summary>
     public static IReadOnlyList<DependencyStatus> Evaluate(
         PayloadCatalogSnapshot catalog,

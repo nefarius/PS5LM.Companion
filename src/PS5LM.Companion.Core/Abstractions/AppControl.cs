@@ -7,9 +7,6 @@ public enum AppProviderKind
 {
     /// <summary>Required nefarius VoidShell fork: title library, running title, firmware and launching. Setup uses port 7007.</summary>
     VoidShell = 0,
-
-    /// <summary>Legacy ps5-payload-dev websrv fallback: title launching on port 8080. It cannot report the running title.</summary>
-    Websrv = 1,
 }
 
 /// <summary>What one app-control service reported on one probe.</summary>
@@ -42,7 +39,7 @@ public sealed record AppProviderSnapshot(
 /// <param name="Accepted">Whether the service accepted it. For VoidShell this only means the title was queued.</param>
 public sealed record AppLaunchResult(bool Dispatched, bool Accepted, string Message);
 
-/// <summary>Lists and launches titles through the required VoidShell fork, or websrv when that fork does not answer.</summary>
+/// <summary>Lists and launches titles through the required VoidShell fork.</summary>
 public interface IAppControlProvider
 {
     AppProviderKind Kind { get; }

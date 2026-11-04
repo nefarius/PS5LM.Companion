@@ -25,8 +25,6 @@ public class ConsoleSettingsBody
 
     public int VoidShellPort { get; set; } = 7007;
 
-    public int WebsrvPort { get; set; } = 8080;
-
     public PS5Variant Variant { get; set; }
 
     public int PollIntervalSeconds { get; set; } = 3;
@@ -47,7 +45,6 @@ public class ConsoleSettingsBody
         ElfldrPort = ElfldrPort,
         PayloadManagerUrl = PayloadManagerUrl,
         VoidShellPort = VoidShellPort,
-        WebsrvPort = WebsrvPort,
         Variant = Variant,
         PollIntervalSeconds = PollIntervalSeconds,
         DiscoveryCacheSeconds = DiscoveryCacheSeconds,
@@ -65,7 +62,6 @@ public class ConsoleSettingsBody
         ElfldrPort = options.ElfldrPort,
         PayloadManagerUrl = options.PayloadManagerUrl,
         VoidShellPort = options.VoidShellPort,
-        WebsrvPort = options.WebsrvPort,
         Variant = options.Variant,
         PollIntervalSeconds = options.PollIntervalSeconds,
         DiscoveryCacheSeconds = options.DiscoveryCacheSeconds,

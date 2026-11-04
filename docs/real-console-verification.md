@@ -37,8 +37,7 @@ Start the companion with `PS5__Consoles__<id>__Host=<console>` and open the dash
     as installed and marks the running one as running (`running_app`, including while the home screen has focus). The
     VoidShell payload row is Verified. `/api/version` stays `V1.1` and does not by itself prove the fork tag.
 11. **App launch**: stop PS5LM, press Launch on its row. The app opens on the TV; launching again while it runs is accepted.
-    With the fork stopped and websrv running, Launch still works through the legacy fallback and the running column reads
-    *Unknown*, while the VoidShell payload row stays unhealthy.
+    With the fork stopped, Launch is unavailable and the VoidShell payload row stays unhealthy.
 12. **App close**: with PS5LM running, press Close. The `quit` file disappears within a few seconds, the app exits to the
     home screen and the row reads *Not running*. With the app stopped, Close is not offered.
 

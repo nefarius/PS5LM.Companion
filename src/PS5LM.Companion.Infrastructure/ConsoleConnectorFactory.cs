@@ -28,7 +28,6 @@ public sealed class ConsoleConnectorFactory(IHttpClientFactory httpClients, ILog
     public const string ExporterClient = "exporter-probe";
     public const string PayloadManagerClient = "payload-manager";
     public const string VoidShellHttpClient = "voidshell";
-    public const string WebsrvHttpClient = "websrv";
 
     public ConsoleConnectors Create(string consoleId, PS5Options options)
     {
@@ -42,11 +41,6 @@ public sealed class ConsoleConnectorFactory(IHttpClientFactory httpClients, ILog
         {
             voidShell = new VoidShellClient(Client(VoidShellHttpClient, new UriBuilder(Uri.UriSchemeHttp, options.Host, options.VoidShellPort).Uri));
             appControl.Add(voidShell);
-        }
-
-        if (options.WebsrvPort > 0)
-        {
-            appControl.Add(new WebsrvClient(Client(WebsrvHttpClient, new UriBuilder(Uri.UriSchemeHttp, options.Host, options.WebsrvPort).Uri)));
         }
 
         var files = new FtpFileSystem(options, loggers.CreateLogger<FtpFileSystem>());
