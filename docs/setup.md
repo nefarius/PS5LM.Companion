@@ -6,7 +6,13 @@ skipped.
 ```sh
 dotnet PS5LM.Companion.App.dll setup --host <console> --variant ps5lm|ps5lmplus [options]
 dotnet PS5LM.Companion.App.dll setup --verify-manifest
+docker run -it --rm --pull always -v ps5lm-companion:/data containinger/ps5lm-companion \
+  setup --host <console> --variant ps5lm|ps5lmplus [options]
+docker run -it --rm --pull always -v ps5lm-companion:/data containinger/ps5lm-companion \
+  setup --verify-manifest
 ```
+
+The `docker` lines use the published [`containinger/ps5lm-companion`](https://hub.docker.com/r/containinger/ps5lm-companion) image. `-it` keeps the coloured report. `--pull always` fetches the current `:latest` before the command runs. The `dotnet` lines are for a build from source.
 
 | Option | Purpose |
 |---|---|
@@ -78,8 +84,16 @@ which the companion uses for the app check, and `firmware` (e.g. `13.40`), the c
 the status page. Verified on FW 13.40 and 10.00.
 
 **Upgrading from `v1.1.1-nefarius.2`.** A normal `setup` rerun skips payloads that are already on the console, so it keeps the old
-build and no firmware appears. Run [`update`](update.md) (or `setup --force`) to upload the new `voidshell.elf` and `index.html` again, then restart VoidShell
-(reboot the console or relaunch it from Payload Manager) so the new build is the one running.
+build and no firmware appears. Run [`update --restart`](update.md) to upload the new `voidshell.elf` and `index.html`, stop the running VoidShell, and launch the uploaded build:
+
+```sh
+docker run -it --rm --pull always -v ps5lm-companion:/data containinger/ps5lm-companion \
+  update --host <console> --restart
+```
+
+`setup --force` uploads those files again and leaves the running copy in place. Reboot the console afterwards so autoload starts the uploaded build.
+
+If the restart reports that another copy still holds the port, reboot the console. The copy that still answers keeps port 7007, and autoload after the reboot starts the uploaded build.
 
 To go back to upstream once it ships the fix: repin `version`, `url`, `sha256` and the `index.html` entry of `voidshell` in the manifest,
 then run `setup --verify-manifest`. Leave `voidshell` required. A custom manifest may mark a different payload `"optional": true`
