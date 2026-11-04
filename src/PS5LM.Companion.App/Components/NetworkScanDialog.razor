@@ -15,17 +15,43 @@
         {
             <MudAlert Severity="Severity.Warning" Dense="true">No consoles found.</MudAlert>
         }
-        <MudList T="DiscoveredConsole" SelectedValueChanged="Pick">
-            @foreach (var console in _results)
-            {
-                <MudListItem T="DiscoveredConsole" Value="@console">
-                    @console.Host — @(console.Ps5LmPlus ? "PS5LM Plus" : "PS5LM")
+        @foreach (var console in _results)
+        {
+            <MudPaper Outlined="true" Class="pa-3 mb-2">
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Baseline">
+                    <MudText Typo="Typo.body1">@(console.HostName ?? console.Host)</MudText>
+                    @if (console.HostName is not null)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@console.Host</MudText>
+                    }
+                </MudStack>
+                <MudText Typo="Typo.body2" Class="mt-1">
+                    @Describe(console)
                     @if (console.PayloadManager) { <span> · Payload Manager</span> }
                     @if (console.VoidShell) { <span> · VoidShell</span> }
                     @if (console.Exporter) { <span> · ps5-exporter</span> }
-                </MudListItem>
-            }
-        </MudList>
+                </MudText>
+                @if (!console.Ftp)
+                {
+                    <MudText Typo="Typo.caption" Class="d-block">found via VoidShell (FTP unavailable)</MudText>
+                }
+                @if (console.VoidShell && !console.VoidShellFork)
+                {
+                    <MudText Typo="Typo.caption" Class="d-block">not the nefarius fork</MudText>
+                }
+                <MudStack Row="true" Spacing="1" Class="mt-2">
+                    @if (console.HostName is not null)
+                    {
+                        <MudButton Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled" OnClick="@(() => UseHostName(console))">Use hostname</MudButton>
+                        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => Pick(console.Host))">Use IP</MudButton>
+                    }
+                    else
+                    {
+                        <MudButton Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled" OnClick="@(() => Pick(console.Host))">Use IP</MudButton>
+                    }
+                </MudStack>
+            </MudPaper>
+        }
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="Cancel">Cancel</MudButton>
@@ -54,6 +80,26 @@
         return result is { Canceled: false, Data: string host } ? host : null;
     }
 
+    private static string Describe(DiscoveredConsole console)
+    {
+        if (console.Ps5Lm && console.Ps5LmPlus)
+        {
+            return "PS5LM and PS5LM Plus";
+        }
+
+        if (console.Ps5LmPlus)
+        {
+            return "PS5LM Plus";
+        }
+
+        if (console.Ps5Lm)
+        {
+            return "PS5LM";
+        }
+
+        return "no PS5LM app installed";
+    }
+
     private async Task ScanAsync()
     {
         _busy = true;
@@ -77,7 +123,15 @@
         }
     }
 
-    private void Pick(DiscoveredConsole console) => MudDialog.Close(DialogResult.Ok(console.Host));
+    private void UseHostName(DiscoveredConsole console)
+    {
+        if (console.HostName is { } name)
+        {
+            Pick(name);
+        }
+    }
+
+    private void Pick(string host) => MudDialog.Close(DialogResult.Ok(host));
 
     private void Cancel()
     {

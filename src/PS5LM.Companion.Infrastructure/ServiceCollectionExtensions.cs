@@ -52,6 +52,7 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<IConsoleConnectorFactory, ConsoleConnectorFactory>();
         services.AddSingleton<IConsoleProbe, ConsoleConnectionProbe>();
+        services.AddSingleton<IHostNameResolver, DnsHostNameResolver>();
         services.AddSingleton<IConsoleDiscovery, LanConsoleScanner>();
         services.AddSingleton<IConsoleStore>(sp =>
         {
