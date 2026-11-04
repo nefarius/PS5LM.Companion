@@ -31,6 +31,16 @@ public sealed class ConsoleConnectionProbe(IConsoleConnectorFactory factory) : I
             var payloadManager = await Check("Payload Manager", token => PayloadManagerAsync(connectors, token), cancellationToken);
             var elfldr = await Check("elfldr", token => ElfldrAsync(connectors, options, token), cancellationToken);
             var voidShell = await Check("VoidShell", token => VoidShellAsync(connectors, options, token), cancellationToken);
+            var exporter = await Check("ps5-exporter", token => ExporterAsync(connectors, token), cancellationToken);
+            // The exporter is launched with the PS5LM app, so a miss, timeout, or connection error is expected until then.
+            if (exporter.Outcome == ProbeOutcome.Fail)
+            {
+                exporter = exporter with
+                {
+                    Outcome = ProbeOutcome.Skipped,
+                    Detail = $"{exporter.Detail.TrimEnd()} ps5-exporter starts with the PS5LM app.",
+                };
+            }
 
             return new ConsoleProbeReport(
             [
@@ -38,7 +48,7 @@ public sealed class ConsoleConnectionProbe(IConsoleConnectorFactory factory) : I
                 payloadManager,
                 elfldr,
                 voidShell,
-                await Check("ps5-exporter", token => ExporterAsync(connectors, token), cancellationToken),
+                exporter,
                 await Check("llama-server", token => LlamaAsync(connectors, token), cancellationToken),
             ]);
         }
@@ -100,7 +110,7 @@ public sealed class ConsoleConnectionProbe(IConsoleConnectorFactory factory) : I
     {
         var sensors = await connectors.Sensors.ReadAsync(cancellationToken);
         return sensors is null
-            ? new ProbeCheck("ps5-exporter", ProbeOutcome.Fail, "ps5-exporter is not reachable.")
+            ? new ProbeCheck("ps5-exporter", ProbeOutcome.Skipped, "Not reachable yet; ps5-exporter starts with the PS5LM app.")
             : new ProbeCheck("ps5-exporter", ProbeOutcome.Pass, "ps5-exporter answered.");
     }
 
