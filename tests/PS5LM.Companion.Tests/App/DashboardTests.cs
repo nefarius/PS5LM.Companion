@@ -414,7 +414,7 @@ public sealed class DashboardTests
 
         public ConsoleEditResult Add(string id, PS5Options options) => throw new NotSupportedException();
 
-        public ConsoleEditResult Update(string id, PS5Options options) => throw new NotSupportedException();
+        public ConsoleEditResult Update(string id, PS5Options options, string? newId = null) => throw new NotSupportedException();
 
         public ConsoleEditResult Remove(string id) => throw new NotSupportedException();
     }

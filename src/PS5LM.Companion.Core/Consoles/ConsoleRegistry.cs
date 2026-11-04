@@ -78,7 +78,7 @@ public sealed class ConsoleRegistry : IConsoleRegistry, IDisposable
 
     public ConsoleEditResult Add(string id, PS5Options options) => Edit(id, options, replacing: false);
 
-    public ConsoleEditResult Update(string id, PS5Options options) => Edit(id, options, replacing: true);
+    public ConsoleEditResult Update(string id, PS5Options options, string? newId = null) => Edit(id, options, replacing: true, newId);
 
     public ConsoleEditResult Remove(string id)
     {
@@ -129,10 +129,11 @@ public sealed class ConsoleRegistry : IConsoleRegistry, IDisposable
         }
     }
 
-    private ConsoleEditResult Edit(string id, PS5Options options, bool replacing)
+    private ConsoleEditResult Edit(string id, PS5Options options, bool replacing, string? newId = null)
     {
         var key = id.Trim().ToLowerInvariant();
-        var errors = ConsoleSettings.Errors(key, options);
+        var target = replacing && !string.IsNullOrWhiteSpace(newId) ? newId.Trim().ToLowerInvariant() : key;
+        var errors = ConsoleSettings.Errors(target, options);
         if (errors.Count > 0)
         {
             return new ConsoleEditResult(ConsoleEditStatus.Invalid, string.Join(" ", errors));
@@ -158,7 +159,12 @@ public sealed class ConsoleRegistry : IConsoleRegistry, IDisposable
                 return new ConsoleEditResult(ConsoleEditStatus.ReadOnly, $"'{previous.Name}' comes from configuration and cannot be changed.");
             }
 
-            created = Create(key, options, ConsoleSource.User);
+            if (!string.Equals(target, key, StringComparison.Ordinal) && _state.ById.ContainsKey(target))
+            {
+                return new ConsoleEditResult(ConsoleEditStatus.Conflict, $"A console with id '{target}' already exists.");
+            }
+
+            created = Create(target, options, ConsoleSource.User);
             var backup = _state;
             try
             {

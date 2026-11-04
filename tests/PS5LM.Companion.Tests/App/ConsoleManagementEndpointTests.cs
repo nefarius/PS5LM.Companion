@@ -47,6 +47,31 @@ public sealed class ConsoleManagementEndpointTests
     }
 
     [Fact]
+    public async Task Renaming_a_console_moves_its_address()
+    {
+        await using var factory = new CompanionFactory { ConsoleIds = [] };
+        using var client = factory.CreateClient();
+        using var created = await client.PostAsJsonAsync("/api/consoles", new { id = "den", settings = new { host = "10.0.0.8", displayName = "Den" } });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        using var other = await client.PostAsJsonAsync("/api/consoles", new { id = "other", settings = new { host = "10.0.0.7" } });
+        Assert.Equal(HttpStatusCode.Created, other.StatusCode);
+
+        using var renamed = await client.PutAsJsonAsync("/api/consoles/den", new { id = "Living-Room", host = "10.0.0.9", displayName = "Den" });
+        var body = await renamed.Content.ReadFromJsonAsync<JsonElement>();
+        using var oldSettings = await client.GetAsync("/api/consoles/den/settings");
+        var moved = await client.GetFromJsonAsync<JsonElement>("/api/consoles/living-room/settings");
+        using var conflict = await client.PutAsJsonAsync("/api/consoles/living-room", new { id = "other", host = "10.0.0.9" });
+
+        Assert.Equal(HttpStatusCode.OK, renamed.StatusCode);
+        Assert.Equal("/api/consoles/living-room", renamed.Headers.Location?.OriginalString);
+        Assert.Equal("living-room", body.GetProperty("id").GetString());
+        Assert.Equal(HttpStatusCode.NotFound, oldSettings.StatusCode);
+        Assert.Equal("10.0.0.9", moved.GetProperty("settings").GetProperty("host").GetString());
+        Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
+        Assert.NotNull(factory.Registry.Find("living-room"));
+    }
+
+    [Fact]
     public async Task A_configuration_console_cannot_be_edited_or_removed()
     {
         await using var factory = new CompanionFactory();

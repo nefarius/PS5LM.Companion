@@ -7,7 +7,7 @@ using PS5LM.Companion.Core.Transfers;
 
 namespace PS5LM.Companion.App.Endpoints;
 
-public sealed class ConsoleSettingsBody
+public class ConsoleSettingsBody
 {
     public string? DisplayName { get; set; }
 
@@ -121,7 +121,13 @@ public sealed class CreateConsoleEndpoint(IConsoleRegistry registry) : Endpoint<
     }
 }
 
-public sealed class UpdateConsoleEndpoint(IConsoleRegistry registry, TransferService transfers) : Endpoint<ConsoleSettingsBody>
+public sealed class UpdateConsoleBody : ConsoleSettingsBody
+{
+    /// <summary>When set to a different id, renames the console. Omitted keeps the current id.</summary>
+    public string? Id { get; set; }
+}
+
+public sealed class UpdateConsoleEndpoint(IConsoleRegistry registry, TransferService transfers, ConsoleSettingsService settings) : Endpoint<UpdateConsoleBody>
 {
     public override void Configure()
     {
@@ -130,16 +136,24 @@ public sealed class UpdateConsoleEndpoint(IConsoleRegistry registry, TransferSer
         Description(b => b.WithTags("Consoles"));
     }
 
-    public override async Task HandleAsync(ConsoleSettingsBody request, CancellationToken ct)
+    public override async Task HandleAsync(UpdateConsoleBody request, CancellationToken ct)
     {
         var id = Route<string>("consoleId") ?? "";
-        if (transfers.HasActive(id))
+        var requested = request.Id?.Trim();
+        var renaming = !string.IsNullOrEmpty(requested)
+            && !string.Equals(requested, id.Trim(), StringComparison.OrdinalIgnoreCase);
+        if (!renaming && transfers.HasActive(id))
         {
             await Send.ResultAsync(ApiResults.Error("Cancel this console's transfers before changing it.", StatusCodes.Status409Conflict));
             return;
         }
 
-        var result = registry.Update(id, request.ToOptions());
+        var result = settings.Update(id, request.ToOptions(), request.Id);
+        if (result.Succeeded && result.Console is { } console && !string.Equals(console.Id, id.Trim(), StringComparison.OrdinalIgnoreCase))
+        {
+            HttpContext.Response.Headers.Location = $"/api/consoles/{console.Id}";
+        }
+
         await Send.ResultAsync(ConsoleEdits.Result(result, registry));
     }
 }

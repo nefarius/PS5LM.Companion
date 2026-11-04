@@ -48,6 +48,7 @@ public sealed class HybridInferencePools : IInferencePoolSource
         }
 
         _state = State.From(pools);
+        _consoles.Changed += OnConsolesChanged;
     }
 
     public IReadOnlyList<InferencePool> All
@@ -197,6 +198,83 @@ public sealed class HybridInferencePools : IInferencePoolSource
 
     private static List<string> Normalize(IReadOnlyList<string> consoles) =>
         consoles.Select(console => console.Trim().ToLowerInvariant()).Distinct(StringComparer.Ordinal).ToList();
+
+    private void OnConsolesChanged(ConsoleChange change)
+    {
+        if (!change.IsRename || change.Previous is null || change.Current is null)
+        {
+            return;
+        }
+
+        var from = change.Previous.Id;
+        var to = change.Current.Id;
+        lock (_gate)
+        {
+            var poolsChanged = false;
+            var next = new List<InferencePool>(_state.All.Count);
+            foreach (var pool in _state.All)
+            {
+                if (pool.Origin == InferencePoolOrigin.User && ReplaceConsole(pool.Consoles, from, to) is { } consoles)
+                {
+                    next.Add(pool with { Consoles = consoles });
+                    poolsChanged = true;
+                }
+                else
+                {
+                    next.Add(pool);
+                }
+            }
+
+            var hiddenBackup = _hidden.ToList();
+            var hiddenChanged = false;
+            for (var index = 0; index < _hidden.Count; index++)
+            {
+                if (ReplaceConsole(_hidden[index].Consoles, from, to) is { } consoles)
+                {
+                    _hidden[index] = _hidden[index] with { Consoles = consoles };
+                    hiddenChanged = true;
+                }
+            }
+
+            if (!poolsChanged && !hiddenChanged)
+            {
+                return;
+            }
+
+            var backup = _state;
+            try
+            {
+                if (poolsChanged)
+                {
+                    _state = State.From(next);
+                }
+
+                Persist();
+            }
+            catch
+            {
+                _state = backup;
+                _hidden.Clear();
+                _hidden.AddRange(hiddenBackup);
+                throw;
+            }
+        }
+
+        Changed?.Invoke();
+    }
+
+    private static List<string>? ReplaceConsole(IReadOnlyList<string> consoles, string from, string to)
+    {
+        if (!consoles.Any(id => string.Equals(id, from, StringComparison.OrdinalIgnoreCase)))
+        {
+            return null;
+        }
+
+        return consoles
+            .Select(id => string.Equals(id, from, StringComparison.OrdinalIgnoreCase) ? to : id)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+    }
 
     private void Persist()
     {

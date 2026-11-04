@@ -129,7 +129,14 @@
         if (change.Current is { } current)
         {
             current.Store.Changed += OnStatusChanged;
-            _open.TryAdd(current.Id, false);
+            if (change.IsRename && change.Previous is { } from && _open.Remove(from.Id, out var open))
+            {
+                _open[current.Id] = open;
+            }
+            else
+            {
+                _open.TryAdd(current.Id, false);
+            }
         }
 
         RefreshCurrent();

@@ -161,6 +161,28 @@ public sealed class InferencePoolSourceTests
     }
 
     [Fact]
+    public void Renaming_a_console_rewrites_user_pools_and_hidden_ones()
+    {
+        var registry = Registry();
+        Assert.True(registry.Add("den", new PS5Options { Host = "10.0.0.8" }).Succeeded);
+        var store = new MemoryPoolStore
+        {
+            Pools = [new StoredInferencePool("chat", "other.gguf", ["den"])],
+        };
+        var options = new InferenceOptions();
+        options.Pools["chat"] = new InferencePoolOptions { Model = "qwen.gguf", Consoles = ["a"] };
+        var pools = new HybridInferencePools(options, registry, store, _ => { });
+        Assert.True(pools.Add("extra", "b.gguf", ["den", "a"]).Succeeded);
+
+        Assert.True(registry.Update("den", new PS5Options { Host = "10.0.0.9" }, "living-room").Succeeded);
+
+        Assert.Equal(["living-room", "a"], pools.Find("extra")!.Consoles);
+        Assert.Equal(["a"], pools.Find("chat")!.Consoles);
+        Assert.Equal(["living-room"], store.Pools.Single(pool => pool.Alias == "chat").Consoles);
+        Assert.Equal(["living-room", "a"], store.Pools.Single(pool => pool.Alias == "extra").Consoles);
+    }
+
+    [Fact]
     public void A_stored_pool_whose_names_clash_with_configuration_is_hidden()
     {
         var warnings = new List<string>();

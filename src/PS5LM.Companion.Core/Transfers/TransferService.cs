@@ -275,6 +275,25 @@ public sealed class TransferService
 
     private void OnConsolesChanged(ConsoleChange change)
     {
+        if (change.IsRename && change.Previous is { } from && change.Current is { } renamed)
+        {
+            StopWorker(from.Id);
+            EnsureQueue(renamed.Id);
+            if (Volatile.Read(ref _started) == 1)
+            {
+                StartWorker(renamed.Id);
+            }
+
+            if (RenameTransfers(from.Id, renamed.Id))
+            {
+                Changed?.Invoke();
+                _ = TryPersistAsync();
+            }
+
+            TryMoveCache(from.Id, renamed.Id);
+            return;
+        }
+
         if (change.Kind is ConsoleChangeKind.Added or ConsoleChangeKind.Replaced && change.Current is { } current)
         {
             EnsureQueue(current.Id);
@@ -287,6 +306,52 @@ public sealed class TransferService
         if (change.Kind == ConsoleChangeKind.Removed && change.Previous is { } previous)
         {
             StopWorker(previous.Id);
+        }
+    }
+
+    private bool RenameTransfers(string from, string to)
+    {
+        lock (_gate)
+        {
+            var any = false;
+            foreach (var id in _transfers.Keys.ToList())
+            {
+                var transfer = _transfers[id];
+                if (!string.Equals(transfer.ConsoleId, from, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                _transfers[id] = transfer with { ConsoleId = to };
+                any = true;
+            }
+
+            return any;
+        }
+    }
+
+    /// <summary>A finished transfer no longer needs its cache. A leftover partial download should still resume under the new id.</summary>
+    private void TryMoveCache(string from, string to)
+    {
+        try
+        {
+            var source = Path.Combine(_options.CacheDirectory, from);
+            var destination = Path.Combine(_options.CacheDirectory, to);
+            if (!Directory.Exists(source) || Directory.Exists(destination))
+            {
+                return;
+            }
+
+            Directory.CreateDirectory(_options.CacheDirectory);
+            Directory.Move(source, destination);
+        }
+        catch (IOException)
+        {
+            // The cache is only a resume aid. The next attempt downloads again.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // The cache is only a resume aid. The next attempt downloads again.
         }
     }
 
