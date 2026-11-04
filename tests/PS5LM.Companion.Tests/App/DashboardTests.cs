@@ -4,6 +4,7 @@ using System.Text;
 
 using Bunit;
 
+using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -189,6 +190,32 @@ public sealed class DashboardTests
                 .Arguments[1]?.ToString();
             Assert.Contains("\"den\":false", saved, StringComparison.Ordinal);
             Assert.DoesNotContain("living-room", saved, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public async Task The_nav_menu_opens_the_current_console_when_it_has_no_saved_choice()
+    {
+        var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
+        var http = new HttpClient(handler, disposeHandler: false);
+        var checker = new LatestReleaseChecker(http, new FixedVersion("1.0.0"));
+        await using var ctx = new BunitContext();
+        ctx.JSInterop.Mode = JSRuntimeMode.Loose;
+        ctx.JSInterop.Setup<string?>("sessionStorage.getItem", "ps5lm.nav.open")
+            .SetResult("""{"den":true}""");
+        ctx.Services.AddSingleton(checker);
+        var registry = new FixedRegistry(NavConsole("den", "Den"), NavConsole("living-room", "Living room"));
+        ctx.Services.AddSingleton<IConsoleRegistry>(registry);
+        ctx.Services.AddSingleton(IdleTransfers(registry));
+        ctx.Services.AddMudServices();
+        ctx.Services.GetRequiredService<NavigationManager>().NavigateTo("/consoles/living-room");
+
+        var cut = ctx.Render<PS5LM.Companion.App.Components.Layout.MainLayout>();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.NotNull(cut.Find(".mud-nav-group[aria-label='Living room'] .mud-expanded"));
+            Assert.DoesNotContain(ctx.JSInterop.Invocations, call => call.Identifier == "sessionStorage.setItem");
         });
     }
 

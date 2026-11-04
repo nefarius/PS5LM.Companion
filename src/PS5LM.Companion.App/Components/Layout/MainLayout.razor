@@ -325,9 +325,12 @@
     private async Task RestoreNavOpenAsync()
     {
         var storedCurrent = false;
+        var pendingChoice = false;
         try
         {
             var json = await JS.InvokeAsync<string?>("sessionStorage.getItem", NavOpenStorageKey);
+            // A toggle during the read is already in _chosen and must win over the stored value.
+            pendingChoice = _chosen.Count > 0;
             if (!string.IsNullOrWhiteSpace(json))
             {
                 var stored = JsonSerializer.Deserialize<Dictionary<string, bool>>(json);
@@ -335,7 +338,7 @@
                 {
                     foreach (var (id, open) in stored)
                     {
-                        if (Registry.Find(id) is not { } console)
+                        if (Registry.Find(id) is not { } console || _chosen.Contains(console.Id))
                         {
                             continue;
                         }
@@ -353,15 +356,21 @@
         catch (Exception)
         {
             // Session storage is unavailable while the circuit is starting or already gone.
+            pendingChoice = _chosen.Count > 0;
         }
 
         // A console page opens its group until the user has stored a choice for it.
-        if (_current is not null && !storedCurrent)
+        if (_current is not null && !storedCurrent && !_chosen.Contains(_current.Id))
         {
             _open[_current.Id] = true;
         }
 
         _navOpenReady = true;
+        if (pendingChoice)
+        {
+            RememberNavOpen();
+        }
+
         await InvokeAsync(StateHasChanged);
     }
 
