@@ -27,6 +27,34 @@
     border-color: rgba(var(--mud-palette-warning-rgb), var(--mud-palette-border-opacity));
 }
 
+/* Right-aligns a NavActivity indicator inside a nav link or a console group title. */
+.nav-activity-row {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    gap: 0.5rem;
+}
+
+.nav-activity {
+    display: inline-flex;
+    align-items: center;
+    margin-inline-start: auto;
+    flex-shrink: 0;
+}
+
+.nav-activity .mud-progress-circular {
+    height: 14px;
+    width: 14px;
+}
+
+.nav-activity-dot {
+    display: block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--mud-palette-info);
+}
+
 #blazor-error-ui {
     background: #b32121;
     color: #fff;

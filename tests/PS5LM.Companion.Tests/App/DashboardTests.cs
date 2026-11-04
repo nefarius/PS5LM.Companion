@@ -12,6 +12,7 @@ using PS5LM.Companion.App.Updates;
 using PS5LM.Companion.Core.Consoles;
 using PS5LM.Companion.Core.Discovery;
 using PS5LM.Companion.Core.Domain;
+using PS5LM.Companion.Core.Transfers;
 using PS5LM.Companion.Tests.Support;
 
 namespace PS5LM.Companion.Tests.App;
@@ -69,7 +70,10 @@ public sealed class DashboardTests
         await using var ctx = new BunitContext();
         ctx.JSInterop.Mode = JSRuntimeMode.Loose;
         ctx.Services.AddSingleton(checker);
-        ctx.Services.AddSingleton<IConsoleRegistry>(new EmptyRegistry());
+        var registry = new EmptyRegistry();
+        ctx.Services.AddSingleton<IConsoleRegistry>(registry);
+        ctx.Services.AddSingleton(new TransferService(
+            new FakeHub(), registry, new MemoryTransferStore(), new TransferOptions(), TimeProvider.System));
         ctx.Services.AddMudServices();
 
         var cut = ctx.Render<PS5LM.Companion.App.Components.Layout.MainLayout>();

@@ -1,0 +1,30 @@
+@* A spinner while work is in progress, or a static dot while it is only waiting. *@
+@if (Busy || Pending)
+{
+    <MudTooltip Text="@Label">
+        <span class="nav-activity" role="img" aria-label="@Label">
+            @if (Busy)
+            {
+                <MudProgressCircular Indeterminate="true" Size="Size.Small" Color="Color.Info" aria-hidden="true" />
+            }
+            else
+            {
+                <span class="nav-activity-dot" aria-hidden="true"></span>
+            }
+        </span>
+    </MudTooltip>
+}
+
+@code {
+    /// <summary>Shows the spinner. Takes precedence over <see cref="Pending"/>.</summary>
+    [Parameter]
+    public bool Busy { get; set; }
+
+    /// <summary>Shows a static dot when nothing is moving yet.</summary>
+    [Parameter]
+    public bool Pending { get; set; }
+
+    /// <summary>Tooltip and accessible name.</summary>
+    [Parameter]
+    public string Label { get; set; } = "";
+}
