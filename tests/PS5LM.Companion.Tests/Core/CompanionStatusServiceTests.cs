@@ -83,26 +83,6 @@ public sealed class CompanionStatusServiceTests
     }
 
     [Fact]
-    public async Task Websrv_can_check_apps_while_the_required_VoidShell_fork_stays_unhealthy()
-    {
-        var voidShell = new FakeAppProvider(AppProviderKind.VoidShell);
-        var websrv = new FakeAppProvider(AppProviderKind.Websrv);
-        websrv.SetUp(["PPSA99575"], runningKnown: false);
-        var service = new CompanionStatusService(
-            _options, ConsoleFixtures.PS5LMInstalled(), _llama, _sensors, new FakePayloadCatalog(), new FakeElfldrProbe(), _tracker, _time, [websrv, voidShell]);
-
-        var status = await service.RefreshAsync(CancellationToken.None);
-
-        Assert.True(status.AppControl!.Available);
-        Assert.Equal("Websrv", status.AppControl.Provider);
-        Assert.Contains("legacy fallback", status.AppControl.Message, StringComparison.Ordinal);
-        var row = status.Dependencies.Single(dependency => dependency.Id == PayloadDependencies.VoidShell);
-        Assert.Equal(DependencyRequirement.Required, row.Requirement);
-        Assert.Equal(DependencyHealth.Unknown, row.Health);
-        Assert.Equal("down", row.Message);
-    }
-
-    [Fact]
     public async Task Overlapping_refreshes_run_one_at_a_time()
     {
         var catalog = new BlockingCatalog();

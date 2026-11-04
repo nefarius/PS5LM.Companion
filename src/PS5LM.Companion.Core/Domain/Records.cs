@@ -157,9 +157,9 @@ public sealed record ComponentUpdateStatus(
 
 public sealed record AppVariantStatus(PS5Variant Variant, string TitleId, string Name, bool Installed, AppRunState State, bool CanLaunch);
 
-/// <summary>What the required VoidShell fork, or the websrv legacy fallback, reported about the PS5LM apps.</summary>
-/// <param name="Available">Whether VoidShell or the websrv fallback answered.</param>
-/// <param name="Provider">The service used for status and launching (VoidShell wins), or <see langword="null"/>.</param>
+/// <summary>What the required VoidShell fork reported about the PS5LM apps.</summary>
+/// <param name="Available">Whether VoidShell answered.</param>
+/// <param name="Provider">The service used for status and launching, or <see langword="null"/>.</param>
 /// <param name="Version">The provider's version text, when it reports one.</param>
 /// <param name="Message">Why nothing is available, or a caveat about the state.</param>
 /// <param name="Apps">One row per PS5LM variant.</param>

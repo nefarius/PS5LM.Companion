@@ -30,12 +30,7 @@ public sealed class ConsoleConnectionProbe(IConsoleConnectorFactory factory) : I
             var ftp = await Check("FTP", token => FtpAsync(connectors, options, token), cancellationToken);
             var payloadManager = await Check("Payload Manager", token => PayloadManagerAsync(connectors, token), cancellationToken);
             var elfldr = await Check("elfldr", token => ElfldrAsync(connectors, options, token), cancellationToken);
-            var voidShell = await Check("VoidShell", token => AppAsync(connectors, options.VoidShellPort, AppProviderKind.VoidShell, "VoidShell", token), cancellationToken);
-            var websrv = await Check("websrv", token => AppAsync(connectors, options.WebsrvPort, AppProviderKind.Websrv, "websrv", token), cancellationToken);
-            if (websrv.Outcome == ProbeOutcome.Fail && voidShell.Outcome == ProbeOutcome.Pass)
-            {
-                websrv = new ProbeCheck("websrv", ProbeOutcome.Skipped, $"Not needed: VoidShell answers. websrv is only a legacy fallback. ({websrv.Detail})");
-            }
+            var voidShell = await Check("VoidShell", token => VoidShellAsync(connectors, options, token), cancellationToken);
 
             return new ConsoleProbeReport(
             [
@@ -43,7 +38,6 @@ public sealed class ConsoleConnectionProbe(IConsoleConnectorFactory factory) : I
                 payloadManager,
                 elfldr,
                 voidShell,
-                websrv,
                 await Check("ps5-exporter", token => ExporterAsync(connectors, token), cancellationToken),
                 await Check("llama-server", token => LlamaAsync(connectors, token), cancellationToken),
             ]);
@@ -83,30 +77,23 @@ public sealed class ConsoleConnectionProbe(IConsoleConnectorFactory factory) : I
             : new ProbeCheck("elfldr", ProbeOutcome.Fail, $"elfldr is not accepting connections on port {options.ElfldrPort}.");
     }
 
-    private static async Task<ProbeCheck> AppAsync(
-        ConsoleConnectors connectors,
-        int port,
-        AppProviderKind kind,
-        string name,
-        CancellationToken cancellationToken)
+    private static async Task<ProbeCheck> VoidShellAsync(ConsoleConnectors connectors, PS5Options options, CancellationToken cancellationToken)
     {
-        if (port <= 0)
+        if (options.VoidShellPort <= 0)
         {
-            return kind == AppProviderKind.VoidShell
-                ? new ProbeCheck(name, ProbeOutcome.Fail, "The fixed VoidShell fork is required.")
-                : new ProbeCheck(name, ProbeOutcome.Skipped, $"{name} is disabled.");
+            return new ProbeCheck("VoidShell", ProbeOutcome.Fail, "The fixed VoidShell fork is required.");
         }
 
-        var provider = connectors.AppControl?.FirstOrDefault(item => item.Kind == kind);
+        var provider = connectors.AppControl?.FirstOrDefault(item => item.Kind == AppProviderKind.VoidShell);
         if (provider is null)
         {
-            return new ProbeCheck(name, ProbeOutcome.Fail, $"{name} could not be checked.");
+            return new ProbeCheck("VoidShell", ProbeOutcome.Fail, "VoidShell could not be checked.");
         }
 
         var snapshot = await provider.ProbeAsync(cancellationToken);
         return snapshot.Available
-            ? new ProbeCheck(name, ProbeOutcome.Pass, $"{name} answered on port {port}.")
-            : new ProbeCheck(name, ProbeOutcome.Fail, snapshot.Message ?? $"{name} did not answer on port {port}.");
+            ? new ProbeCheck("VoidShell", ProbeOutcome.Pass, $"VoidShell answered on port {options.VoidShellPort}.")
+            : new ProbeCheck("VoidShell", ProbeOutcome.Fail, snapshot.Message ?? $"VoidShell did not answer on port {options.VoidShellPort}.");
     }
 
     private static async Task<ProbeCheck> ExporterAsync(ConsoleConnectors connectors, CancellationToken cancellationToken)

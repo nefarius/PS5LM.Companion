@@ -108,20 +108,6 @@ public sealed class AppControlClientTests
     }
 
     [Fact]
-    public async Task Websrv_with_unexpected_json_shapes_is_tolerated()
-    {
-        var notWebsrv = await new WebsrvClient(Client(_ => Json("[]"), out _)).ProbeAsync(CancellationToken.None);
-        var client = new WebsrvClient(Client(
-            r => r.RequestUri!.AbsolutePath == "/fs/user/app/" ? Json("""[1,null,"x",{"name":"PPSA99581"}]""") : Websrv(r),
-            out _));
-
-        var snapshot = await client.ProbeAsync(CancellationToken.None);
-
-        Assert.False(notWebsrv.Available);
-        Assert.Equal(["PPSA99581"], snapshot.InstalledTitleIds);
-    }
-
-    [Fact]
     public async Task VoidShell_launch_posts_the_title_id_as_text()
     {
         var client = new VoidShellClient(Client(VoidShell, out var handler));
@@ -222,37 +208,5 @@ public sealed class AppControlClientTests
         await cancelled.CancelAsync();
         await Assert.ThrowsAsync<TimeoutRejectedException>(() => timedOut.ProbeAsync(cancelled.Token));
         await Assert.ThrowsAsync<TimeoutRejectedException>(() => timedOut.LaunchAsync("PPSA99575", cancelled.Token));
-    }
-
-    private static HttpResponseMessage Websrv(HttpRequestMessage request) => request.RequestUri!.AbsolutePath switch
-    {
-        "/version" => Json("""{"tag":"v0.30","api":1}"""),
-        "/fs/user/app/" => Json("""[{"name":"PPSA99581","mode":"d"},{"name":"PPSA01325","mode":"d"}]"""),
-        "/fs/user/appmeta/" => Json("[]"),
-        "/launch" => new HttpResponseMessage(HttpStatusCode.OK),
-        _ => new HttpResponseMessage(HttpStatusCode.NotFound),
-    };
-
-    [Fact]
-    public async Task Websrv_probe_lists_installed_titles_without_running_state()
-    {
-        var snapshot = await new WebsrvClient(Client(Websrv, out _)).ProbeAsync(CancellationToken.None);
-
-        Assert.True(snapshot.Available);
-        Assert.Contains("PPSA99581", snapshot.InstalledTitleIds);
-        Assert.False(snapshot.RunningKnown);
-    }
-
-    [Fact]
-    public async Task Websrv_launch_passes_the_title_id_and_maps_503_to_a_rejection()
-    {
-        var client = new WebsrvClient(Client(Websrv, out var handler));
-        var ok = await client.LaunchAsync("PPSA99581", CancellationToken.None);
-        var refused = await new WebsrvClient(Client(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable), out _)).LaunchAsync("PPSA99581", CancellationToken.None);
-
-        Assert.True(ok.Accepted);
-        Assert.Equal("?titleId=PPSA99581", handler.Requests.Single().RequestUri!.Query);
-        Assert.True(refused.Dispatched);
-        Assert.False(refused.Accepted);
     }
 }

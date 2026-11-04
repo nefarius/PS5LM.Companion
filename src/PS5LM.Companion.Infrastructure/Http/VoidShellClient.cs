@@ -116,7 +116,7 @@ public sealed class VoidShellClient(HttpClient http) : IAppControlProvider, IPro
         }
         catch (TimeoutRejectedException ex) when (!cancellationToken.IsCancellationRequested)
         {
-            // The POST may already be on the wire. Not dispatched would make the launcher try websrv as well.
+            // The POST may already be on the wire. Treat a timeout as dispatched so the launch is not retried.
             return new AppLaunchResult(true, false, ex.Message);
         }
         catch (Exception ex) when (IsTransient(ex, cancellationToken))

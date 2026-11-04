@@ -43,10 +43,6 @@ public sealed class PS5Options
     [Range(1, 65535, ErrorMessage = "The VoidShell port is required and must be between 1 and 65535.")]
     public int VoidShellPort { get; set; } = 7007;
 
-    /// <summary>ps5-payload-dev websrv's port. 0 disables this legacy fallback. It does not replace VoidShell.</summary>
-    [Range(0, 65535)]
-    public int WebsrvPort { get; set; } = 8080;
-
     /// <summary>Forces a variant; <see cref="PS5Variant.Unknown"/> detects it from the installed title folders.</summary>
     public PS5Variant Variant { get; set; } = PS5Variant.Unknown;
 
