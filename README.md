@@ -54,7 +54,7 @@ works before any model exists. It needs no changes to either app.
 The published image is [`containinger/ps5lm-companion`](https://hub.docker.com/r/containinger/ps5lm-companion). `:latest` follows stable releases. Pin a version (`containinger/ps5lm-companion:1.8.1`) to stay on one. Prereleases are published as their own tags and leave `:latest` where it is.
 
 ```sh
-docker run -d -p 8080:8080 -v ps5lm-companion:/data \
+docker run -d --pull always -p 8080:8080 -v ps5lm-companion:/data \
   -e PS5__Consoles__ps5__Host=192.168.1.50 \
   -e Companion__AccessToken=unique-secret \
   containinger/ps5lm-companion

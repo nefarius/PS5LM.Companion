@@ -84,12 +84,14 @@ which the companion uses for the app check, and `firmware` (e.g. `13.40`), the c
 the status page. Verified on FW 13.40 and 10.00.
 
 **Upgrading from `v1.1.1-nefarius.2`.** A normal `setup` rerun skips payloads that are already on the console, so it keeps the old
-build and no firmware appears. Run [`update --restart`](update.md) (or `setup --force`) to upload the new `voidshell.elf` and `index.html` again. `--restart` stops the running VoidShell and launches the uploaded build:
+build and no firmware appears. Run [`update --restart`](update.md) to upload the new `voidshell.elf` and `index.html`, stop the running VoidShell, and launch the uploaded build:
 
 ```sh
 docker run -it --rm --pull always -v ps5lm-companion:/data containinger/ps5lm-companion \
   update --host <console> --restart
 ```
+
+`setup --force` uploads those files again and leaves the running copy in place. Reboot the console afterwards so autoload starts the uploaded build.
 
 If the restart reports that another copy still holds the port, reboot the console. The copy that still answers keeps port 7007, and autoload after the reboot starts the uploaded build.
 
