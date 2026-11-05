@@ -19,6 +19,7 @@ public sealed record ReadyCheck(int Port = 0, IReadOnlyList<string>? Processes =
 /// <param name="ReadyTimeoutSeconds">How long to wait for <see cref="Ready"/> after launching.</param>
 /// <param name="PidFile">File on the console where the payload writes its own pid; lets <c>update --restart</c> replace a running copy.</param>
 /// <param name="SelfReplacing">Launching a new copy stops the running one, so <c>update --restart</c> replaces it by launching it again.</param>
+/// <param name="HandoffWhileTitleRuns">With <paramref name="SelfReplacing"/>: the handoff does not disturb a running title, so <c>update --restart</c> does not wait for it to close (ftpsrv). Without it a running title blocks the handoff (ShadowMountPlus unmounts its titles).</param>
 /// <param name="Optional">When true, a payload that is not up at the end is reported as a warning instead of a failure.</param>
 /// <param name="OptionalNote">Shown with the warning to explain why the payload may legitimately not start.</param>
 public sealed record ManifestPayload(
@@ -34,7 +35,8 @@ public sealed record ManifestPayload(
     bool Optional = false,
     string? OptionalNote = null,
     string? PidFile = null,
-    bool SelfReplacing = false)
+    bool SelfReplacing = false,
+    bool HandoffWhileTitleRuns = false)
 {
     public string UploadName => Id + ".elf";
 }
@@ -139,6 +141,11 @@ public sealed record SetupManifest(
             if (payload.SelfReplacing && (payload.Ready.Processes is null || payload.Ready.Processes.Count == 0))
             {
                 throw new InvalidDataException($"Payload '{payload.Id}' selfReplacing needs a ready process list, so the handoff can be checked by process id.");
+            }
+
+            if (payload.HandoffWhileTitleRuns && !payload.SelfReplacing)
+            {
+                throw new InvalidDataException($"Payload '{payload.Id}' handoffWhileTitleRuns needs selfReplacing.");
             }
 
             foreach (var file in payload.Files ?? [])

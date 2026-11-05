@@ -39,11 +39,13 @@
     {
       "id": "ftpsrv",
       "name": "ftpsrv",
-      "version": "v0.21.1",
-      "url": "https://github.com/ps5-payload-dev/ftpsrv/releases/download/v0.21.1/ftpsrv-ps5.elf",
-      "sha256": "7d4b31c83eae4e056580482a3a074e1db25922efc74ac1e439473b45d71a5938",
-      "ready": { "port": 2121 },
-      "readyTimeoutSeconds": 20
+      "version": "v0.21.1-nefarius.1",
+      "url": "https://github.com/nefarius/ftpsrv/releases/download/v0.21.1-nefarius.1/ftpsrv-ps5.elf",
+      "sha256": "bfddc060ee61bb534796016fba35124f8e2f100da6be11e444aabc19b04b1fbb",
+      "ready": { "port": 2121, "processes": ["ftpsrv.elf"] },
+      "readyTimeoutSeconds": 20,
+      "selfReplacing": true,
+      "handoffWhileTitleRuns": true
     },
     {
       "id": "shadowmountplus",

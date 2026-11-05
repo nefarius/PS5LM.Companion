@@ -18,7 +18,7 @@ internal sealed class SetupHarness : IDisposable
         ["elfldr.elf"] = (9021, null),
         ["kstuff-lite.elf"] = (0, "kstuff.elf"),
         ["onionhen.elf"] = (0, "onion_daemon.elf"),
-        ["ftpsrv.elf"] = (2121, null),
+        ["ftpsrv.elf"] = (2121, "ftpsrv.elf"),
         ["shadowmountplus.elf"] = (0, "shadowmountplus.elf"),
         ["voidshell.elf"] = (7007, null),
         ["ps5-web-file-manager.elf"] = (8888, null),
@@ -70,6 +70,9 @@ internal sealed class SetupHarness : IDisposable
     /// Leave unset when the launch should not change the process list.
     /// </summary>
     public int? HandoffPid { get; set; }
+
+    /// <summary>A launch drops the payload's port instead of opening it (the new copy never starts listening).</summary>
+    public bool DropPortOnLoad { get; set; }
 
     public HashSet<string> LoadFails { get; } = new(StringComparer.OrdinalIgnoreCase);
 
@@ -153,7 +156,14 @@ internal sealed class SetupHarness : IDisposable
             {
                 if (effect.Port > 0)
                 {
-                    owner.Ports.Add(effect.Port);
+                    if (owner.DropPortOnLoad)
+                    {
+                        owner.Ports.Remove(effect.Port);
+                    }
+                    else
+                    {
+                        owner.Ports.Add(effect.Port);
+                    }
                 }
 
                 if (effect.Process is not null)

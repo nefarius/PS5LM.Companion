@@ -41,6 +41,8 @@ public sealed class UpdateRunner
         _setup = new SetupRunner(manifest, options.ToSetupOptions(), services);
     }
 
+    private bool _ftpsrvRecoveryTried;
+
     private ISetupUi Ui => _services.Ui;
 
     public async Task<UpdateReport> RunAsync(CancellationToken cancellationToken)
@@ -106,7 +108,9 @@ public sealed class UpdateRunner
 
     private async Task UpdatePayloadsAsync(CancellationToken cancellationToken)
     {
-        if (!await RequireFtpAsync("Payloads", cancellationToken))
+        if (!await _services.Probe.PortOpenAsync(_options.FtpPort, cancellationToken)
+            && !await RecoverFtpsrvAsync(ftpAnswers: false, cancellationToken)
+            && !await RequireFtpAsync("Payloads", cancellationToken))
         {
             return;
         }
@@ -146,8 +150,25 @@ public sealed class UpdateRunner
             // listing also looks like absence and must not lead to an upload that overwrites without comparing.
             if (remote is null && !await IsConfirmedAbsentAsync(stored.Path, cancellationToken))
             {
-                Add(payload.Name, SetupStatus.Warn, UnreadableMessage(stored.Path));
-                continue;
+                // The port answers, yet the transfer failed: the ftpsrv bug that answers RETR with 550 while listings
+                // still work. Replace ftpsrv once, then read again.
+                if (!_ftpsrvRecoveryTried
+                    && await IsUnreadableAsync(stored.Path, cancellationToken)
+                    && await RecoverFtpsrvAsync(ftpAnswers: true, cancellationToken))
+                {
+                    remote = await _services.Files.ReadBytesAsync(stored.Path, MaxPayloadBytes, cancellationToken);
+                    if (remote is not null && HashEquals(remote, local))
+                    {
+                        Add(payload.Name, SetupStatus.Ok, $"{payload.Version} is current.");
+                        continue;
+                    }
+                }
+
+                if (remote is null)
+                {
+                    Add(payload.Name, SetupStatus.Warn, UnreadableMessage(stored.Path));
+                    continue;
+                }
             }
 
             if (_options.CheckOnly)
@@ -232,7 +253,12 @@ public sealed class UpdateRunner
 
             if (payload.SelfReplacing)
             {
-                await ReplaceByHandoffAsync(payload, stored, uploadedNote, cancellationToken);
+                await ReplaceByHandoffAsync(
+                    payload,
+                    stored,
+                    uploadedNote,
+                    cancellationToken,
+                    waitUntilListening: payload.Id.Equals("ftpsrv", StringComparison.OrdinalIgnoreCase));
                 continue;
             }
 
@@ -260,29 +286,29 @@ public sealed class UpdateRunner
 
     // The new copy finds the running process by name, signals it, and only then takes that name. Wait until the old
     // pids are gone and a new one with the payload's process name exists.
-    private async Task ReplaceByHandoffAsync(ManifestPayload payload, ManagedPayload stored, string uploadedNote, CancellationToken cancellationToken)
+    private async Task<bool> ReplaceByHandoffAsync(ManifestPayload payload, ManagedPayload stored, string uploadedNote, CancellationToken cancellationToken, bool waitUntilListening = false)
     {
-        switch (await AnyTitleRunningAsync(cancellationToken))
+        switch (payload.HandoffWhileTitleRuns ? false : await AnyTitleRunningAsync(cancellationToken))
         {
             case true:
                 Add(payload.Name, SetupStatus.Warn, $"{uploadedNote}. Not restarted: a title is running; {payload.Name} unmounts its titles when it hands over. Close it and run update --restart again.");
-                return;
+                return false;
             case null:
                 Add(payload.Name, SetupStatus.Warn, $"{uploadedNote}. Not restarted: cannot tell whether a title is running (VoidShell is not reporting it). Start VoidShell and run update --restart again.");
-                return;
+                return false;
         }
 
         if (payload.Ready.Processes is not { Count: > 0 } names)
         {
             Add(payload.Name, SetupStatus.Warn, $"{uploadedNote}. Not restarted: it has no process name to match the running copy against.");
-            return;
+            return false;
         }
 
         var processes = await _services.Manager.GetProcessIdsAsync(cancellationToken);
         if (processes is null)
         {
             Add(payload.Name, SetupStatus.Warn, $"{uploadedNote}. Not restarted: Payload Manager's process list could not be read.");
-            return;
+            return false;
         }
 
         var previous = processes
@@ -292,7 +318,7 @@ public sealed class UpdateRunner
         if (previous.Count == 0)
         {
             Add(payload.Name, SetupStatus.Warn, $"{uploadedNote}. Not restarted: no running process matches {string.Join(", ", names)}.");
-            return;
+            return false;
         }
 
         Ui.Info($"Launching {payload.Name} so it can replace the running copy");
@@ -300,7 +326,7 @@ public sealed class UpdateRunner
         if (!launch.Accepted)
         {
             Add(payload.Name, SetupStatus.Warn, $"{uploadedNote}. Not restarted: {launch.Message}");
-            return;
+            return false;
         }
 
         var handedOver = await _setup.WaitForAsync(
@@ -313,12 +339,28 @@ public sealed class UpdateRunner
             },
             _options.WaitOverride ?? TimeSpan.FromSeconds(SelfReplaceHandoffSeconds + payload.ReadyTimeoutSeconds),
             cancellationToken);
-        Add(
-            payload.Name,
-            handedOver ? SetupStatus.Ok : SetupStatus.Warn,
-            handedOver
-                ? $"Updated to {payload.Version}; the running copy handed over to the new one."
-                : $"{uploadedNote}. Not restarted: the running copy did not hand over.");
+        if (!handedOver)
+        {
+            Add(payload.Name, SetupStatus.Warn, $"{uploadedNote}. Not restarted: the running copy did not hand over.");
+            return false;
+        }
+
+        // ftpsrv's --restart handoff only. Recovery waits for the port itself and keeps its own report.
+        if (waitUntilListening)
+        {
+            var listening = await _setup.WaitForAsync(
+                ct => _setup.IsReadyAsync(payload, ct),
+                _options.WaitOverride ?? TimeSpan.FromSeconds(payload.ReadyTimeoutSeconds),
+                cancellationToken);
+            if (!listening)
+            {
+                Add(payload.Name, SetupStatus.Warn, $"{uploadedNote}. Not restarted: the new copy is not answering on port {_options.FtpPort}.");
+                return false;
+            }
+        }
+
+        Add(payload.Name, SetupStatus.Ok, $"Updated to {payload.Version}; the running copy handed over to the new one.");
+        return true;
     }
 
     /// <summary>True when a title is in the foreground, false when none is, null when VoidShell cannot say.</summary>
@@ -539,6 +581,85 @@ public sealed class UpdateRunner
         // The reported id can be truncated; null means nothing runs.
         return snapshot.ActiveTitleId is { Length: > 0 } active
             && titleId.StartsWith(active, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // Nothing can be compared while FTP is down, and a dead ftpsrv is what the update is for. Payload Manager does not
+    // need FTP: put the pinned build in place without comparing and launch it (a new copy also kills a hung old one).
+    private async Task<bool> RecoverFtpsrvAsync(bool ftpAnswers, CancellationToken cancellationToken)
+    {
+        var payload = _manifest.Payloads.FirstOrDefault(p => p.Id == "ftpsrv" && p.Ready.Port > 0);
+        if (payload is null || _options.CheckOnly)
+        {
+            return false;
+        }
+
+        var stored = SetupRunner.FindStored(await _services.Manager.ListPayloadsAsync(cancellationToken), payload);
+        if (stored is null)
+        {
+            return false;
+        }
+
+        _ftpsrvRecoveryTried = true;
+        Ui.Info(ftpAnswers
+            ? $"{payload.Name} answers on port {_options.FtpPort} but fails transfers; uploading and launching {payload.Version} without comparing"
+            : $"{payload.Name} is not answering on port {_options.FtpPort}; uploading and launching {payload.Version} without comparing");
+        try
+        {
+            var local = await _services.Artifacts.FetchAsync(payload.Url, payload.Sha256, cancellationToken);
+            try
+            {
+                await using var file = File.OpenRead(local);
+                await _services.Manager.UploadAsync(payload.UploadName, file, cancellationToken);
+            }
+            catch (IOException ex) when (ftpAnswers && !string.IsNullOrEmpty(stored.Path) && IsPayloadStoragePath(stored.Path))
+            {
+                // Payload Manager cannot overwrite a file that is in use; renaming a new file over it works (as in the normal upload).
+                Ui.Info($"Payload Manager refused the upload ({ex.Message}); replacing {stored.Path} over FTP instead");
+                await using var file = File.OpenRead(local);
+                await _services.Files.UploadAsync(file, stored.Path + ".part", null, cancellationToken);
+                await _services.Files.MoveAsync(stored.Path + ".part", stored.Path, cancellationToken);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or HttpRequestException or ConsoleUnreachableException)
+        {
+            Add(payload.Name, SetupStatus.Warn, $"{payload.Name} could not be replaced: {ex.Message}. A hung ftpsrv that holds its file needs another recovery method: reboot the console.");
+            return false;
+        }
+
+        stored = SetupRunner.FindStored(await _services.Manager.ListPayloadsAsync(cancellationToken), payload);
+        if (stored is null)
+        {
+            return false;
+        }
+
+        if (ftpAnswers)
+        {
+            // The old copy still holds the port: the new one takes over by name, as in update --restart.
+            // A failed handoff is final. A successful one still has to be listening before the caller reads over FTP.
+            if (!await ReplaceByHandoffAsync(payload, stored, $"Uploaded {payload.Version}, but the old build is still running", cancellationToken))
+            {
+                return false;
+            }
+
+            var listening = await _setup.WaitForAsync(
+                ct => _setup.IsReadyAsync(payload, ct),
+                _options.WaitOverride ?? TimeSpan.FromSeconds(payload.ReadyTimeoutSeconds),
+                cancellationToken);
+            if (!listening)
+            {
+                Add(payload.Name, SetupStatus.Fail, $"The new {payload.Name} took over, but it is not answering on port {_options.FtpPort}.");
+            }
+
+            return listening;
+        }
+
+        await _setup.LaunchPayloadsAsync([(payload, stored)], cancellationToken);
+        var ready = await _setup.IsReadyAsync(payload, cancellationToken);
+        Add(
+            payload.Name,
+            ready ? SetupStatus.Ok : SetupStatus.Fail,
+            ready ? $"Was not answering; {payload.Version} is uploaded and running." : $"Uploaded {payload.Version}, but it is not answering.");
+        return ready;
     }
 
     private async Task<bool> RequireFtpAsync(string component, CancellationToken cancellationToken)
