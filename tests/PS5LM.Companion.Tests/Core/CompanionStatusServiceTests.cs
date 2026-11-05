@@ -109,6 +109,24 @@ public sealed class CompanionStatusServiceTests
     }
 
     [Fact]
+    public async Task A_default_PS5LM_Plus_content_version_is_unknown_and_a_real_one_is_kept()
+    {
+        var placeholder = await Create(Plus("01.000.000")).RefreshAsync(CancellationToken.None);
+        var released = await Create(Plus("01.008.003")).RefreshAsync(CancellationToken.None);
+        var ps5lm = await Create(ConsoleFixtures.PS5LMInstalled(contentVersion: "01.000.000")).RefreshAsync(CancellationToken.None);
+
+        Assert.Equal(PS5Variant.PS5LMPlus, placeholder.Variant);
+        Assert.Null(placeholder.AppVersion);
+        Assert.Equal("0.8.3", released.AppVersion);
+        Assert.Equal("0.0.0", ps5lm.AppVersion);
+    }
+
+    private static FakeFileSystem Plus(string contentVersion) =>
+        ConsoleFixtures.PS5LMPlusInstalled().AddFile(
+            "/data/homebrew/PPSA99581/sce_sys/param.json",
+            $$"""{"titleId":"PPSA99581","contentVersion":"{{contentVersion}}"}""");
+
+    [Fact]
     public async Task Overlapping_refreshes_run_one_at_a_time()
     {
         var catalog = new BlockingCatalog();

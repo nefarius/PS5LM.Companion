@@ -336,7 +336,7 @@ public sealed class DashboardTests
                 "",
                 [
                     new AppVariantStatus(PS5Variant.PS5LM, "PPSA99575", "PS5LM", true, AppRunState.NotRunning, true),
-                    new AppVariantStatus(PS5Variant.PS5LMPlus, "PPSA99581", "PS5LM Plus", false, AppRunState.NotRunning, false),
+                    new AppVariantStatus(PS5Variant.PS5LMPlus, "PPSA99581", "PS5LM Plus", true, AppRunState.NotRunning, true),
                 ]),
         });
         factory.Registry.Find("room")!.Store.Publish(CompanionStatus.Initial with
@@ -351,9 +351,8 @@ public sealed class DashboardTests
         var overview = await client.GetStringAsync("/");
 
         Assert.Contains("<td>App</td><td>PS5LM 0.11.0</td>", status);
-        Assert.Contains("data-label=\"Version\"", status);
-        Assert.Equal(2, status.Split("0.11.0").Length - 1);
-        Assert.DoesNotContain("PS5LM Plus 0.11.0", status);
+        Assert.Contains("0.11.0", VersionInAppRow(status, "PS5LM"), StringComparison.Ordinal);
+        Assert.DoesNotContain("0.11.0", VersionInAppRow(status, "PS5LM Plus"), StringComparison.Ordinal);
         Assert.Contains("<td>App</td><td>PS5LM 0.11.0</td>", overview);
         Assert.Contains("<td>App</td><td>PS5LM Plus 0.8.2</td>", overview);
     }
@@ -688,6 +687,16 @@ public sealed class DashboardTests
 
     private static ConsoleRuntime NavConsole(string id, string name) =>
         new(id, new PS5Options { Host = "10.0.0.8", DisplayName = name }, new FakeConsole().ToConnectors(), TimeProvider.System, ConsoleSource.User);
+
+    private static string VersionInAppRow(string html, string appName)
+    {
+        var document = new AngleSharp.Html.Parser.HtmlParser().ParseDocument(html);
+        var row = document.QuerySelectorAll("tr").Single(candidate => Cell(candidate, "App") == appName);
+        return Cell(row, "Version");
+    }
+
+    private static string Cell(AngleSharp.Dom.IElement row, string label) =>
+        row.QuerySelector($"td[data-label=\"{label}\"]")?.TextContent.Trim() ?? "";
 
     private static async Task OpenConsoleMenu(IRenderedComponent<PS5LM.Companion.App.Components.Layout.MainLayout> cut)
     {
