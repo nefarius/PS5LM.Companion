@@ -18,6 +18,9 @@ public sealed record UpdateOptions(string Host, string? AppId = null)
     /// <summary>Replace an updated payload that is still running (needs a <c>pidFile</c> in the manifest).</summary>
     public bool Restart { get; init; }
 
+    /// <summary>Replace an installed app that is newer than the pin. Without this, a newer app is left in place.</summary>
+    public bool Force { get; init; }
+
     public int FtpPort { get; init; } = 2121;
 
     public int ElfldrPort { get; init; } = 9021;
@@ -34,6 +37,8 @@ public sealed record UpdateOptions(string Host, string? AppId = null)
     internal SetupOptions ToSetupOptions() => new(Host, AppId)
     {
         UpgradePayloadManager = UpgradePayloadManager,
+        Force = Force,
+        ReplaceDifferentApp = true,
         SkipApp = true,
         FtpPort = FtpPort,
         ElfldrPort = ElfldrPort,

@@ -69,6 +69,76 @@ public sealed class InstallationDetectorTests
         Assert.Contains("start the app", installation.Message);
     }
 
+    [Theory]
+    [InlineData("01.009.001")]
+    [InlineData("01.010.000")]
+    public async Task An_older_PS5LM_ignores_a_stray_app_space_folder(string contentVersion)
+    {
+        var fs = new FakeFileSystem()
+            .AddDirectory("/data/homebrew/PPSA99575")
+            .AddFile(
+                "/data/homebrew/PPSA99575/sce_sys/param.json",
+                $$"""{"titleId":"PPSA99575","contentVersion":"{{contentVersion}}"}""")
+            .AddFile("/mnt/sandbox/PPSA99575_000/download0/PS5LM/app.log", "stray");
+
+        var installation = await Detect(fs);
+
+        Assert.Equal(PS5Variant.PS5LM, installation.Profile?.Variant);
+        Assert.Null(installation.StateRoot);
+        Assert.Contains("start the app", installation.Message);
+    }
+
+    [Fact]
+    public async Task PS5LM_0_11_uses_app_space_when_that_is_where_its_state_is()
+    {
+        var installation = await Detect(ConsoleFixtures.PS5LMInstalled(contentVersion: "01.011.000", appStorage: true));
+
+        Assert.Equal("/mnt/sandbox/PPSA99575_000/download0/PS5LM", installation.StateRoot?.FtpPath);
+        Assert.Equal("/download0/PS5LM", installation.StateRoot?.AppPath);
+        Assert.True(AppVersion.TryParseContentVersion("01.011.000", out var version));
+        Assert.Equal(version, installation.AppVersion);
+    }
+
+    [Fact]
+    public async Task PS5LM_0_11_with_state_in_both_roots_uses_the_newer_app_log()
+    {
+        var older = new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.Zero);
+        var fs = ConsoleFixtures.PS5LMInstalled(contentVersion: "01.011.000")
+            .AddFile("/data/PS5LM/app.log", "old", older)
+            .AddFile("/mnt/sandbox/PPSA99575_000/download0/PS5LM/app.log", "new", older.AddDays(1));
+
+        var installation = await Detect(fs);
+
+        Assert.Equal("/mnt/sandbox/PPSA99575_000/download0/PS5LM", installation.StateRoot?.FtpPath);
+    }
+
+    [Fact]
+    public async Task PS5LM_0_11_keeps_data_when_the_logs_have_no_time()
+    {
+        var fs = ConsoleFixtures.PS5LMInstalled(contentVersion: "01.011.000")
+            .AddFile("/mnt/sandbox/PPSA99575_000/download0/PS5LM/settings.json", "{}");
+
+        var installation = await Detect(fs);
+
+        Assert.Equal("/data/PS5LM", installation.StateRoot?.FtpPath);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task An_unreadable_param_json_still_finds_whichever_root_has_state(bool appStorage)
+    {
+        var fs = ConsoleFixtures.PS5LMInstalled(appStorage: appStorage)
+            .AddFile("/data/homebrew/PPSA99575/sce_sys/param.json", "not json");
+
+        var installation = await Detect(fs);
+
+        Assert.Equal(
+            appStorage ? "/mnt/sandbox/PPSA99575_000/download0/PS5LM" : "/data/PS5LM",
+            installation.StateRoot?.FtpPath);
+        Assert.Null(installation.AppVersion);
+    }
+
     [Fact]
     public async Task Unreachable_console_propagates()
     {

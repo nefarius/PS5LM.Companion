@@ -4,9 +4,9 @@
 newer upstream releases; those arrive by [bumping a pin](setup.md#bumping-a-pin).
 
 ```sh
-dotnet PS5LM.Companion.App.dll update --host <console> [--apps] [--variant ps5lm|ps5lmplus] [--check] [options]
+dotnet PS5LM.Companion.App.dll update --host <console> [--apps] [--variant ps5lm|ps5lmplus] [--check] [--force] [options]
 docker run -it --rm --pull always -v ps5lm-companion:/data containinger/ps5lm-companion \
-  update --host <console> [--apps] [--variant ps5lm|ps5lmplus] [--check] [--restart] [options]
+  update --host <console> [--apps] [--variant ps5lm|ps5lmplus] [--check] [--force] [--restart] [options]
 ```
 
 The `docker` line uses the published [`containinger/ps5lm-companion`](https://hub.docker.com/r/containinger/ps5lm-companion) image. `-it` keeps the coloured report. `--pull always` fetches the current `:latest` before the command runs, so the pins compared against the console are the ones in the current release. Mount `/data` so downloads are cached. The `dotnet` line is for a build from source.
@@ -18,6 +18,7 @@ The `docker` line uses the published [`containinger/ps5lm-companion`](https://hu
 | `--variant` | With `--apps`: only that variant (an explicit variant that is not installed is a warning) |
 | `--restart` | Stop and relaunch an updated payload that is still running (the pinned VoidShell fork, see below) |
 | `--check` | Report what is out of date and change nothing |
+| `--force` | With `--apps`: also replace an installed app that is newer than the pin |
 | `--upgrade-payload-manager` | Upgrade an older Payload Manager without a prompt |
 | `--payload-manager-url`, `--ftp-port`, `--manifest`, `--cache` | As for `setup` |
 
@@ -39,7 +40,8 @@ Exit codes: 0 current or updated, 1 bad arguments, 2 something failed, 3 `--chec
    also overwrites the pid file), nothing is relaunched and a warning says so; reboot the console then.
 4. Extra files (VoidShell `index.html`) are compared by hash and replaced through a `.part` file.
 5. With `--apps`: each installed app whose `param.json` differs from the pinned archive is overwritten in place (`param.json`
-   last), then the pinned VoidShell fork is asked to rescan. An app that is not installed is never installed. A running app
+   last), then the pinned VoidShell fork is asked to rescan. An app whose `contentVersion` is newer than the pin is left in
+   place (a warning, not an update) unless `--force`. An app that is not installed is never installed. A running app
    (`running_app` from that fork) is skipped with a warning, and so is one whose running state the fork cannot report.
 
 ## Dashboard indication
@@ -50,7 +52,8 @@ status refresh and flagged only when they are older than the pin. A current Void
 sync when its extra file (`index.html`) differs from the pin. Every other payload and extra file is compared by
 SHA-256 with the pinned download, the same way `update --check` does: the companion downloads each pin into
 `setup-cache` and reads the stored file over FTP. The installed PS5LM / PS5LM Plus app is not hashed as a whole; its
-`sce_sys/param.json` is compared with the `param.json` inside the pinned archive.
+`sce_sys/param.json` is compared with the `param.json` inside the pinned archive. A `contentVersion` newer than the pin is
+not flagged. An older app, or one whose version cannot be read, is flagged when `param.json` differs.
 
 A missing component is not reported as outdated; the existing "not installed" warnings already cover that. The first
 hash pass runs shortly after the console is reachable, then every `PS5:Consoles:{id}:UpdateCheckIntervalMinutes`

@@ -10,6 +10,12 @@ public sealed record SetupOptions(string Host, string? AppId)
     /// <summary>Re-upload payloads and extra files and reinstall the app even when they look current.</summary>
     public bool Force { get; init; }
 
+    /// <summary>
+    /// Replace an installed app whose <c>param.json</c> differs from the pin.
+    /// <c>update --apps</c> sets this. <c>setup</c> leaves it unset and keeps the installed app unless <see cref="Force"/>.
+    /// </summary>
+    public bool ReplaceDifferentApp { get; init; }
+
     public bool SkipApp { get; init; }
 
     public int FtpPort { get; init; } = 2121;

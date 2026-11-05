@@ -42,9 +42,10 @@ In a container, mount `/data` so downloads are cached, and pass `--upgrade-paylo
    Skipped when the size on the console matches (FTP cannot hash).
 7. Add the app's title ID to `exact_title_ids` in `[app_jailbreak]` of `/data/OnionHEN/config.ini`, after writing `config.ini.bak`.
    A missing file, section or key, or a bracketed list, is only a warning and nothing is changed.
-8. Install the app. A new install is uploaded to `/data/ps5lm-companion/staging/<title>` and renamed into `/data/homebrew/<title>`, so
-   ShadowMountPlus never scans a half-copied app. An installed app with the same `param.json` is left alone. A different version
-   is overwritten in place with `param.json` last; nothing is deleted, so models in the folder stay.
+8. Install the app when it is not already there. A new install is uploaded to `/data/ps5lm-companion/staging/<title>` and renamed
+   into `/data/homebrew/<title>`, so ShadowMountPlus never scans a half-copied app. An app that is already installed is left in
+   place, including when its `param.json` differs from the pin, and the report points at [`update --apps`](update.md).
+   `setup --force` overwrites that app in place with `param.json` last; nothing is deleted, so models in the folder stay.
 9. Wait up to 3 minutes for ShadowMountPlus to register the title (VoidShell's library, else its log
    `/data/shadowmount/debug.log`). Nothing can force a scan; ShadowMountPlus pauses while a game runs.
 10. Report: Payload Manager, autoload, each payload (port or process), the VoidShell dashboard page.
@@ -111,6 +112,23 @@ so a failed start is a warning; that does not make the companion work without Vo
 A weekly workflow (`.github/workflows/upstream-drift.yml`) re-runs `--verify-manifest` and compares each pinned release tag with the
 upstream's latest tag. A mismatch opens or updates one "Upstream drift" issue. It is not part of pull-request CI, so a third-party
 outage cannot fail a pull request.
+
+## App versions on one companion
+
+A cluster can keep consoles on PS5LM 0.9.1, 0.10.0 and 0.11.0 at the same time. The companion reads each console's
+`/data/homebrew/<title>/sce_sys/param.json` and uses its `contentVersion` (`01.009.001` is 0.9.1, `01.011.000` is 0.11.0).
+
+| Installed PS5LM | Where the companion looks for state |
+|---|---|
+| 0.9.1 or 0.10.0 | `/data/PS5LM` only |
+| 0.11.0 or newer | `/data/PS5LM`, and the app's own storage at `/mnt/sandbox/PPSA99575_000/download0/PS5LM` (the app sees `/download0/PS5LM`) when the HEN keeps `/data` closed |
+| Missing or unreadable `param.json` | Both of those folders. `/data/PS5LM` wins when both hold state and the `app.log` times are missing or equal |
+
+When 0.11.0 has state in both folders, the one with the newer `app.log` is the one in use. PS5LM Plus is unchanged: it already used its own storage (`PPSA99581`) whenever `/data` was closed, on every version this companion supports.
+
+`setup` does not move a console to the pinned app. `update --apps` replaces an older app, and leaves an app newer than the pin in place unless `--force`. The dashboard flags an app only when it is older than the pin (or its `param.json` differs and the version cannot be read). It does not flag a newer app.
+
+The inference gateway does not route by app version, so a mixed pool keeps working. One difference shows up in the app itself: before 0.11.0, codex against a Qwen model fails with "System message must be at the beginning". 0.11.0 folds those messages on the console. The update flag shows which consoles are behind. Fleet mode is not handled.
 
 ## Not automated
 

@@ -22,7 +22,9 @@ public sealed class VariantContractTests
 
         internal FakeFileSystem Console() => Layout switch
         {
-            "ps5lm" => ConsoleFixtures.PS5LMInstalled(),
+            "ps5lm-091" => ConsoleFixtures.PS5LMInstalled(contentVersion: "01.009.001"),
+            "ps5lm-011" => ConsoleFixtures.PS5LMInstalled(contentVersion: "01.011.000"),
+            "ps5lm-app" => ConsoleFixtures.PS5LMInstalled(contentVersion: "01.011.000", appStorage: true),
             "plus" => ConsoleFixtures.PS5LMPlusInstalled(),
             _ => ConsoleFixtures.PS5LMPlusInstalled(sandboxed: true),
         };
@@ -32,7 +34,14 @@ public sealed class VariantContractTests
 
     public static TheoryData<Variant> Variants() =>
     [
-        new("PS5LM", PS5Variant.PS5LM, "/data/PS5LM", "/data/PS5LM/models/a.gguf", "ps5lm"),
+        new("PS5LM 0.9.1", PS5Variant.PS5LM, "/data/PS5LM", "/data/PS5LM/models/a.gguf", "ps5lm-091"),
+        new("PS5LM 0.11.0", PS5Variant.PS5LM, "/data/PS5LM", "/data/PS5LM/models/a.gguf", "ps5lm-011"),
+        new(
+            "PS5LM 0.11.0 (app storage)",
+            PS5Variant.PS5LM,
+            "/mnt/sandbox/PPSA99575_000/download0/PS5LM",
+            "/download0/PS5LM/models/a.gguf",
+            "ps5lm-app"),
         new("PS5LM Plus (data folder)", PS5Variant.PS5LMPlus, "/data/PS5LM", "/data/PS5LM/models/a.gguf", "plus"),
         new(
             "PS5LM Plus (sandbox)",

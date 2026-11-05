@@ -11,8 +11,9 @@ namespace PS5LM.Companion.Core.Discovery;
 /// <param name="DisplayName">Name for the UI.</param>
 /// <param name="StateRoots">
 /// Candidate folders holding the apps' state (<c>settings.json</c>, <c>app.log</c>, the <c>load</c> and <c>unload</c>
-/// command files), in preference order. Both apps use <c>/data/PS5LM</c>; PS5LM Plus falls back to its own sandbox
-/// when the HEN does not open <c>/data</c>.
+/// command files), in preference order. Both apps use <c>/data/PS5LM</c> when the HEN opens <c>/data</c>.
+/// PS5LM Plus, and PS5LM from 0.11.0, fall back to the title's own storage (<c>/download0/PS5LM</c>) when it does not.
+/// A root's <see cref="StorageRoot.Since"/> hides it from an older installed version.
 /// </param>
 /// <param name="ExtraModelRoots">Read-only or removable-drive model folders outside the state roots.</param>
 public sealed record VariantProfile(
@@ -41,7 +42,15 @@ public sealed record VariantProfile(
         PS5Variant.PS5LM,
         "PPSA99575",
         "PS5LM",
-        [new StorageRoot("Internal storage", "/data/PS5LM", "/data/PS5LM", Writable: true)],
+        [
+            new StorageRoot("Internal storage", "/data/PS5LM", "/data/PS5LM", Writable: true),
+            new StorageRoot(
+                "App space",
+                "/mnt/sandbox/PPSA99575_000/download0/PS5LM",
+                "/download0/PS5LM",
+                Writable: true,
+                Since: AppVersion.OwnStorage),
+        ],
         RemovableDrives());
 
     public static VariantProfile PS5LMPlus { get; } = new(

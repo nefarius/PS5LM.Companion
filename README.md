@@ -138,7 +138,7 @@ Exit code 0: nothing failed. 2: a component is not working. 1: bad arguments or 
 
 ## Updating a console
 
-`update` compares the console with the pins baked into the image and replaces only what differs. A plain `setup` rerun skips payloads that are already stored, so an older VoidShell (or any other pinned payload) stays in place until `update` replaces it. Details: [docs/update.md](docs/update.md).
+`update` compares the console with the pins baked into the image and replaces only what differs. A plain `setup` rerun skips payloads that are already stored, so an older VoidShell (or any other pinned payload) stays in place until `update` replaces it. It also keeps an installed PS5LM app that differs from the pin. `update --apps` upgrades an older app and leaves a newer one in place unless `--force`. Details: [docs/update.md](docs/update.md).
 
 ```sh
 docker run -it --rm --pull always -v ps5lm-companion:/data containinger/ps5lm-companion \
