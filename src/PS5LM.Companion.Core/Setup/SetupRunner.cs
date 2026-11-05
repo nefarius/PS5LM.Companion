@@ -596,11 +596,12 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         _ => payload.Ready.Port,
     };
 
+    // The companion uploads into local/{id} as {id}.elf. A repository entry can share the id and is only a
+    // fallback, so a mirror of upstream ftpsrv does not hide the file setup placed or get launched in its place.
     internal static ManagedPayload? FindStored(IReadOnlyList<ManagedPayload> inventory, ManifestPayload payload) =>
-        inventory.FirstOrDefault(item =>
-            item.FileName.Equals(payload.UploadName, StringComparison.OrdinalIgnoreCase)
-            || item.Slot.Equals("local/" + payload.Id, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(item.Id, payload.Id, StringComparison.OrdinalIgnoreCase));
+        inventory.FirstOrDefault(item => item.Slot.Equals("local/" + payload.Id, StringComparison.OrdinalIgnoreCase))
+        ?? inventory.FirstOrDefault(item => item.FileName.Equals(payload.UploadName, StringComparison.OrdinalIgnoreCase))
+        ?? inventory.FirstOrDefault(item => string.Equals(item.Id, payload.Id, StringComparison.OrdinalIgnoreCase));
 
     internal async Task<bool> WaitForAsync(Func<CancellationToken, Task<bool>> check, TimeSpan timeout, CancellationToken cancellationToken)
     {

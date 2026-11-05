@@ -48,6 +48,9 @@ internal sealed class SetupHarness : IDisposable
 
     public List<string> Events { get; } = [];
 
+    /// <summary>Launch targets passed to <see cref="IPayloadManagerAdmin.LoadAsync"/>, in order.</summary>
+    public List<string> LoadTargets { get; } = [];
+
     public AutoloadConfig Autoload { get; set; } = new(false, string.Empty);
 
     /// <summary>Makes <c>/processes_list</c> unreadable (the fake answers null).</summary>
@@ -152,6 +155,7 @@ internal sealed class SetupHarness : IDisposable
             }
 
             owner.Events.Add("load:" + stored.FileName);
+            owner.LoadTargets.Add(target);
             if (Effects.TryGetValue(stored.FileName, out var effect))
             {
                 if (effect.Port > 0)

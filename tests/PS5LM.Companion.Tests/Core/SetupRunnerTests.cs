@@ -55,6 +55,26 @@ public sealed class SetupRunnerTests
     }
 
     [Fact]
+    public async Task Repository_entry_with_the_same_id_counts_as_already_stored()
+    {
+        using var harness = Ready();
+        await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
+        harness.Stored.RemoveAll(s => s.FileName == "ftpsrv.elf");
+        harness.Stored.Insert(0, new ManagedPayload(
+            "repo/ftpsrv@e8cce5d1",
+            "ftpsrv",
+            "ftpsrv_v0.21.1.elf",
+            "/data/pldmgr/payloads/repo/ftpsrv@e8cce5d1/ftpsrv_v0.21.1.elf"));
+        harness.Events.Clear();
+
+        var report = await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
+
+        Assert.Equal(0, report.ExitCode);
+        Assert.DoesNotContain("upload:ftpsrv.elf", harness.Events);
+        Assert.Contains("repo/ftpsrv@e8cce5d1", harness.Autoload.List, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Existing_foreign_autoload_entries_are_kept_after_ours()
     {
         using var harness = Ready();

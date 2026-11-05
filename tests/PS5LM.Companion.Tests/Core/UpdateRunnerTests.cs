@@ -26,6 +26,7 @@ public sealed class UpdateRunnerTests
         }
 
         harness.Events.Clear();
+        harness.LoadTargets.Clear();
         return harness;
     }
 
@@ -203,6 +204,57 @@ public sealed class UpdateRunnerTests
         Stale(harness, "ftpsrv.elf");
         harness.Pids[31] = "ftpsrv.elf";
         return harness;
+    }
+
+    private const string LocalFtpsrvPath = "/data/pldmgr/payloads/local/ftpsrv/ftpsrv.elf";
+    private const string RepoFtpsrvPath = "/data/pldmgr/payloads/repo/ftpsrv@e8cce5d1/ftpsrv_v0.21.1.elf";
+
+    /// <summary>
+    /// Payload Manager lists the upstream repository copy (same id, different file) ahead of the companion's upload.
+    /// </summary>
+    private static void ListRepositoryFtpsrvFirst(SetupHarness harness, byte[] repoBytes)
+    {
+        var index = harness.Stored.FindIndex(s => s.Slot == "local/ftpsrv");
+        harness.Stored[index] = harness.Stored[index] with { Path = LocalFtpsrvPath };
+        harness.Files.AddFile(RepoFtpsrvPath, repoBytes);
+        harness.Stored.Insert(0, new ManagedPayload("repo/ftpsrv@e8cce5d1", "ftpsrv", "ftpsrv_v0.21.1.elf", RepoFtpsrvPath));
+    }
+
+    [Fact]
+    public async Task Check_compares_the_local_slot_when_a_repository_entry_shares_the_id()
+    {
+        using var harness = await PreparedAsync();
+        var pinned = await File.ReadAllBytesAsync(await harness.Artifacts.FetchAsync(
+            harness.Manifest.Payloads.Single(p => p.Id == "ftpsrv").Url, string.Empty, CancellationToken.None));
+        harness.Files.AddFile(LocalFtpsrvPath, pinned);
+        ListRepositoryFtpsrvFirst(harness, "upstream v0.21.1"u8.ToArray());
+
+        var report = await Runner(harness, check: true).RunAsync(CancellationToken.None);
+
+        Assert.Empty(report.Updates);
+        Assert.Contains(report.Lines, l => l.Component == "ftpsrv" && l.Status == SetupStatus.Ok && l.Message.Contains("current", StringComparison.Ordinal));
+        Assert.Empty(harness.Events);
+        Assert.Equal("upstream v0.21.1", harness.Files.Text(RepoFtpsrvPath));
+    }
+
+    [Fact]
+    public async Task Stale_local_copy_is_replaced_when_a_repository_entry_already_matches_the_pin()
+    {
+        using var harness = await PreparedAsync();
+        var pinned = await File.ReadAllBytesAsync(await harness.Artifacts.FetchAsync(
+            harness.Manifest.Payloads.Single(p => p.Id == "ftpsrv").Url, string.Empty, CancellationToken.None));
+        harness.Files.AddFile(LocalFtpsrvPath, "old local build");
+        ListRepositoryFtpsrvFirst(harness, pinned);
+        harness.Pids[31] = "ftpsrv.elf";
+        harness.HandoffPid = 88;
+
+        var report = await Runner(harness, restart: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal(["upload:ftpsrv.elf", "load:ftpsrv.elf"], harness.Events);
+        Assert.Equal(["local/ftpsrv"], harness.LoadTargets);
+        Assert.Equal(pinned, harness.Files.Files[RepoFtpsrvPath]);
+        Assert.DoesNotContain(harness.Files.Moves, m => m.From == RepoFtpsrvPath || m.To == RepoFtpsrvPath);
+        Assert.Contains(report.Lines, l => l.Component == "ftpsrv" && l.Status == SetupStatus.Ok && l.Message.Contains("handed over", StringComparison.Ordinal));
     }
 
     [Fact]
