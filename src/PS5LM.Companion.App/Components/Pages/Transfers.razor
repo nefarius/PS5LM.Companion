@@ -18,7 +18,17 @@ else
     <MudStack Row="true" AlignItems="AlignItems.Center">
         <MudTextField @bind-Value="_query" Label="Search GGUF repositories" Variant="Variant.Outlined" Margin="Margin.Dense"
                       Immediate="true" OnKeyDown="OnSearchKey" Style="max-width:32rem" />
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SearchAsync" Disabled="@(_pending > 0)">Search</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SearchAsync" Disabled="@SearchBlocked">
+            @if (_searching)
+            {
+                <MudProgressCircular Class="mr-2" Size="Size.Small" Indeterminate="true" />
+                @:Searching...
+            }
+            else
+            {
+                @:Search
+            }
+        </MudButton>
         @if (_targets.Count > 1)
         {
             <MudSelect T="string" @bind-Value="_target" Label="Upload to" Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width:14rem">
@@ -30,14 +40,23 @@ else
         }
     </MudStack>
 
+    @if (_searching || _loadingRepo is not null)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mt-3" />
+    }
+
     @if (_error is not null)
     {
         <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>
     }
+    else if (NoMatches)
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-3">No GGUF repositories match "@_searchedFor".</MudAlert>
+    }
 
     @if (_repos.Count > 0)
     {
-        <MudList T="HubRepo" Class="mt-2" Style="max-height:16rem;overflow:auto" SelectedValueChanged="OnRepoSelected">
+        <MudList T="HubRepo" Class="mt-2" Style="max-height:16rem;overflow:auto" Disabled="@(_loadingRepo is not null)" SelectedValueChanged="OnRepoSelected">
             @foreach (var repo in _repos)
             {
                 <MudListItem T="HubRepo" Value="@repo" Text="@repo.Id" SecondaryText="@($"{repo.Downloads:N0} downloads")" />
@@ -45,7 +64,11 @@ else
         </MudList>
     }
 
-    @if (_files is not null)
+    @if (_loadingRepo is not null)
+    {
+        <MudText Typo="Typo.body2" Class="mt-3">Loading files of @_loadingRepo...</MudText>
+    }
+    else if (_files is not null)
     {
         <MudText Typo="Typo.subtitle1" Class="mt-3">@_selectedRepo</MudText>
         <MudSimpleTable Dense="true" Hover="true">
@@ -125,7 +148,9 @@ else
     private string? _target;
     private string? _error;
     private string? _selectedRepo;
-    private int _pending;
+    private string? _searchedFor;
+    private string? _loadingRepo;
+    private bool _searching;
     private int _requestVersion;
     private readonly HashSet<string> _enqueuing = [];
     private IReadOnlyList<string> _targets = [];
@@ -140,6 +165,9 @@ else
         _query = string.Empty;
         _error = null;
         _selectedRepo = null;
+        _searchedFor = null;
+        _loadingRepo = null;
+        _searching = false;
         _repos = [];
         _files = null;
         _requestVersion++;
@@ -233,43 +261,57 @@ else
         _target = null;
     }
 
+    private bool SearchBlocked => _searching || string.IsNullOrWhiteSpace(_query);
+
+    private bool NoMatches => _searchedFor is not null && !_searching && _repos.Count == 0;
+
     private async Task OnSearchKey(KeyboardEventArgs args)
     {
-        if (args.Key == "Enter")
+        if (args.Key == "Enter" && !SearchBlocked)
         {
             await SearchAsync();
         }
     }
 
-    private Task SearchAsync() => GuardHubAsync(async version =>
-    {
-        _files = null;
-        _selectedRepo = null;
-        var repos = await Hub.SearchAsync(_query, CancellationToken.None);
-        if (version == _requestVersion)
+    private Task SearchAsync() => GuardHubAsync(
+        searching: true,
+        loadingRepo: null,
+        action: async version =>
         {
-            _repos = repos;
-        }
-    });
+            _files = null;
+            _selectedRepo = null;
+            var repos = await Hub.SearchAsync(_query, CancellationToken.None);
+            if (version == _requestVersion)
+            {
+                _repos = repos;
+                _searchedFor = _query;
+            }
+        });
 
-    private Task OnRepoSelected(HubRepo? repo) => repo is null ? Task.CompletedTask : GuardHubAsync(async version =>
-    {
-        // The repository and its file list are committed together, and only for the latest request.
-        _files = null;
-        _selectedRepo = null;
-        var files = await Hub.ListFilesAsync(repo.Id, CancellationToken.None);
-        if (version == _requestVersion)
-        {
-            _selectedRepo = repo.Id;
-            _files = files;
-        }
-    });
+    private Task OnRepoSelected(HubRepo? repo) => repo is null
+        ? Task.CompletedTask
+        : GuardHubAsync(
+            searching: false,
+            loadingRepo: repo.Id,
+            action: async version =>
+            {
+                // The repository and its file list are committed together, and only for the latest request.
+                _files = null;
+                _selectedRepo = null;
+                var files = await Hub.ListFilesAsync(repo.Id, CancellationToken.None);
+                if (version == _requestVersion)
+                {
+                    _selectedRepo = repo.Id;
+                    _files = files;
+                }
+            });
 
     /// <summary>Latest request wins: results and errors of a superseded request are dropped.</summary>
-    private async Task GuardHubAsync(Func<int, Task> action)
+    private async Task GuardHubAsync(bool searching, string? loadingRepo, Func<int, Task> action)
     {
         var version = ++_requestVersion;
-        _pending++;
+        _searching = searching;
+        _loadingRepo = loadingRepo;
         _error = null;
         try
         {
@@ -285,7 +327,11 @@ else
         }
         finally
         {
-            _pending--;
+            if (version == _requestVersion)
+            {
+                _searching = false;
+                _loadingRepo = null;
+            }
         }
     }
 
