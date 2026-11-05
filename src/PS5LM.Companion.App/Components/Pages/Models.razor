@@ -131,6 +131,15 @@ else if (_settingsKnown)
 
     /// <summary>The console whose auto-load save is in flight. A reload of that console waits, so it cannot overwrite the save.</summary>
     private ConsoleRuntime? _autoLoadSave;
+
+    /// <summary>Increments when an auto-load save finishes. A reload that read settings earlier must not apply them.</summary>
+    private int _autoLoadGeneration;
+
+    /// <summary>A reload of the console being saved was discarded and should run again when the save finishes.</summary>
+    private bool _reloadAfterAutoLoadSave;
+
+    /// <summary>Identifies the newest reload, so an older one does not clear the loading flag.</summary>
+    private int _reload;
     private bool _settingsKnown;
     private string? _settingsError;
     private bool _autoLoad;
@@ -210,6 +219,7 @@ else if (_settingsKnown)
             return;
         }
 
+        var reload = ++_reload;
         _loading = true;
         _error = null;
         try
@@ -230,12 +240,25 @@ else if (_settingsKnown)
                 return;
             }
 
+            // Captured before the read. A save that finishes later makes this result stale.
+            var generation = _autoLoadGeneration;
             var models = await console.Models.ListAsync(installation, null, CancellationToken.None);
             var settings = await console.AutoLoad.GetAsync(CancellationToken.None);
-            if (!ReferenceEquals(console, Target) || ReferenceEquals(console, _autoLoadSave))
+            if (!ReferenceEquals(console, Target))
             {
-                // The selection moved, or this console's auto-load save still owns the settings.
-                // Load, unload and delete keep refreshing the model list.
+                return;
+            }
+
+            if (ReferenceEquals(console, _autoLoadSave))
+            {
+                // The save still owns this console. Read it again when the save finishes.
+                _reloadAfterAutoLoadSave = true;
+                return;
+            }
+
+            if (generation != _autoLoadGeneration)
+            {
+                // These settings were read before the latest save finished.
                 return;
             }
 
@@ -255,7 +278,7 @@ else if (_settingsKnown)
         }
         finally
         {
-            if (ReferenceEquals(console, Target))
+            if (reload == _reload && ReferenceEquals(console, Target))
             {
                 _loading = false;
             }
@@ -321,8 +344,16 @@ else if (_settingsKnown)
         finally
         {
             // Clear even when the page has moved on, so the next console's reload is not left blocked.
+            // A discarded reload is retried only when this console is still the one on screen.
+            var retry = _reloadAfterAutoLoadSave && ReferenceEquals(console, Target);
+            _reloadAfterAutoLoadSave = false;
             _autoLoadSave = null;
             _acting = false;
+            _autoLoadGeneration++;
+            if (retry)
+            {
+                await ReloadAsync();
+            }
         }
     }
 
