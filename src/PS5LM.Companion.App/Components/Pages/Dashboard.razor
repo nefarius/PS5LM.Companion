@@ -103,7 +103,7 @@ else
             @if (Status.AppControl is { Available: true } apps)
             {
                 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
-                    Checked and launched through @apps.Provider@(apps.Version is { Length: > 0 } ? $" {apps.Version}" : "").
+                    Checked and launched through @apps.Provider.
                     @apps.Message
                 </MudText>
                 <MudTable Items="apps.Apps" Hover="true" Dense="true" T="AppVariantStatus">
