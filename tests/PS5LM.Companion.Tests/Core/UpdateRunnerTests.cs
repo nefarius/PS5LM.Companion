@@ -250,6 +250,23 @@ public sealed class UpdateRunnerTests
     }
 
     [Fact]
+    public async Task Ftpsrv_recovery_waits_for_the_new_server_to_listen()
+    {
+        using var harness = await PreparedAsync();
+        var path = harness.Stored.Single(s => s.FileName == "ftpsrv.elf").Path!;
+        harness.Files.Unreadable.Add(path);
+        harness.Pids[31] = "ftpsrv.elf";
+        harness.HandoffPid = 88;
+        harness.DropPortOnLoad = true;
+
+        var report = await Runner(harness).RunAsync(CancellationToken.None);
+
+        Assert.Contains(report.Lines, l => l.Component == "ftpsrv" && l.Status == SetupStatus.Ok && l.Message.Contains("handed over", StringComparison.Ordinal));
+        Assert.Contains(report.Lines, l => l.Component == "ftpsrv" && l.Status == SetupStatus.Fail && l.Message.Contains("not answering", StringComparison.Ordinal));
+        Assert.Contains(report.Lines, l => l.Component == "ftpsrv" && l.Status == SetupStatus.Warn && l.Message.StartsWith("Could not read", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Ftpsrv_recovery_replaces_a_file_in_use_over_ftp_when_ftp_answers()
     {
         using var harness = await PreparedAsync();

@@ -71,6 +71,9 @@ internal sealed class SetupHarness : IDisposable
     /// </summary>
     public int? HandoffPid { get; set; }
 
+    /// <summary>A launch drops the payload's port instead of opening it (the new copy never starts listening).</summary>
+    public bool DropPortOnLoad { get; set; }
+
     public HashSet<string> LoadFails { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Upload names Payload Manager refuses, as it does for a payload file that is in use.</summary>
@@ -153,7 +156,14 @@ internal sealed class SetupHarness : IDisposable
             {
                 if (effect.Port > 0)
                 {
-                    owner.Ports.Add(effect.Port);
+                    if (owner.DropPortOnLoad)
+                    {
+                        owner.Ports.Remove(effect.Port);
+                    }
+                    else
+                    {
+                        owner.Ports.Add(effect.Port);
+                    }
                 }
 
                 if (effect.Process is not null)

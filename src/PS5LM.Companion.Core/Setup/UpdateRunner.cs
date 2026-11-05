@@ -615,7 +615,22 @@ public sealed class UpdateRunner
         if (ftpAnswers)
         {
             // The old copy still holds the port: the new one takes over by name, as in update --restart.
-            return await ReplaceByHandoffAsync(payload, stored, $"Uploaded {payload.Version}, but the old build is still running", cancellationToken);
+            // A failed handoff is final. A successful one still has to be listening before the caller reads over FTP.
+            if (!await ReplaceByHandoffAsync(payload, stored, $"Uploaded {payload.Version}, but the old build is still running", cancellationToken))
+            {
+                return false;
+            }
+
+            var listening = await _setup.WaitForAsync(
+                ct => _setup.IsReadyAsync(payload, ct),
+                _options.WaitOverride ?? TimeSpan.FromSeconds(payload.ReadyTimeoutSeconds),
+                cancellationToken);
+            if (!listening)
+            {
+                Add(payload.Name, SetupStatus.Fail, $"The new {payload.Name} took over, but it is not answering on port {_options.FtpPort}.");
+            }
+
+            return listening;
         }
 
         await _setup.LaunchPayloadsAsync([(payload, stored)], cancellationToken);
