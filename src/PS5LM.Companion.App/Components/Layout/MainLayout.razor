@@ -7,6 +7,7 @@
 @inject IConsoleRegistry Registry
 @inject TransferService Transfers
 @inject LatestReleaseChecker VersionChecker
+@inject ISnackbar Snackbar
 
 <MudThemeProvider @bind-IsDarkMode="_dark" />
 <MudPopoverProvider />
@@ -32,6 +33,15 @@
                      Href="@_versionStatus.ReleaseUri?.ToString()"
                      Target="@(_versionStatus.ReleaseUri is null ? null : "_blank")"
                      Rel="@(_versionStatus.ReleaseUri is null ? null : "noopener noreferrer")">@_versionStatus.ChipLabel</MudChip>
+        </MudTooltip>
+        <MudTooltip Text="Check for updates now">
+            <MudIconButton Icon="@Icons.Material.Filled.Refresh"
+                           Size="Size.Small"
+                           Color="Color.Inherit"
+                           Class="app-version-check"
+                           aria-label="Check for updates now"
+                           Disabled="@_checkingVersion"
+                           OnClick="CheckForUpdatesAsync" />
         </MudTooltip>
         <MudIconButton Href="https://github.com/nefarius/PS5LM.Companion/"
                        Target="_blank"
@@ -123,6 +133,7 @@
     private bool _drawerOpen = true;
     private bool _dark = true;
     private bool _versionCheckStarted;
+    private bool _checkingVersion;
     private bool _navOpenReady;
 
     protected override void OnInitialized()
@@ -162,6 +173,46 @@
         {
             // The local version chip remains visible when the latest-release lookup fails.
         }
+    }
+
+    private async Task CheckForUpdatesAsync()
+    {
+        if (_checkingVersion)
+        {
+            return;
+        }
+
+        _checkingVersion = true;
+        try
+        {
+            _versionStatus = await VersionChecker.RefreshAsync();
+            if (_versionStatus.UpdateAvailable && !string.IsNullOrWhiteSpace(_versionStatus.LatestVersion))
+            {
+                Snackbar.Add($"Version {DisplayVersion(_versionStatus.LatestVersion)} is available.", Severity.Warning);
+            }
+            else if (_versionStatus.CheckFailed)
+            {
+                Snackbar.Add("Could not check for updates.", Severity.Error);
+            }
+            else
+            {
+                Snackbar.Add("You are running the latest version.", Severity.Success);
+            }
+        }
+        catch (Exception)
+        {
+            Snackbar.Add("Could not check for updates.", Severity.Error);
+        }
+        finally
+        {
+            _checkingVersion = false;
+        }
+    }
+
+    private static string DisplayVersion(string version)
+    {
+        var trimmed = version.Trim();
+        return trimmed[0] is 'v' or 'V' ? trimmed : "v" + trimmed;
     }
 
     private void OnRegistryChanged(ConsoleChange change)

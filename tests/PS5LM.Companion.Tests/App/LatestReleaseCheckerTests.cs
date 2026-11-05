@@ -139,8 +139,10 @@ public sealed class LatestReleaseCheckerTests
 
         Assert.Equal("1.4.0", status.LocalVersion);
         Assert.False(status.UpdateAvailable);
-        Assert.Equal("Running version v1.4.0.", status.Tooltip);
+        Assert.True(status.CheckFailed);
+        Assert.Equal("Running version v1.4.0. Could not check for updates.", status.Tooltip);
         Assert.False(cached.UpdateAvailable);
+        Assert.True(cached.CheckFailed);
         Assert.Equal(1, handler.Calls);
 
         time.Advance(TimeSpan.FromMinutes(15));
@@ -162,7 +164,53 @@ public sealed class LatestReleaseCheckerTests
 
         Assert.Equal("1.4.0", status.LocalVersion);
         Assert.False(status.UpdateAvailable);
+        Assert.True(status.CheckFailed);
         Assert.Equal(1, handler.Calls);
+    }
+
+    [Fact]
+    public async Task Refresh_fetches_again_while_the_cache_is_still_fresh()
+    {
+        var time = Clock();
+        var handler = new RecordingHandler(ReleaseJson("v1.0.0", ReleasePage));
+        using var checker = Create(handler, "1.0.0", time, TimeSpan.FromHours(1));
+
+        var cached = await checker.GetStatusAsync();
+        handler.Body = ReleaseJson("v2.0.0", ReleasePage);
+        var refreshed = await checker.RefreshAsync();
+        var stored = await checker.GetStatusAsync();
+
+        Assert.False(cached.UpdateAvailable);
+        Assert.False(cached.CheckFailed);
+        Assert.Equal(2, handler.Calls);
+        Assert.True(refreshed.UpdateAvailable);
+        Assert.False(refreshed.CheckFailed);
+        Assert.Equal("v2.0.0", refreshed.LatestVersion);
+        Assert.Equal(ReleasePage, refreshed.ReleaseUri);
+        Assert.Equal(refreshed, stored);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.NotFound, """{"message":"Not Found"}""")]
+    [InlineData(HttpStatusCode.OK, "not-json")]
+    public async Task A_failed_refresh_is_marked_and_a_later_success_is_not(HttpStatusCode statusCode, string body)
+    {
+        var handler = new RecordingHandler(body, statusCode);
+        using var checker = Create(handler, "1.0.0");
+
+        var failed = await checker.RefreshAsync();
+
+        Assert.True(failed.CheckFailed);
+        Assert.False(failed.UpdateAvailable);
+        Assert.Equal("Running version v1.0.0. Could not check for updates.", failed.Tooltip);
+
+        handler.Body = ReleaseJson("v2.0.0", ReleasePage);
+        handler.StatusCode = HttpStatusCode.OK;
+        var success = await checker.RefreshAsync();
+
+        Assert.False(success.CheckFailed);
+        Assert.True(success.UpdateAvailable);
+        Assert.Equal("v2.0.0", success.LatestVersion);
     }
 
     [Fact]

@@ -53,6 +53,7 @@ public sealed class DashboardTests
         Assert.Contains($"aria-label=\"Version v{version}\"", html);
         Assert.Contains($"v{version}", html);
         Assert.Contains("href=\"https://github.com/nefarius/PS5LM.Companion/\"", html);
+        Assert.Contains("aria-label=\"Check for updates now\"", html);
         Assert.Contains("aria-label=\"PS5LM Companion on GitHub\"", html);
         Assert.Contains("target=\"_blank\"", html);
     }
@@ -90,6 +91,59 @@ public sealed class DashboardTests
             Assert.Contains("noopener", chip.GetAttribute("rel"));
             Assert.Contains("v1.0.0 · v9.9.9 available", chip.TextContent);
         });
+    }
+
+    [Fact]
+    public async Task Checking_for_updates_now_replaces_the_cached_version_chip()
+    {
+        const string releaseUrl = "https://github.com/nefarius/PS5LM.Companion/releases/tag/v9.9.9";
+        var calls = 0;
+        var handler = new StubHandler(_ =>
+        {
+            var call = Interlocked.Increment(ref calls);
+            var tag = call == 1 ? "v1.0.0" : "v9.9.9";
+            var page = call == 1
+                ? "https://github.com/nefarius/PS5LM.Companion/releases/tag/v1.0.0"
+                : releaseUrl;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    $$"""{"tag_name":"{{tag}}","html_url":"{{page}}","draft":false,"prerelease":false}""",
+                    Encoding.UTF8,
+                    "application/json"),
+            };
+        });
+        var http = new HttpClient(handler, disposeHandler: false);
+        var checker = new LatestReleaseChecker(http, new FixedVersion("1.0.0"));
+        await using var ctx = new BunitContext();
+        ctx.JSInterop.Mode = JSRuntimeMode.Loose;
+        ctx.Services.AddSingleton(checker);
+        var registry = new EmptyRegistry();
+        ctx.Services.AddSingleton<IConsoleRegistry>(registry);
+        ctx.Services.AddSingleton(new TransferService(
+            new FakeHub(), registry, new MemoryTransferStore(), new TransferOptions(), TimeProvider.System));
+        ctx.Services.AddMudServices();
+
+        var cut = ctx.Render<PS5LM.Companion.App.Components.Layout.MainLayout>();
+
+        cut.WaitForAssertion(() =>
+        {
+            var chip = cut.Find(".app-version");
+            Assert.Contains("v1.0.0", chip.TextContent);
+            Assert.DoesNotContain("mud-chip-color-warning", chip.GetAttribute("class"));
+            Assert.Equal("Check for updates now", cut.Find(".app-version-check").GetAttribute("aria-label"));
+        });
+
+        await cut.Find(".app-version-check").ClickAsync(new MouseEventArgs());
+
+        cut.WaitForAssertion(() =>
+        {
+            var chip = cut.Find(".app-version");
+            Assert.Contains("mud-chip-color-warning", chip.GetAttribute("class"));
+            Assert.Equal(releaseUrl, chip.GetAttribute("href"));
+            Assert.Contains("v1.0.0 · v9.9.9 available", chip.TextContent);
+        });
+        Assert.Contains("Version v9.9.9 is available.", cut.Markup);
     }
 
     [Fact]
