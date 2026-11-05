@@ -128,6 +128,9 @@ else if (_settingsKnown)
     private int _completed;
     private bool _acting;
     private string? _installationKey;
+
+    /// <summary>The console whose auto-load save is in flight. A reload of that console waits, so it cannot overwrite the save.</summary>
+    private ConsoleRuntime? _autoLoadSave;
     private bool _settingsKnown;
     private string? _settingsError;
     private bool _autoLoad;
@@ -229,9 +232,10 @@ else if (_settingsKnown)
 
             var models = await console.Models.ListAsync(installation, null, CancellationToken.None);
             var settings = await console.AutoLoad.GetAsync(CancellationToken.None);
-            if (!ReferenceEquals(console, Target) || _acting)
+            if (!ReferenceEquals(console, Target) || ReferenceEquals(console, _autoLoadSave))
             {
-                // The selection moved on while this was loading, or a save is in flight; that work owns the page state.
+                // The selection moved, or this console's auto-load save still owns the settings.
+                // Load, unload and delete keep refreshing the model list.
                 return;
             }
 
@@ -282,6 +286,7 @@ else if (_settingsKnown)
         var previousModel = _defaultModel;
         var previousInLibrary = _defaultInLibrary;
         _acting = true;
+        _autoLoadSave = console;
         _autoLoad = autoLoad;
         _defaultModel = string.IsNullOrEmpty(defaultModel) ? null : defaultModel;
         _defaultInLibrary = _defaultModel is null || _models.Any(m => !m.IsProjector && m.AppPath == _defaultModel);
@@ -315,10 +320,9 @@ else if (_settingsKnown)
         }
         finally
         {
-            if (ReferenceEquals(console, Target))
-            {
-                _acting = false;
-            }
+            // Clear even when the page has moved on, so the next console's reload is not left blocked.
+            _autoLoadSave = null;
+            _acting = false;
         }
     }
 
