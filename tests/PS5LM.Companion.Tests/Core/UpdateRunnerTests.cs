@@ -234,6 +234,19 @@ public sealed class UpdateRunnerTests
     }
 
     [Fact]
+    public async Task Restart_warns_when_ftpsrv_hands_over_but_does_not_listen()
+    {
+        using var harness = RunningStaleFtpsrv(await PreparedAsync());
+        harness.HandoffPid = 88;
+        harness.DropPortOnLoad = true;
+
+        var report = await Runner(harness, restart: true).RunAsync(CancellationToken.None);
+
+        Assert.Contains(report.Lines, l => l.Component == "ftpsrv" && l.Status == SetupStatus.Warn && l.Message.Contains("2121", StringComparison.Ordinal));
+        Assert.DoesNotContain(report.Lines, l => l.Component == "ftpsrv" && l.Status == SetupStatus.Ok && l.Message.Contains("handed over", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Ftpsrv_that_answers_but_fails_transfers_is_replaced_once()
     {
         using var harness = await PreparedAsync();

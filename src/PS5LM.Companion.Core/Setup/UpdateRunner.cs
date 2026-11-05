@@ -253,7 +253,12 @@ public sealed class UpdateRunner
 
             if (payload.SelfReplacing)
             {
-                await ReplaceByHandoffAsync(payload, stored, uploadedNote, cancellationToken);
+                await ReplaceByHandoffAsync(
+                    payload,
+                    stored,
+                    uploadedNote,
+                    cancellationToken,
+                    waitUntilListening: payload.Id.Equals("ftpsrv", StringComparison.OrdinalIgnoreCase));
                 continue;
             }
 
@@ -281,7 +286,7 @@ public sealed class UpdateRunner
 
     // The new copy finds the running process by name, signals it, and only then takes that name. Wait until the old
     // pids are gone and a new one with the payload's process name exists.
-    private async Task<bool> ReplaceByHandoffAsync(ManifestPayload payload, ManagedPayload stored, string uploadedNote, CancellationToken cancellationToken)
+    private async Task<bool> ReplaceByHandoffAsync(ManifestPayload payload, ManagedPayload stored, string uploadedNote, CancellationToken cancellationToken, bool waitUntilListening = false)
     {
         switch (payload.HandoffWhileTitleRuns ? false : await AnyTitleRunningAsync(cancellationToken))
         {
@@ -334,13 +339,28 @@ public sealed class UpdateRunner
             },
             _options.WaitOverride ?? TimeSpan.FromSeconds(SelfReplaceHandoffSeconds + payload.ReadyTimeoutSeconds),
             cancellationToken);
-        Add(
-            payload.Name,
-            handedOver ? SetupStatus.Ok : SetupStatus.Warn,
-            handedOver
-                ? $"Updated to {payload.Version}; the running copy handed over to the new one."
-                : $"{uploadedNote}. Not restarted: the running copy did not hand over.");
-        return handedOver;
+        if (!handedOver)
+        {
+            Add(payload.Name, SetupStatus.Warn, $"{uploadedNote}. Not restarted: the running copy did not hand over.");
+            return false;
+        }
+
+        // ftpsrv's --restart handoff only. Recovery waits for the port itself and keeps its own report.
+        if (waitUntilListening)
+        {
+            var listening = await _setup.WaitForAsync(
+                ct => _setup.IsReadyAsync(payload, ct),
+                _options.WaitOverride ?? TimeSpan.FromSeconds(payload.ReadyTimeoutSeconds),
+                cancellationToken);
+            if (!listening)
+            {
+                Add(payload.Name, SetupStatus.Warn, $"{uploadedNote}. Not restarted: the new copy is not answering on port {_options.FtpPort}.");
+                return false;
+            }
+        }
+
+        Add(payload.Name, SetupStatus.Ok, $"Updated to {payload.Version}; the running copy handed over to the new one.");
+        return true;
     }
 
     /// <summary>True when a title is in the foreground, false when none is, null when VoidShell cannot say.</summary>
