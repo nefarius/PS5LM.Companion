@@ -9,8 +9,9 @@ console before a release, for each of PS5LM and PS5LM Plus, and note the app and
 - ftpsrv listens on 2121, accepts any login and answers Unix-style `LIST`.
 - Each app polls `{stateRoot}/load` and `{stateRoot}/unload` about once a second, reads the first line, deletes the
   file and restarts itself. An empty `unload` file is ignored, so the companion writes `-`.
-- State root: `/data/PS5LM` for both apps; PS5LM Plus may use `/mnt/sandbox/PPSA99581_000/download0/PS5LM`, which
-  the app sees as `/download0/PS5LM`.
+- State root: `/data/PS5LM` for both apps when the HEN opens `/data`. When it does not, PS5LM Plus uses
+  `/mnt/sandbox/PPSA99581_000/download0/PS5LM`, and PS5LM 0.11.0 or newer uses `/mnt/sandbox/PPSA99575_000/download0/PS5LM`.
+  The app sees either as `/download0/PS5LM`. PS5LM 0.9.1 and 0.10.0 only use `/data/PS5LM`.
 - llama-server (8081) only listens once a model is loaded; ps5-exporter listens on 9100.
 
 ## Checklist
@@ -30,8 +31,9 @@ Start the companion with `PS5__Consoles__<id>__Host=<console>` and open the dash
    `.gguf` remains, and queuing the file again reuses the verified download from the cache.
 7. **Storage**: with ps5-exporter running, free space shows on the dashboard and a download larger than the free
    space is refused before downloading. Without it, uploads are attempted.
-8. **Plus sandbox**: on a sandboxed PS5LM Plus, loading a model from `/app0/models` works and uploads land in the
-   sandbox folder.
+8. **App storage**: on a sandboxed PS5LM Plus, loading a model from `/app0/models` works and uploads land in the
+   sandbox folder. On PS5LM 0.11.0 with `/data` closed, load, unload and upload use
+   `/mnt/sandbox/PPSA99575_000/download0/PS5LM`. A console still on 0.9.1 or 0.10.0 keeps using `/data/PS5LM`.
 9. **Both installed**: with both apps present and `PS5:Consoles:{id}:Variant` unset, the dashboard explains how to choose.
 10. **App check**: the pinned fork `v1.1.1-nefarius.4` on port 7007 is required. The *PS5LM app* card lists both titles
     as installed and marks the running one as running (`running_app`, including while the home screen has focus). The

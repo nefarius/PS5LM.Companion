@@ -13,11 +13,14 @@ Both apps scan these directories when they exist:
 | Internal storage | `/data/PS5LM/models` | `/data/PS5LM/models` |
 | M.2 | `/mnt/ext0/PS5LM/models` | `/mnt/ext0/PS5LM/models` |
 | USB 0 / USB 1 | `/mnt/usb0/PS5LM/models`, `/mnt/usb1/PS5LM/models` | same |
+| PS5LM app space (0.11.0 or newer, when `/data` is closed) | `/mnt/sandbox/PPSA99575_000/download0/PS5LM/models` | `/download0/PS5LM/models` |
 | PS5LM Plus app space | `/mnt/sandbox/PPSA99581_000/download0/PS5LM/models` | `/download0/PS5LM/models` |
 | PS5LM Plus app folder | `/data/homebrew/PPSA99581/models` | `/app0/models` |
 
 The app folder is read-only from FTP. The companion lists those files and refuses to delete them. `/data/PS5LM/models` is
 shared by both apps when `/data` is available, so a delete there is visible to whichever app scans that folder.
+PS5LM 0.11.0 also loads a model saved in the other home once `/data` opens. The companion lists models under the state
+root it selected, plus the removable drives.
 
 Sources: [PS5LM model directories](https://github.com/cobanov/PS5LM/blob/ecbcb8cc54faf33b7987011b4708d5e0b9ee5f52/ps5/app/main.cpp#L103-L118),
 [PS5LM Plus paths](https://github.com/abhi245y/PS5LM-Plus/blob/6729b4acbaf65e23b2e8bc8708b2acba524a7aa8/ps5/app/main.cpp#L110-L135).

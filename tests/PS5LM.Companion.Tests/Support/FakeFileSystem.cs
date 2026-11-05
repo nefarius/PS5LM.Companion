@@ -9,6 +9,7 @@ namespace PS5LM.Companion.Tests.Support;
 internal sealed class FakeFileSystem : IPS5FileSystem
 {
     private readonly Dictionary<string, byte[]> _files = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, DateTimeOffset> _modified = new(StringComparer.Ordinal);
     private readonly HashSet<string> _directories = new(StringComparer.Ordinal) { "/" };
 
     /// <summary>Makes every call throw <see cref="ConsoleUnreachableException"/>.</summary>
@@ -43,12 +44,22 @@ internal sealed class FakeFileSystem : IPS5FileSystem
         return this;
     }
 
-    public FakeFileSystem AddFile(string path, string content = "") => AddFile(path, Encoding.UTF8.GetBytes(content));
+    public FakeFileSystem AddFile(string path, string content = "", DateTimeOffset? modified = null) =>
+        AddFile(path, Encoding.UTF8.GetBytes(content), modified);
 
-    public FakeFileSystem AddFile(string path, byte[] content)
+    public FakeFileSystem AddFile(string path, byte[] content, DateTimeOffset? modified = null)
     {
         AddDirectory(path[..path.LastIndexOf('/')]);
         _files[path] = content;
+        if (modified is { } when)
+        {
+            _modified[path] = when;
+        }
+        else
+        {
+            _modified.Remove(path);
+        }
+
         return this;
     }
 
@@ -80,7 +91,12 @@ internal sealed class FakeFileSystem : IPS5FileSystem
             var prefix = trimmed + "/";
             var files = _files
                 .Where(f => f.Key.StartsWith(prefix, StringComparison.Ordinal) && !f.Key[prefix.Length..].Contains('/'))
-                .Select(f => new RemoteEntry(f.Key[prefix.Length..], f.Key, false, f.Value.Length, null));
+                .Select(f => new RemoteEntry(
+                    f.Key[prefix.Length..],
+                    f.Key,
+                    false,
+                    f.Value.Length,
+                    _modified.TryGetValue(f.Key, out var modified) ? modified : null));
             var dirs = _directories
                 .Where(d => d.StartsWith(prefix, StringComparison.Ordinal) && !d[prefix.Length..].Contains('/'))
                 .Select(d => new RemoteEntry(d[prefix.Length..], d, true, 0, null));

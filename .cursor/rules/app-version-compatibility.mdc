@@ -1,0 +1,18 @@
+---
+description: Bumping a supported PS5LM or PS5LM Plus version requires a backwards-compatible layer for consoles still on a previous version
+alwaysApply: true
+---
+
+# PS5LM app version compatibility
+
+A cluster can run different PS5LM and PS5LM Plus versions at once. Bumping either supported app in `setup-manifest.json` must keep every previously supported version working. The pin is what a new install gets. It is not an upgrade of consoles that already have the app.
+
+When the pin moves, or when new behavior depends on the new version:
+
+1. Diff the previous tag to the new one and list what the companion actually uses: state paths, command files, ports, `param.json`, and response shapes. Adopt the breaks. Leave deferred features (fleet, for example) alone.
+2. Read the installed version from `sce_sys/param.json` `contentVersion` through `AppVersion` (`01.011.000` is 0.11.0). Gate new behavior on `Installation.AppVersion`, using `StorageRoot.Since` for a new state root.
+3. An older installed version keeps its current behavior. A missing or unreadable version stays lenient: check the new layout and the old one, and prefer the old path when they tie.
+4. `setup` does not replace an installed app that differs from the pin. `update --apps` upgrades an older app and does not downgrade a newer one unless `--force`. The dashboard flags an app only when it is older than the pin.
+5. Tests cover the previous version and the new one, including a console whose version cannot be read. Extend the compatibility section in `docs/setup.md`.
+
+Do not ship a pin bump that assumes every console already runs the new version.

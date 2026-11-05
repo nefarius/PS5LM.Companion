@@ -48,9 +48,9 @@
     {
       "id": "shadowmountplus",
       "name": "ShadowMountPlus",
-      "version": "1.7beta7",
-      "url": "https://github.com/drakmor/ShadowMountPlus/releases/download/1.7beta7/shadowmountplus.elf",
-      "sha256": "a8f9d7f76e8749912508ade0cd5c78076b5bbf1271813c78c80c3d3d9d4777ee",
+      "version": "1.7beta11",
+      "url": "https://github.com/drakmor/ShadowMountPlus/releases/download/1.7beta11/shadowmountplus.elf",
+      "sha256": "08c843018750bef013fe3a4de5f80c5c9738c6c2dafa2406e6b6e68d7585f3da",
       "ready": { "processes": ["shadowmountplus.elf"] },
       "readyTimeoutSeconds": 30
     },
@@ -86,9 +86,9 @@
       "id": "ps5lm",
       "name": "PS5LM",
       "titleId": "PPSA99575",
-      "version": "v0.9.1",
-      "url": "https://github.com/cobanov/PS5LM/releases/download/v0.9.1/ps5lm-app-v0.9.1.zip",
-      "sha256": "7b221d2b754f4d812cd0cb19e62e116f5191de144bb3763b13ead566a6a8b556"
+      "version": "v0.11.0",
+      "url": "https://github.com/cobanov/PS5LM/releases/download/v0.11.0/ps5lm-app-v0.11.0.zip",
+      "sha256": "5421748f70080d212dfe99cfedb6bee3bc465eaea7883588497574490df5b42b"
     },
     {
       "id": "ps5lmplus",

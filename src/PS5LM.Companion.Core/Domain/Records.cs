@@ -1,3 +1,5 @@
+using PS5LM.Companion.Core.Updates;
+
 namespace PS5LM.Companion.Core.Domain;
 
 /// <summary>One entry of a remote directory listing.</summary>
@@ -5,10 +7,14 @@ public sealed record RemoteEntry(string Name, string FullPath, bool IsDirectory,
 
 /// <summary>
 /// A directory as reached over FTP (<see cref="FtpPath"/>) and as the app sees it (<see cref="AppPath"/>).
-/// The two differ for PS5LM Plus when it runs in its own sandbox: FTP reaches it under
-/// <c>/mnt/sandbox/PPSA99581_000/download0</c> while the app sees <c>/download0</c>.
+/// The two differ when an app keeps its files in its own storage: FTP reaches it under
+/// <c>/mnt/sandbox/&lt;title&gt;_000/download0</c> while the app sees <c>/download0</c>. PS5LM Plus does this
+/// whenever <c>/data</c> is closed; PS5LM does it from 0.11.0.
 /// </summary>
-public sealed record StorageRoot(string Name, string FtpPath, string AppPath, bool Writable)
+/// <param name="Since">
+/// The app version that first uses this root. Null means every version. An older installed app is not looked for here.
+/// </param>
+public sealed record StorageRoot(string Name, string FtpPath, string AppPath, bool Writable, SemanticVersion? Since = null)
 {
     /// <summary>Maps a path below <see cref="AppPath"/> to the FTP path, or <see langword="null"/> when outside.</summary>
     public string? ToFtpPath(string appPath) => Remap(appPath, AppPath, FtpPath);

@@ -217,16 +217,50 @@ public sealed class SetupRunnerTests
     }
 
     [Fact]
-    public async Task Different_installed_version_is_overwritten_in_place_and_models_survive()
+    public async Task Different_installed_app_is_kept_and_points_to_update()
+    {
+        using var harness = Ready();
+        const string Older = """{"titleId":"PPSA99581","contentVersion":"01.008.000"}""";
+        harness.Files.AddFile("/data/homebrew/PPSA99581/sce_sys/param.json", Older);
+        harness.Files.AddFile("/data/homebrew/PPSA99581/models/keep.gguf", "model");
+
+        var report = await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
+
+        Assert.Equal(0, report.ExitCode);
+        Assert.Equal(Older, harness.Files.Text("/data/homebrew/PPSA99581/sce_sys/param.json"));
+        Assert.Equal("model", harness.Files.Text("/data/homebrew/PPSA99581/models/keep.gguf"));
+        Assert.Null(harness.Files.Text("/data/homebrew/PPSA99581/eboot.bin"));
+        var line = Assert.Single(report.Lines, l => l.Component == "PS5LM Plus");
+        Assert.Equal(SetupStatus.Warn, line.Status);
+        Assert.Contains("Installed 0.8.0, pinned v0.8.3", line.Message, StringComparison.Ordinal);
+        Assert.Contains("update --apps", line.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Newer_installed_app_is_kept_without_asking_for_an_upgrade()
+    {
+        using var harness = Ready();
+        const string Newer = """{"titleId":"PPSA99581","contentVersion":"01.009.000"}""";
+        harness.Files.AddFile("/data/homebrew/PPSA99581/sce_sys/param.json", Newer);
+
+        var report = await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
+
+        Assert.Equal(Newer, harness.Files.Text("/data/homebrew/PPSA99581/sce_sys/param.json"));
+        Assert.Contains(report.Lines, l => l.Component == "PS5LM Plus" && l.Status == SetupStatus.Warn && l.Message.Contains("newer than pinned v0.8.3", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Force_replaces_a_different_installed_app_and_models_survive()
     {
         using var harness = Ready();
         harness.Files.AddFile("/data/homebrew/PPSA99581/sce_sys/param.json", "PARAM-old");
         harness.Files.AddFile("/data/homebrew/PPSA99581/models/keep.gguf", "model");
 
-        await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
+        await harness.Runner(SetupHarness.Options() with { Force = true }).RunAsync(CancellationToken.None);
 
         Assert.Equal(SetupHarness.ParamV1, harness.Files.Text("/data/homebrew/PPSA99581/sce_sys/param.json"));
         Assert.Equal("model", harness.Files.Text("/data/homebrew/PPSA99581/models/keep.gguf"));
+        Assert.Equal("ELF", harness.Files.Text("/data/homebrew/PPSA99581/eboot.bin"));
         Assert.DoesNotContain(harness.Files.Files.Keys, key => key.StartsWith("/data/ps5lm-companion", StringComparison.Ordinal));
     }
 

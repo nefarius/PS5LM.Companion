@@ -15,13 +15,14 @@ namespace PS5LM.Companion.App.Setup;
 internal static class UpdateCommand
 {
     private const string Usage = """
-        Usage: update --host <console> [--apps] [--variant ps5lm|ps5lmplus] [--check] [options]
+        Usage: update --host <console> [--apps] [--variant ps5lm|ps5lmplus] [--check] [--force] [options]
 
           --host <console>              Console IP or host name (required)
           --apps                        Also update the installed PS5LM / PS5LM Plus app
           --variant <ps5lm|ps5lmplus>   Limit the app update to one variant
           --restart                     Stop and relaunch an updated payload that is still running (pinned VoidShell fork)
           --check                       Only report what is out of date (exit code 3 when something is)
+          --force                       Also replace an installed app that is newer than the pin
           --upgrade-payload-manager     Upgrade an older Payload Manager without asking
           --payload-manager-url <url>   When Payload Manager is not on port 8084 of the host
           --ftp-port <port>             ftpsrv port (default 2121)
@@ -36,7 +37,7 @@ internal static class UpdateCommand
         {
             values = CommandSupport.Parse(
                 args,
-                ["apps", "check", "restart", "upgrade-payload-manager", "help"],
+                ["apps", "check", "restart", "force", "upgrade-payload-manager", "help"],
                 ["host", "variant", "payload-manager-url", "ftp-port", "manifest", "cache"]);
         }
         catch (ArgumentException ex)
@@ -99,6 +100,7 @@ internal static class UpdateCommand
                 IncludeApps = values.ContainsKey("apps"),
                 CheckOnly = values.ContainsKey("check"),
                 Restart = values.ContainsKey("restart"),
+                Force = values.ContainsKey("force"),
                 UpgradePayloadManager = values.ContainsKey("upgrade-payload-manager"),
                 FtpPort = ftpPort,
                 PayloadManagerPort = baseAddress.Port,

@@ -29,9 +29,9 @@ public sealed class UpdateRunnerTests
         return harness;
     }
 
-    private static UpdateRunner Runner(SetupHarness h, bool apps = false, bool check = false, string? variant = null, bool restart = false) => new(
+    private static UpdateRunner Runner(SetupHarness h, bool apps = false, bool check = false, string? variant = null, bool restart = false, bool force = false) => new(
         h.Manifest,
-        new UpdateOptions("ps5.test", variant) { IncludeApps = apps, CheckOnly = check, Restart = restart, WaitOverride = TimeSpan.FromMilliseconds(2) },
+        new UpdateOptions("ps5.test", variant) { IncludeApps = apps, CheckOnly = check, Restart = restart, Force = force, WaitOverride = TimeSpan.FromMilliseconds(2) },
         new SetupServices(h.Manager, h.Artifacts, h.Files, h.Probe, h.Elfldr, h.VoidShell, new SetupHarness.FakeUi(h), TimeProvider.System));
 
     private static void Stale(SetupHarness h, string fileName) =>
@@ -408,6 +408,35 @@ public sealed class UpdateRunnerTests
         await Runner(harness).RunAsync(CancellationToken.None);
 
         Assert.Equal(OldParam, harness.Files.Text(ParamPath));
+    }
+
+    [Fact]
+    public async Task Newer_installed_app_is_not_downgraded_or_flagged()
+    {
+        using var harness = await PreparedAsync();
+        const string Newer = """{"titleId":"PPSA99581","contentVersion":"01.012.000"}""";
+        harness.Files.AddFile(ParamPath, Newer);
+
+        var check = await Runner(harness, apps: true, check: true).RunAsync(CancellationToken.None);
+        var report = await Runner(harness, apps: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal(0, check.ExitCode);
+        Assert.DoesNotContain(check.Updates, update => update.Id == "ps5lmplus");
+        Assert.Equal(0, report.ExitCode);
+        Assert.Equal(Newer, harness.Files.Text(ParamPath));
+        Assert.Contains(report.Lines, l => l.Component == "PS5LM Plus" && l.Status == SetupStatus.Warn && l.Message.Contains("newer than pinned v0.8.3", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Force_replaces_a_newer_installed_app()
+    {
+        using var harness = await PreparedAsync();
+        harness.Files.AddFile(ParamPath, """{"titleId":"PPSA99581","contentVersion":"01.012.000"}""");
+
+        var report = await Runner(harness, apps: true, force: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal(0, report.ExitCode);
+        Assert.Equal(SetupHarness.ParamV1, harness.Files.Text(ParamPath));
     }
 
     [Fact]

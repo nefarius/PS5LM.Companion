@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Text.Json;
 
 using PS5LM.Companion.Core.Abstractions;
+using PS5LM.Companion.Core.Discovery;
 using PS5LM.Companion.Core.Domain;
 
 namespace PS5LM.Companion.Core.Setup;
@@ -10,7 +11,8 @@ namespace PS5LM.Companion.Core.Setup;
 /// Brings a console that only runs Payload Manager to a working PS5LM host: upgrades the manager when asked,
 /// uploads and autoloads the pinned payloads, launches them, places their extra files, allow-lists the app in
 /// OnionHEN, installs PS5LM or PS5LM Plus for ShadowMountPlus, and finishes with a reachability report.
-/// Every step is safe to repeat.
+/// Every step is safe to repeat. An app that is already installed is kept, even when its build differs from the pin;
+/// <c>update --apps</c> is the upgrade. <see cref="SetupOptions.Force"/> still replaces it.
 /// </summary>
 public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, SetupServices services)
 {
@@ -361,10 +363,21 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
 
         var remote = $"{HomebrewRoot}/{app.TitleId}";
         var existingParam = await services.Files.ReadTextAsync(remote + "/" + ParamSuffix, MaxTextBytes, cancellationToken);
-        if (existingParam is not null && existingParam.Trim() == newParam.Trim() && !options.Force)
+        if (existingParam is not null && !options.Force)
         {
-            Add(app.Name, SetupStatus.Ok, $"{app.Version} is already installed in {remote}.");
-            return AppInstall.Unchanged;
+            if (existingParam.Trim() == newParam.Trim())
+            {
+                Add(app.Name, SetupStatus.Ok, $"{app.Version} is already installed in {remote}.");
+                return AppInstall.Unchanged;
+            }
+
+            // A cluster may still be on the previous pin. Replacing it here would change every console that
+            // setup is rerun against. update --apps is the explicit upgrade, and it will not downgrade.
+            if (!options.ReplaceDifferentApp)
+            {
+                Add(app.Name, SetupStatus.Warn, KeptAppMessage(existingParam, app.Version));
+                return AppInstall.Unchanged;
+            }
         }
 
         var inPlace = existingParam is not null || await services.Files.DirectoryExistsAsync(remote, cancellationToken);
@@ -415,6 +428,22 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         }
 
         return null;
+    }
+
+    private static string KeptAppMessage(string existingParam, string pinnedTag)
+    {
+        if (!AppVersion.TryParseParam(existingParam, out var running))
+        {
+            return $"Installed build differs from {pinnedTag}. Left in place; run update --apps to upgrade.";
+        }
+
+        var installed = AppVersion.Format(running);
+        if (AppVersion.TryParseTag(pinnedTag, out var pinned) && running.CompareTo(pinned) > 0)
+        {
+            return $"Installed {installed} is newer than pinned {pinnedTag}. Left in place. Run update --apps --force to replace it.";
+        }
+
+        return $"Installed {installed}, pinned {pinnedTag}. Left in place; run update --apps to upgrade.";
     }
 
     // Step 8: ShadowMountPlus scans on a timer; nothing can force it, so wait and look.

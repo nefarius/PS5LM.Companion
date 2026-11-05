@@ -3,14 +3,17 @@ using System.Security.Cryptography;
 using System.Text.Json;
 
 using PS5LM.Companion.Core.Abstractions;
+using PS5LM.Companion.Core.Discovery;
 using PS5LM.Companion.Core.Domain;
 
 namespace PS5LM.Companion.Core.Setup;
 
 /// <summary>
 /// Brings an already prepared console up to the pinned manifest: replaces payloads and extra files whose bytes differ
-/// from the pin, and with <see cref="UpdateOptions.IncludeApps"/> the installed PS5LM / PS5LM Plus app. It never
-/// installs something that is absent (that is <c>setup</c>'s job) and never rewrites the autoload list.
+/// from the pin, and with <see cref="UpdateOptions.IncludeApps"/> an installed PS5LM / PS5LM Plus app that is older
+/// than the pin or whose version cannot be read. An app whose content version is newer than the pin is left in place
+/// unless <see cref="UpdateOptions.Force"/>. It never installs something that is absent (that is <c>setup</c>'s job)
+/// and never rewrites the autoload list.
 /// </summary>
 public sealed class UpdateRunner
 {
@@ -377,6 +380,14 @@ public sealed class UpdateRunner
                 continue;
             }
 
+            // A newer app is not a downgrade, and the dashboard does not flag it. A version that cannot be
+            // read still falls through to the param.json comparison.
+            if (!_options.Force && IsNewerThanPin(installed, app.Version))
+            {
+                Add(app.Name, SetupStatus.Warn, NewerAppMessage(installed, app.Version));
+                continue;
+            }
+
             if (_options.CheckOnly)
             {
                 Pending(app.Id, app.Name, app.Version, $"installed build differs from {app.Version}");
@@ -467,6 +478,17 @@ public sealed class UpdateRunner
     {
         var entries = await _services.Files.TryListAsync(path[..path.LastIndexOf('/')], cancellationToken);
         return entries is not null && entries.All(entry => entry.Name != path[(path.LastIndexOf('/') + 1)..]);
+    }
+
+    private static bool IsNewerThanPin(string installedParam, string pinnedTag) =>
+        AppVersion.TryParseParam(installedParam, out var running)
+        && AppVersion.TryParseTag(pinnedTag, out var pinned)
+        && running.CompareTo(pinned) > 0;
+
+    private static string NewerAppMessage(string installedParam, string pinnedTag)
+    {
+        var installed = AppVersion.TryParseParam(installedParam, out var running) ? AppVersion.Format(running) : "build";
+        return $"Installed {installed} is newer than pinned {pinnedTag}. Nothing was changed. Run update --apps --force to replace it.";
     }
 
     private static string UnreadableMessage(string path) =>
