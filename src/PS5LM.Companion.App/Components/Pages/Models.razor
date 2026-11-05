@@ -159,6 +159,7 @@ else if (_settingsKnown)
         _installationKey = InstallationKey();
         if (Target is null)
         {
+            _loading = false;
             return;
         }
 

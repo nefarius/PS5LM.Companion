@@ -140,21 +140,35 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
                 // Keep an existing destination under a backup name until the rename succeeds, so a failed or
                 // cancelled move never leaves the console without the old file.
                 string? backup = null;
+                var parked = false;
                 if (await FindAsync(client, to, cancellationToken) is { Type: FtpObjectType.File })
                 {
                     backup = $"{to}.{Guid.NewGuid():N}.bak";
-                    await client.Rename(to, backup, cancellationToken);
                 }
 
                 try
                 {
+                    if (backup is not null)
+                    {
+                        // Inside the try: a rename that moved the file and then reported failure can be undone below.
+                        await client.Rename(to, backup, cancellationToken);
+                        parked = true;
+                    }
+
                     await client.Rename(from, to, cancellationToken);
                 }
                 catch
                 {
                     if (backup is not null)
                     {
-                        await client.Rename(backup, to, CancellationToken.None);
+                        try
+                        {
+                            await client.Rename(backup, to, CancellationToken.None);
+                        }
+                        catch (Exception ex) when (!parked && ex is FtpException or SocketException or TimeoutException or IOException or OperationCanceledException)
+                        {
+                            // The destination never left its name. The original failure still stands.
+                        }
                     }
 
                     throw;
