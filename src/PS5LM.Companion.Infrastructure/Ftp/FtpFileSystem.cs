@@ -157,18 +157,27 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
 
                     await client.Rename(from, to, cancellationToken);
                 }
-                catch
+                catch (Exception moveError)
                 {
-                    if (backup is not null)
+                    if (backup is null)
                     {
-                        try
-                        {
-                            await client.Rename(backup, to, CancellationToken.None);
-                        }
-                        catch (Exception ex) when (!parked && ex is FtpException or SocketException or TimeoutException or IOException or OperationCanceledException)
-                        {
-                            // The destination never left its name. The original failure still stands.
-                        }
+                        throw;
+                    }
+
+                    try
+                    {
+                        await client.Rename(backup, to, CancellationToken.None);
+                    }
+                    catch (Exception restoreError)
+                    {
+                        // The destination is back only when this rename succeeds. Either parked state can fail here:
+                        // the file may already be under the backup name, or the first rename may have moved it and then thrown.
+                        var where = parked
+                            ? $"The previous {to} is at {backup}."
+                            : $"The previous {to} may be at {backup} if that rename took effect.";
+                        throw new IOException(
+                            $"Moving {from} to {to} failed: {moveError.Message} {where} Rename that file back to {to} if it is there. Restoring it failed: {restoreError.Message}",
+                            new AggregateException(moveError, restoreError));
                     }
 
                     throw;
