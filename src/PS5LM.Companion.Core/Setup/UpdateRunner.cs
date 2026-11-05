@@ -22,6 +22,9 @@ public sealed class UpdateRunner
     private const string PayloadStorageRoot = "/data/pldmgr/payloads/";
     private const string ParamSuffix = "sce_sys/param.json";
 
+    // ShadowMountPlus signals the running copy and waits up to 60s (RESTART_WAIT_MAX_US) before naming its own thread.
+    private const int SelfReplaceHandoffSeconds = 60;
+
     private readonly SetupManifest _manifest;
     private readonly UpdateOptions _options;
     private readonly SetupServices _services;
@@ -214,8 +217,8 @@ public sealed class UpdateRunner
         }
     }
 
-    // A running payload cannot be replaced by launching it again (the new copy cannot bind its port), so the old one is
-    // terminated by the pid it wrote to its pid file, after checking that pid really is a payload process.
+    // A running payload cannot be replaced by launching it again when the new copy cannot bind its port. One with a
+    // pid file is stopped through that pid; one that replaces itself (ShadowMountPlus) is launched and then takes over.
     private async Task RestartOrWarnAsync(CancellationToken cancellationToken)
     {
         foreach (var (payload, stored) in _stillOld)
@@ -223,13 +226,19 @@ public sealed class UpdateRunner
             var uploadedNote = $"Uploaded {payload.Version}, but the old build is still running. The new one loads at the next autoload or console reboot";
             if (!_options.Restart)
             {
-                Add(payload.Name, SetupStatus.Warn, uploadedNote + (payload.PidFile is null ? "." : "; run update --restart to replace it now."));
+                Add(payload.Name, SetupStatus.Warn, uploadedNote + RestartHint(payload));
+                continue;
+            }
+
+            if (payload.SelfReplacing)
+            {
+                await ReplaceByHandoffAsync(payload, stored, uploadedNote, cancellationToken);
                 continue;
             }
 
             if (payload.PidFile is null)
             {
-                Add(payload.Name, SetupStatus.Warn, uploadedNote + " (it cannot be restarted: no pid file is known for it).");
+                Add(payload.Name, SetupStatus.Warn, uploadedNote + RestartHint(payload));
                 continue;
             }
 
@@ -248,6 +257,91 @@ public sealed class UpdateRunner
                 ready ? $"Updated to {payload.Version}; the old copy was stopped and the new one is running." : "The old copy was stopped, but the new one did not come up.");
         }
     }
+
+    // The new copy finds the running process by name, signals it, and only then takes that name. Wait until the old
+    // pids are gone and a new one with the payload's process name exists.
+    private async Task ReplaceByHandoffAsync(ManifestPayload payload, ManagedPayload stored, string uploadedNote, CancellationToken cancellationToken)
+    {
+        switch (await AnyTitleRunningAsync(cancellationToken))
+        {
+            case true:
+                Add(payload.Name, SetupStatus.Warn, $"{uploadedNote}. Not restarted: a title is running; {payload.Name} unmounts its titles when it hands over. Close it and run update --restart again.");
+                return;
+            case null:
+                Add(payload.Name, SetupStatus.Warn, $"{uploadedNote}. Not restarted: cannot tell whether a title is running (VoidShell is not reporting it). Start VoidShell and run update --restart again.");
+                return;
+        }
+
+        if (payload.Ready.Processes is not { Count: > 0 } names)
+        {
+            Add(payload.Name, SetupStatus.Warn, $"{uploadedNote}. Not restarted: it has no process name to match the running copy against.");
+            return;
+        }
+
+        var processes = await _services.Manager.GetProcessIdsAsync(cancellationToken);
+        if (processes is null)
+        {
+            Add(payload.Name, SetupStatus.Warn, $"{uploadedNote}. Not restarted: Payload Manager's process list could not be read.");
+            return;
+        }
+
+        var previous = processes
+            .Where(process => names.Contains(process.Value, StringComparer.OrdinalIgnoreCase))
+            .Select(process => process.Key)
+            .ToHashSet();
+        if (previous.Count == 0)
+        {
+            Add(payload.Name, SetupStatus.Warn, $"{uploadedNote}. Not restarted: no running process matches {string.Join(", ", names)}.");
+            return;
+        }
+
+        Ui.Info($"Launching {payload.Name} so it can replace the running copy");
+        var launch = await _services.Manager.LoadAsync(stored.LaunchTarget, cancellationToken);
+        if (!launch.Accepted)
+        {
+            Add(payload.Name, SetupStatus.Warn, $"{uploadedNote}. Not restarted: {launch.Message}");
+            return;
+        }
+
+        var handedOver = await _setup.WaitForAsync(
+            async ct =>
+            {
+                var now = await _services.Manager.GetProcessIdsAsync(ct);
+                return now is not null
+                    && previous.All(pid => !now.ContainsKey(pid))
+                    && now.Any(process => !previous.Contains(process.Key) && names.Contains(process.Value, StringComparer.OrdinalIgnoreCase));
+            },
+            _options.WaitOverride ?? TimeSpan.FromSeconds(SelfReplaceHandoffSeconds + payload.ReadyTimeoutSeconds),
+            cancellationToken);
+        Add(
+            payload.Name,
+            handedOver ? SetupStatus.Ok : SetupStatus.Warn,
+            handedOver
+                ? $"Updated to {payload.Version}; the running copy handed over to the new one."
+                : $"{uploadedNote}. Not restarted: the running copy did not hand over.");
+    }
+
+    /// <summary>True when a title is in the foreground, false when none is, null when VoidShell cannot say.</summary>
+    private async Task<bool?> AnyTitleRunningAsync(CancellationToken cancellationToken)
+    {
+        if (_services.VoidShell is null)
+        {
+            return null;
+        }
+
+        var snapshot = await _services.VoidShell.ProbeAsync(cancellationToken);
+        if (!snapshot.Available || !snapshot.RunningKnown)
+        {
+            return null;
+        }
+
+        return snapshot.ActiveTitleId is { Length: > 0 };
+    }
+
+    private static string RestartHint(ManifestPayload payload) =>
+        payload.PidFile is not null || payload.SelfReplacing
+            ? "; run update --restart to replace it now."
+            : ". update --restart cannot replace it while it runs.";
 
     /// <summary>Stops the running copy; returns why it could not, or null when it is gone.</summary>
     private async Task<string?> TerminateAsync(ManifestPayload payload, CancellationToken cancellationToken)

@@ -15,7 +15,7 @@ public sealed record UpdateOptions(string Host, string? AppId = null)
 
     public bool UpgradePayloadManager { get; init; }
 
-    /// <summary>Replace an updated payload that is still running (needs a <c>pidFile</c> in the manifest).</summary>
+    /// <summary>Replace an updated payload that is still running (a <c>pidFile</c>, or one that stops its own old copy when launched).</summary>
     public bool Restart { get; init; }
 
     /// <summary>Replace an installed app that is newer than the pin. Without this, a newer app is left in place.</summary>
