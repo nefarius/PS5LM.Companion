@@ -89,6 +89,24 @@ internal sealed class LatestReleaseChecker : IDisposable
         }
     }
 
+    /// <summary>
+    /// Fetches the latest stable release even when a cached comparison is still fresh, then replaces the cache.
+    /// </summary>
+    public async Task<VersionCheckStatus> RefreshAsync(CancellationToken cancellationToken = default)
+    {
+        await _refreshLock.WaitAsync(cancellationToken);
+        try
+        {
+            var status = await FetchAsync(cancellationToken);
+            Store(status);
+            return status;
+        }
+        finally
+        {
+            _refreshLock.Release();
+        }
+    }
+
     public void Dispose()
     {
         _httpClient.Dispose();
@@ -104,10 +122,23 @@ internal sealed class LatestReleaseChecker : IDisposable
             response.EnsureSuccessStatusCode();
 
             var release = await response.Content.ReadFromJsonAsync<GitHubLatestRelease>(cancellationToken);
-            if (release is null
-                || release.Draft
+            if (release is null)
+            {
+                return LocalOnly(localVersion, checkFailed: true);
+            }
+
+            if (string.IsNullOrWhiteSpace(release.TagName))
+            {
+                return LocalOnly(localVersion, checkFailed: true);
+            }
+
+            if (!SemanticVersion.TryParse(release.TagName, out _))
+            {
+                return LocalOnly(localVersion, checkFailed: true);
+            }
+
+            if (release.Draft
                 || release.Prerelease
-                || string.IsNullOrWhiteSpace(release.TagName)
                 || !SemanticVersion.IsNewer(release.TagName, localVersion))
             {
                 return LocalOnly(localVersion);
@@ -121,7 +152,7 @@ internal sealed class LatestReleaseChecker : IDisposable
         }
         catch (Exception)
         {
-            return LocalOnly(localVersion);
+            return LocalOnly(localVersion, checkFailed: true);
         }
     }
 
@@ -176,7 +207,8 @@ internal sealed class LatestReleaseChecker : IDisposable
         return uri;
     }
 
-    private static VersionCheckStatus LocalOnly(string? localVersion) => new(localVersion, null, false, null);
+    private static VersionCheckStatus LocalOnly(string? localVersion, bool checkFailed = false) =>
+        new(localVersion, null, false, null, checkFailed);
 
     private sealed class GitHubLatestRelease
     {
