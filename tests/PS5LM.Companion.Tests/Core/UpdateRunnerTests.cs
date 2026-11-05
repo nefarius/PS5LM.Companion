@@ -198,6 +198,79 @@ public sealed class UpdateRunnerTests
         Assert.Equal(0, report.ExitCode);
     }
 
+    private static SetupHarness RunningStaleFtpsrv(SetupHarness harness)
+    {
+        Stale(harness, "ftpsrv.elf");
+        harness.Pids[31] = "ftpsrv.elf";
+        return harness;
+    }
+
+    [Fact]
+    public async Task Restart_hands_ftpsrv_over_while_a_title_is_running()
+    {
+        using var harness = RunningStaleFtpsrv(await PreparedAsync());
+        harness.VoidShell.SetUp([SetupHarness.TitleId], runningKnown: true, active: SetupHarness.TitleId);
+        harness.HandoffPid = 88;
+
+        var report = await Runner(harness, restart: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal(["upload:ftpsrv.elf", "load:ftpsrv.elf"], harness.Events);
+        Assert.Equal("ftpsrv.elf", harness.Pids[88]);
+        Assert.DoesNotContain(31, harness.Pids.Keys);
+        Assert.Contains(report.Lines, l => l.Component == "ftpsrv" && l.Status == SetupStatus.Ok && l.Message.Contains("handed over", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Restart_hands_ftpsrv_over_when_voidshell_cannot_say()
+    {
+        using var harness = RunningStaleFtpsrv(await PreparedAsync());
+        harness.VoidShell.Snapshot = PS5LM.Companion.Core.Abstractions.AppProviderSnapshot.Unavailable(harness.VoidShell.Kind, "down");
+        harness.HandoffPid = 88;
+
+        var report = await Runner(harness, restart: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal(["upload:ftpsrv.elf", "load:ftpsrv.elf"], harness.Events);
+        Assert.Contains(report.Lines, l => l.Component == "ftpsrv" && l.Status == SetupStatus.Ok);
+    }
+
+    [Fact]
+    public async Task Dead_ftpsrv_is_only_reported_when_checking()
+    {
+        using var harness = await PreparedAsync();
+        Stale(harness, "ftpsrv.elf");
+        harness.Ports.Remove(2121);
+
+        var report = await Runner(harness, check: true).RunAsync(CancellationToken.None);
+
+        Assert.Empty(harness.Events);
+        Assert.Contains(report.Lines, l => l.Component == "Payloads" && l.Status == SetupStatus.Fail);
+    }
+
+    [Fact]
+    public async Task Stale_ftpsrv_is_not_restarted_without_the_restart_option()
+    {
+        using var harness = RunningStaleFtpsrv(await PreparedAsync());
+
+        var report = await Runner(harness).RunAsync(CancellationToken.None);
+
+        Assert.Equal(["upload:ftpsrv.elf"], harness.Events);
+        Assert.Contains(report.Lines, l => l.Component == "ftpsrv" && l.Status == SetupStatus.Warn && l.Message.Contains("--restart", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Dead_stale_ftpsrv_is_uploaded_and_launched()
+    {
+        using var harness = await PreparedAsync();
+        Stale(harness, "ftpsrv.elf");
+        harness.Ports.Remove(2121);
+
+        var report = await Runner(harness).RunAsync(CancellationToken.None);
+
+        // The fake Payload Manager does not write the uploaded bytes to the stored file, so the later comparison still sees the old build.
+        Assert.Equal(["upload:ftpsrv.elf", "load:ftpsrv.elf"], harness.Events.Take(2));
+        Assert.Contains(report.Lines, l => l.Component == "ftpsrv" && l.Status == SetupStatus.Ok && l.Message.Contains("Was not answering", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task Restart_warns_when_the_self_replacing_payload_keeps_the_old_pid()
     {

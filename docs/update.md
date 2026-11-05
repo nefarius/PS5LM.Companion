@@ -43,6 +43,8 @@ Exit codes: 0 current or updated, 1 bad arguments, 2 something failed, 3 `--chec
    `--restart` launches that new copy directly and waits until the old process ids are gone and a new one with the same name exists.
    It does not launch while a title is running, or when VoidShell cannot say whether one is: the handoff unmounts titles ShadowMountPlus mounted.
    If the old process is still there, or no new process appears, the old build keeps running and a warning says the new one loads at the next autoload or reboot.
+   ftpsrv sets `selfReplacing` and `handoffWhileTitleRuns` (the [nefarius/ftpsrv](https://github.com/nefarius/ftpsrv) build kills any other `ftpsrv.elf` when it starts, and a handoff only drops FTP briefly), so `--restart` replaces it even while a title runs or when VoidShell cannot say.
+   When ftpsrv does not answer at all, nothing can be compared over FTP: `update` uploads the pinned ftpsrv through Payload Manager without comparing, launches it, and then continues. `--check` only reports that FTP is down.
 4. Extra files (VoidShell `index.html`) are compared by hash and replaced through a `.part` file.
 5. With `--apps`: each installed app whose `param.json` differs from the pinned archive is overwritten in place (`param.json`
    last), then the pinned VoidShell fork is asked to rescan. An app whose `contentVersion` is newer than the pin is left in

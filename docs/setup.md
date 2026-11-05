@@ -100,6 +100,20 @@ To go back to upstream once it ships the fix: repin `version`, `url`, `sha256` a
 then run `setup --verify-manifest`. Leave `voidshell` required. A custom manifest may mark a different payload `"optional": true`
 so a failed start is a warning; that does not make the companion work without VoidShell.
 
+## ftpsrv fork build
+
+Upstream ftpsrv v0.21.1 passes an uninitialised `addr_len` to `accept()` in `ftp_data_open()`. Depending on what is on the stack, `accept()`
+fails with `EINVAL` and `RETR` answers `550 Invalid argument` (directory listings keep working) until the console is rebooted. The upstream fix
+([ps5-payload-dev/ftpsrv#31](https://github.com/ps5-payload-dev/ftpsrv/pull/31)) is not merged yet, so the manifest pins the reproducible fork build
+[nefarius/ftpsrv `v0.21.1-nefarius.1`](https://github.com/nefarius/ftpsrv/releases/tag/v0.21.1-nefarius.1): upstream master (v0.21.1 plus the kernel offsets for
+firmware 14.00 to 14.22) with that one-line fix, built with ps5-payload-sdk v0.45 in Docker. The MLSD, `RETR` and `STOR` behaviour the companion relies on is unchanged,
+so the recorded fixtures under `Fixtures/ftpsrv/0.21.1` still apply. Unlike VoidShell, the fork is not a hard requirement: upstream ftpsrv works wherever the bug does not show.
+
+To fix a console that already runs upstream ftpsrv, run [`update --restart`](update.md). ftpsrv stops any other `ftpsrv.elf` when it starts, so the new copy takes over
+without a reboot and without waiting for a running title. If ftpsrv is dead, plain `update` uploads and launches the pinned build through Payload Manager.
+
+To go back to upstream once it ships the fix, repin `version`, `url` and `sha256` of `ftpsrv` and run `setup --verify-manifest`.
+
 ## Bumping a pin
 
 1. Change `version`, `url` and `sha256` in `setup-manifest.json` (`gh release view <tag> --json assets` shows digests), and the

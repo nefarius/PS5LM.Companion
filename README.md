@@ -331,6 +331,7 @@ Sony Interactive Entertainment.
 - [nefarius/voidshell](https://github.com/nefarius/voidshell), the required fork of [amilarajans/voidshell](https://github.com/amilarajans/voidshell)
 - [PS5 Payload Manager](https://github.com/itsPLK/ps5-payload-manager)
 - [ps5-payload-dev](https://github.com/ps5-payload-dev): [ftpsrv](https://github.com/ps5-payload-dev/ftpsrv) and [elfldr](https://github.com/ps5-payload-dev/elfldr)
+- [nefarius/ftpsrv](https://github.com/nefarius/ftpsrv), the pinned fork of ftpsrv with the `accept()` fix from [ftpsrv#31](https://github.com/ps5-payload-dev/ftpsrv/pull/31) (see [docs/setup.md](docs/setup.md#ftpsrv-fork-build))
 - [kstuff-lite](https://github.com/EchoStretch/kstuff-lite)
 - [OnionHEN](https://github.com/aydencharles/onionHEN)
 - [ShadowMountPlus](https://github.com/drakmor/ShadowMountPlus)

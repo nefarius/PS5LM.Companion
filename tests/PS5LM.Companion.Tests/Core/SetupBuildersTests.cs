@@ -25,11 +25,20 @@ public sealed class SetupBuildersTests
         var shadow = manifest.Payloads.Single(p => p.Id == "shadowmountplus");
         Assert.True(shadow.SelfReplacing);
         Assert.Null(shadow.PidFile);
+        Assert.False(shadow.HandoffWhileTitleRuns);
+        var ftpsrv = manifest.Payloads.Single(p => p.Id == "ftpsrv");
+        Assert.Equal("v0.21.1-nefarius.1", ftpsrv.Version);
+        Assert.StartsWith("https://github.com/nefarius/ftpsrv/releases/download/v0.21.1-nefarius.1/", ftpsrv.Url, StringComparison.Ordinal);
+        Assert.True(ftpsrv.SelfReplacing);
+        Assert.True(ftpsrv.HandoffWhileTitleRuns);
+        Assert.Equal(2121, ftpsrv.Ready.Port);
+        Assert.Equal(["ftpsrv.elf"], ftpsrv.Ready.Processes);
     }
 
     [Theory]
     [InlineData("\"id\": \"elfldr\"", "\"id\": \"elfldr\", \"selfReplacing\": true", "ready process list")]
     [InlineData("\"pidFile\":", "\"selfReplacing\": true, \"pidFile\":", "both selfReplacing and pidFile")]
+    [InlineData("\"id\": \"voidshell\"", "\"id\": \"voidshell\", \"handoffWhileTitleRuns\": true", "needs selfReplacing")]
     public void Manifest_rejects_a_self_replacing_payload_that_cannot_be_handed_over(string from, string to, string message)
     {
         using var stream = typeof(SetupManifest).Assembly.GetManifestResourceStream("PS5LM.Companion.Core.Setup.setup-manifest.json")!;

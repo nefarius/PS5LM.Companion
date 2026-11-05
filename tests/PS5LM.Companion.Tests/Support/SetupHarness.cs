@@ -18,7 +18,7 @@ internal sealed class SetupHarness : IDisposable
         ["elfldr.elf"] = (9021, null),
         ["kstuff-lite.elf"] = (0, "kstuff.elf"),
         ["onionhen.elf"] = (0, "onion_daemon.elf"),
-        ["ftpsrv.elf"] = (2121, null),
+        ["ftpsrv.elf"] = (2121, "ftpsrv.elf"),
         ["shadowmountplus.elf"] = (0, "shadowmountplus.elf"),
         ["voidshell.elf"] = (7007, null),
         ["ps5-web-file-manager.elf"] = (8888, null),

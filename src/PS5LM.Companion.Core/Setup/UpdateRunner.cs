@@ -106,7 +106,9 @@ public sealed class UpdateRunner
 
     private async Task UpdatePayloadsAsync(CancellationToken cancellationToken)
     {
-        if (!await RequireFtpAsync("Payloads", cancellationToken))
+        if (!await _services.Probe.PortOpenAsync(_options.FtpPort, cancellationToken)
+            && !await RecoverFtpsrvAsync(cancellationToken)
+            && !await RequireFtpAsync("Payloads", cancellationToken))
         {
             return;
         }
@@ -262,7 +264,7 @@ public sealed class UpdateRunner
     // pids are gone and a new one with the payload's process name exists.
     private async Task ReplaceByHandoffAsync(ManifestPayload payload, ManagedPayload stored, string uploadedNote, CancellationToken cancellationToken)
     {
-        switch (await AnyTitleRunningAsync(cancellationToken))
+        switch (payload.HandoffWhileTitleRuns ? false : await AnyTitleRunningAsync(cancellationToken))
         {
             case true:
                 Add(payload.Name, SetupStatus.Warn, $"{uploadedNote}. Not restarted: a title is running; {payload.Name} unmounts its titles when it hands over. Close it and run update --restart again.");
@@ -539,6 +541,50 @@ public sealed class UpdateRunner
         // The reported id can be truncated; null means nothing runs.
         return snapshot.ActiveTitleId is { Length: > 0 } active
             && titleId.StartsWith(active, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // Nothing can be compared while FTP is down, and a dead ftpsrv is what the update is for. Payload Manager does not
+    // need FTP: put the pinned build in place without comparing and launch it (a new copy also kills a hung old one).
+    private async Task<bool> RecoverFtpsrvAsync(CancellationToken cancellationToken)
+    {
+        var payload = _manifest.Payloads.FirstOrDefault(p => p.Id == "ftpsrv" && p.Ready.Port > 0);
+        if (payload is null || _options.CheckOnly)
+        {
+            return false;
+        }
+
+        var stored = SetupRunner.FindStored(await _services.Manager.ListPayloadsAsync(cancellationToken), payload);
+        if (stored is null)
+        {
+            return false;
+        }
+
+        Ui.Info($"{payload.Name} is not answering on port {_options.FtpPort}; uploading and launching {payload.Version} without comparing");
+        try
+        {
+            var local = await _services.Artifacts.FetchAsync(payload.Url, payload.Sha256, cancellationToken);
+            await using var file = File.OpenRead(local);
+            await _services.Manager.UploadAsync(payload.UploadName, file, cancellationToken);
+        }
+        catch (IOException ex)
+        {
+            Add(payload.Name, SetupStatus.Warn, $"Payload Manager refused the upload: {ex.Message}");
+            return false;
+        }
+
+        stored = SetupRunner.FindStored(await _services.Manager.ListPayloadsAsync(cancellationToken), payload);
+        if (stored is null)
+        {
+            return false;
+        }
+
+        await _setup.LaunchPayloadsAsync([(payload, stored)], cancellationToken);
+        var ready = await _setup.IsReadyAsync(payload, cancellationToken);
+        Add(
+            payload.Name,
+            ready ? SetupStatus.Ok : SetupStatus.Fail,
+            ready ? $"Was not answering; {payload.Version} is uploaded and running." : $"Uploaded {payload.Version}, but it is not answering.");
+        return ready;
     }
 
     private async Task<bool> RequireFtpAsync(string component, CancellationToken cancellationToken)
