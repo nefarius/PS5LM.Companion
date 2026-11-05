@@ -132,6 +132,11 @@ internal sealed class LatestReleaseChecker : IDisposable
                 return LocalOnly(localVersion, checkFailed: true);
             }
 
+            if (!SemanticVersion.TryParse(release.TagName, out _))
+            {
+                return LocalOnly(localVersion, checkFailed: true);
+            }
+
             if (release.Draft
                 || release.Prerelease
                 || !SemanticVersion.IsNewer(release.TagName, localVersion))
