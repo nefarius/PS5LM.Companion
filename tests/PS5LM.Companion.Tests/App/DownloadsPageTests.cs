@@ -79,6 +79,76 @@ public sealed class DownloadsPageTests
         Assert.False(SearchButton(page).HasAttribute("disabled"));
     }
 
+    [Fact]
+    public async Task A_search_keeps_the_query_that_was_sent()
+    {
+        var gate = new TaskCompletionSource<IReadOnlyList<HubRepo>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        string? sent = null;
+        await using var page = await OpenAsync(new ScriptedHub
+        {
+            Search = query =>
+            {
+                sent = query;
+                return gate.Task;
+            },
+        });
+
+        TypeQuery(page, "nope");
+        var pending = SearchButton(page).ClickAsync();
+        page.WaitForAssertion(() => Assert.Contains("Searching...", page.Markup, StringComparison.Ordinal));
+
+        TypeQuery(page, "changed");
+        gate.SetResult([]);
+        await pending;
+
+        Assert.Equal("nope", sent);
+        page.WaitForAssertion(() =>
+            Assert.Contains("No GGUF repositories match \"nope\".", page.Markup, StringComparison.Ordinal));
+        Assert.DoesNotContain("No GGUF repositories match \"changed\".", page.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Results_stay_disabled_until_the_search_and_its_file_list_finish()
+    {
+        var search = new TaskCompletionSource<IReadOnlyList<HubRepo>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var files = new TaskCompletionSource<IReadOnlyList<HubFile>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        await using var page = await OpenAsync(new ScriptedHub
+        {
+            Search = _ => Interlocked.Increment(ref calls) == 1
+                ? Task.FromResult<IReadOnlyList<HubRepo>>([new HubRepo("acme/llama", 10)])
+                : search.Task,
+            Files = _ => files.Task,
+        });
+
+        TypeQuery(page, "llama");
+        await SearchButton(page).ClickAsync();
+        page.WaitForAssertion(() => Assert.Contains("acme/llama", page.Markup, StringComparison.Ordinal));
+        Assert.Empty(page.Cut.FindAll(".mud-list-item-disabled"));
+
+        var pending = SearchButton(page).ClickAsync();
+        page.WaitForAssertion(() => Assert.NotEmpty(page.Cut.FindAll(".mud-list-item-disabled")));
+        search.SetResult([new HubRepo("acme/llama", 10)]);
+        await pending;
+
+        page.WaitForAssertion(() => Assert.Empty(page.Cut.FindAll(".mud-list-item-disabled")));
+        var loading = page.Cut.Find(".mud-list-item").ClickAsync();
+        page.WaitForAssertion(() =>
+        {
+            Assert.Contains("Loading files of acme/llama...", page.Markup, StringComparison.Ordinal);
+            Assert.True(SearchButton(page).HasAttribute("disabled"));
+            Assert.NotEmpty(page.Cut.FindAll(".mud-list-item-disabled"));
+        });
+        files.SetResult([new HubFile("model.gguf", 8, null)]);
+        await loading;
+
+        page.WaitForAssertion(() =>
+        {
+            Assert.Contains("model.gguf", page.Markup, StringComparison.Ordinal);
+            Assert.False(SearchButton(page).HasAttribute("disabled"));
+        });
+    }
+
     private static Task<OpenedPage> OpenAsync(ScriptedHub hub)
     {
         var runtime = new ConsoleRuntime(
@@ -127,10 +197,12 @@ public sealed class DownloadsPageTests
         public Func<string, Task<IReadOnlyList<HubRepo>>> Search { get; init; } =
             _ => Task.FromResult<IReadOnlyList<HubRepo>>([]);
 
+        public Func<string, Task<IReadOnlyList<HubFile>>> Files { get; init; } =
+            _ => Task.FromResult<IReadOnlyList<HubFile>>([]);
+
         public Task<IReadOnlyList<HubRepo>> SearchAsync(string query, CancellationToken cancellationToken) => Search(query);
 
-        public Task<IReadOnlyList<HubFile>> ListFilesAsync(string repo, CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<HubFile>>([]);
+        public Task<IReadOnlyList<HubFile>> ListFilesAsync(string repo, CancellationToken cancellationToken) => Files(repo);
 
         public Task DownloadAsync(
             string repo,
