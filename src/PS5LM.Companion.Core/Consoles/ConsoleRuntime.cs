@@ -38,6 +38,7 @@ public sealed class ConsoleRuntime : IDisposable
             Updates);
         Models = new ModelCatalog(connectors.FileSystem);
         Control = new ModelControlService(connectors.FileSystem, Models, Status, Store, LoadTracker, TimeSpan.FromSeconds(options.LoadGraceSeconds));
+        AutoLoad = new AutoLoadSettingsService(connectors.FileSystem, Models, Status, Store);
         Dependencies = new DependencyLaunchService(options, connectors.Payloads, connectors.Launcher, connectors.Elfldr, Status, Store);
         ManagerRestart = new PayloadManagerRestartService(options, connectors.Recovery, connectors.Elfldr, Status, Store, time);
         Closer = new AppCloseService(connectors.FileSystem, Status, Store, LoadTracker, TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(1));
@@ -71,6 +72,9 @@ public sealed class ConsoleRuntime : IDisposable
     public ModelCatalog Models { get; }
 
     public ModelControlService Control { get; }
+
+    /// <summary>Reads and writes the app's auto-load setting in <c>settings.json</c>.</summary>
+    public AutoLoadSettingsService AutoLoad { get; }
 
     public DependencyLaunchService Dependencies { get; }
 

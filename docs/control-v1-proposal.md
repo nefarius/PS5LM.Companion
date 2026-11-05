@@ -1,7 +1,8 @@
 # Proposal: `control/v1` mailbox for PS5LM and PS5LM Plus
 
-Status: draft for discussion with the upstream projects. Nothing here is implemented, and the companion works
-without it (see the README). This document only describes what a small, optional upstream change would add.
+Status: draft for discussion with the upstream projects. The mailbox described here is not implemented. The companion
+does write two settings itself, `auto_load` and `default_model` (see [auto-load.md](auto-load.md)). This document
+describes what a small, optional upstream change would add for everything else.
 
 ## Why
 
@@ -9,7 +10,7 @@ Today the companion drives the apps through two single-purpose files, `load` and
 else (state, progress, errors) from FTP and port 8081. That is enough for load/unload and companion-managed
 downloads, but it cannot:
 
-- change settings safely (the apps own `settings.json` and rewrite it; a concurrent write from outside can be lost or corrupt it),
+- change the rest of the settings safely (the apps own `settings.json` and rewrite it from memory, so a write from outside can be lost or can corrupt the file; the companion's direct edit is limited to `auto_load` and `default_model`),
 - tell the companion whether a command was accepted, rejected or finished,
 - report the app's own state while 8081 is closed (starting, loading, failed to load),
 - let the app download a model itself, which would avoid pushing multi-GB files over a slow FTP link.

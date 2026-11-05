@@ -118,7 +118,7 @@ public static class InstallationDetector
         installed is null || root.Since is not SemanticVersion since || installed.Value.CompareTo(since) >= 0;
 
     private static async Task<bool> HasStateAsync(IPS5FileSystem fs, StorageRoot root, CancellationToken cancellationToken) =>
-        await fs.FileExistsAsync($"{root.FtpPath}/settings.json", cancellationToken)
+        await fs.FileExistsAsync($"{root.FtpPath}/{VariantProfile.SettingsFile}", cancellationToken)
         || await fs.FileExistsAsync($"{root.FtpPath}/app.log", cancellationToken);
 
     private static async Task<StorageRoot> FreshestAsync(

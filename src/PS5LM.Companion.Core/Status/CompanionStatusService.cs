@@ -241,7 +241,7 @@ public sealed class CompanionStatusService(
 
             var pending = await fileSystem.FileExistsAsync($"{root.FtpPath}/{VariantProfile.LoadCommandFile}", cancellationToken)
                           || await fileSystem.FileExistsAsync($"{root.FtpPath}/{VariantProfile.UnloadCommandFile}", cancellationToken);
-            var settings = await fileSystem.FileExistsAsync($"{root.FtpPath}/settings.json", cancellationToken);
+            var settings = await fileSystem.FileExistsAsync($"{root.FtpPath}/{VariantProfile.SettingsFile}", cancellationToken);
             return new FtpView(true, _installation, pending, settings, null);
         }
         catch (ConsoleUnreachableException ex)
