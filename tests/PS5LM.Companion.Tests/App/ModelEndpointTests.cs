@@ -328,9 +328,26 @@ public sealed class ModelEndpointTests
             new { autoLoad = true, defaultModel = "/data/PS5LM/models/a.gguf" });
 
         Assert.Equal(HttpStatusCode.BadRequest, noModel.StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+        // The file is unreadable, so the path is not considered and this is not a missing-model 404.
+        Assert.Equal(HttpStatusCode.BadRequest, unknown.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, malformed.StatusCode);
         Assert.Equal("not json", factory.FileSystem.Text("/data/PS5LM/settings.json"));
+    }
+
+    [Fact]
+    public async Task Auto_load_rejects_a_model_that_is_not_on_the_console()
+    {
+        await using var factory = await StartedAsync(f => f.FileSystem
+            .AddFile("/data/PS5LM/settings.json", "{}")
+            .AddFile("/data/PS5LM/models/a.gguf", new byte[1]));
+        using var client = factory.CreateClient();
+
+        using var unknown = await client.PutAsJsonAsync(
+            "/api/consoles/ps5/app-settings/auto-load",
+            new { autoLoad = true, defaultModel = "/data/PS5LM/models/missing.gguf" });
+
+        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+        Assert.Equal("{}", factory.FileSystem.Text("/data/PS5LM/settings.json"));
     }
 
     private static HttpRequestMessage Delete(string url, string path) => new(HttpMethod.Delete, url)
