@@ -20,7 +20,7 @@ internal static class UpdateCommand
           --host <console>              Console IP or host name (required)
           --apps                        Also update the installed PS5LM / PS5LM Plus app
           --variant <ps5lm|ps5lmplus>   Limit the app update to one variant
-          --restart                     Stop and relaunch an updated payload that is still running (pinned VoidShell fork)
+          --restart                     Stop and relaunch an updated payload that is still running (VoidShell by its pid file, ShadowMountPlus by launching the new copy)
           --check                       Only report what is out of date (exit code 3 when something is)
           --force                       Also replace an installed app that is newer than the pin
           --upgrade-payload-manager     Upgrade an older Payload Manager without asking

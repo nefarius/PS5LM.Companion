@@ -21,6 +21,22 @@ public sealed class SetupBuildersTests
         Assert.Equal("v1.1.1-nefarius.4", voidshell.Version);
         Assert.StartsWith("https://github.com/nefarius/voidshell/releases/download/v1.1.1-nefarius.4/", voidshell.Url, StringComparison.Ordinal);
         Assert.Equal("/data/voidshell/www/index.html", voidshell.Files!.Single().Target);
+        Assert.False(voidshell.SelfReplacing);
+        var shadow = manifest.Payloads.Single(p => p.Id == "shadowmountplus");
+        Assert.True(shadow.SelfReplacing);
+        Assert.Null(shadow.PidFile);
+    }
+
+    [Theory]
+    [InlineData("\"id\": \"elfldr\"", "\"id\": \"elfldr\", \"selfReplacing\": true", "ready process list")]
+    [InlineData("\"pidFile\":", "\"selfReplacing\": true, \"pidFile\":", "both selfReplacing and pidFile")]
+    public void Manifest_rejects_a_self_replacing_payload_that_cannot_be_handed_over(string from, string to, string message)
+    {
+        using var stream = typeof(SetupManifest).Assembly.GetManifestResourceStream("PS5LM.Companion.Core.Setup.setup-manifest.json")!;
+        var json = new StreamReader(stream).ReadToEnd();
+
+        var ex = Assert.Throws<InvalidDataException>(() => SetupManifest.Parse(json.Replace(from, to, StringComparison.Ordinal)));
+        Assert.Contains(message, ex.Message, StringComparison.Ordinal);
     }
 
     [Theory]

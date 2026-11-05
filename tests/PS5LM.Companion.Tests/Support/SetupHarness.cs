@@ -62,6 +62,15 @@ internal sealed class SetupHarness : IDisposable
     /// <summary>A kill that succeeds but leaves the payload answering, as when another copy holds the port.</summary>
     public bool KillsAreIneffective { get; set; }
 
+    /// <summary><see cref="IPayloadManagerAdmin.GetProcessIdsAsync"/> answers null while the name list still works.</summary>
+    public bool ProcessIdsUnreadable { get; set; }
+
+    /// <summary>
+    /// When a launched payload has a process name, drop the pids that already use it and record this new one.
+    /// Leave unset when the launch should not change the process list.
+    /// </summary>
+    public int? HandoffPid { get; set; }
+
     public HashSet<string> LoadFails { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Upload names Payload Manager refuses, as it does for a payload file that is in use.</summary>
@@ -150,6 +159,15 @@ internal sealed class SetupHarness : IDisposable
                 if (effect.Process is not null)
                 {
                     owner.Processes.Add(effect.Process);
+                    if (owner.HandoffPid is int next)
+                    {
+                        foreach (var pid in owner.Pids.Where(p => p.Value.Equals(effect.Process, StringComparison.OrdinalIgnoreCase)).Select(p => p.Key).ToList())
+                        {
+                            owner.Pids.Remove(pid);
+                        }
+
+                        owner.Pids[next] = effect.Process;
+                    }
                 }
             }
 
@@ -160,7 +178,7 @@ internal sealed class SetupHarness : IDisposable
             Task.FromResult<IReadOnlySet<string>?>(owner.ProcessListUnreadable ? null : owner.Processes.ToHashSet(StringComparer.OrdinalIgnoreCase));
 
         public Task<IReadOnlyDictionary<int, string>?> GetProcessIdsAsync(CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyDictionary<int, string>?>(owner.Pids.ToDictionary(p => p.Key, p => p.Value));
+            Task.FromResult<IReadOnlyDictionary<int, string>?>(owner.ProcessIdsUnreadable ? null : owner.Pids.ToDictionary(p => p.Key, p => p.Value));
 
         public Task<bool> KillProcessAsync(int pid, CancellationToken cancellationToken)
         {
