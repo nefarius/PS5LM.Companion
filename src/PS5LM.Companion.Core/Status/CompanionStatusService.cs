@@ -114,6 +114,7 @@ public sealed class CompanionStatusService(
             PayloadDependencies.Evaluate(catalog, ftp.Reachable, sensors is not null, elfldrListening, options.ElfldrPort, voidShellAnswering, voidShellDetail),
             apps,
             appSnapshots?.FirstOrDefault(snapshot => snapshot is { Available: true, Kind: AppProviderKind.VoidShell, Firmware: { Length: > 0 } })?.Firmware,
+            ftp.Installation?.AppVersion is { } installed ? AppVersion.Format(installed) : null,
             MergeUpdates(catalog.ManagerVersion, VoidShellSemVer(appSnapshots)));
     }
 

@@ -91,6 +91,21 @@ internal static class Display
 
     public static string? AppUpdateId(PS5Variant variant) => ComponentUpdates.AppId(variant);
 
+    /// <summary>
+    /// The detected app and its installed version: <c>PS5LM 0.11.0</c>, <c>PS5LM (version unknown)</c>
+    /// when the variant is known but <c>param.json</c> was unreadable, or <c>Not detected</c>.
+    /// </summary>
+    public static string AppText(CompanionStatus status)
+    {
+        if (status.Variant == PS5Variant.Unknown)
+        {
+            return "Not detected";
+        }
+
+        var name = VariantProfile.For(status.Variant)?.DisplayName ?? status.Variant.ToString();
+        return status.AppVersion is { Length: > 0 } version ? $"{name} {version}" : $"{name} (version unknown)";
+    }
+
     internal enum CommandShell
     {
         Posix,

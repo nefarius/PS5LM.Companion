@@ -318,6 +318,66 @@ public sealed class DashboardTests
     }
 
     [Fact]
+    public async Task The_status_page_and_overview_show_the_installed_app_version()
+    {
+        await using var factory = new CompanionFactory { ConsoleIds = ["den", "room"] };
+        await factory.WaitForFirstCheckAsync();
+        var checkedAt = DateTimeOffset.UtcNow;
+        factory.Registry.Find("den")!.Store.Publish(CompanionStatus.Initial with
+        {
+            Lifecycle = CompanionLifecycle.Ready,
+            Variant = PS5Variant.PS5LM,
+            AppVersion = "0.11.0",
+            UpdatedAt = checkedAt,
+            AppControl = new AppControlStatus(
+                true,
+                "VoidShell",
+                "V1.1",
+                "",
+                [
+                    new AppVariantStatus(PS5Variant.PS5LM, "PPSA99575", "PS5LM", true, AppRunState.NotRunning, true),
+                    new AppVariantStatus(PS5Variant.PS5LMPlus, "PPSA99581", "PS5LM Plus", false, AppRunState.NotRunning, false),
+                ]),
+        });
+        factory.Registry.Find("room")!.Store.Publish(CompanionStatus.Initial with
+        {
+            Variant = PS5Variant.PS5LMPlus,
+            AppVersion = "0.8.2",
+            UpdatedAt = checkedAt,
+        });
+        using var client = factory.CreateClient();
+
+        var status = await client.GetStringAsync("/consoles/den");
+        var overview = await client.GetStringAsync("/");
+
+        Assert.Contains("<td>App</td><td>PS5LM 0.11.0</td>", status);
+        Assert.Contains("data-label=\"Version\"", status);
+        Assert.Equal(2, status.Split("0.11.0").Length - 1);
+        Assert.DoesNotContain("PS5LM Plus 0.11.0", status);
+        Assert.Contains("<td>App</td><td>PS5LM 0.11.0</td>", overview);
+        Assert.Contains("<td>App</td><td>PS5LM Plus 0.8.2</td>", overview);
+    }
+
+    [Fact]
+    public async Task A_known_app_without_a_readable_version_says_so()
+    {
+        await using var factory = new CompanionFactory { ConsoleIds = ["den", "room"] };
+        await factory.WaitForFirstCheckAsync();
+        factory.Registry.Find("den")!.Store.Publish(CompanionStatus.Initial with
+        {
+            Variant = PS5Variant.PS5LM,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        });
+        using var client = factory.CreateClient();
+
+        var status = await client.GetStringAsync("/consoles/den");
+        var overview = await client.GetStringAsync("/");
+
+        Assert.Contains("<td>App</td><td>PS5LM (version unknown)</td>", status);
+        Assert.Contains("<td>App</td><td>PS5LM (version unknown)</td>", overview);
+    }
+
+    [Fact]
     public async Task The_status_page_explains_the_payload_launch_limit()
     {
         await using var factory = new CompanionFactory();

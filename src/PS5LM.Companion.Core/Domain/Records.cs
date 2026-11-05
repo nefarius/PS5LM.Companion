@@ -114,6 +114,8 @@ public sealed record CompanionStatus(
     IReadOnlyList<DependencyStatus> Dependencies,
     AppControlStatus? AppControl = null,
     string? FirmwareVersion = null,
+    /// <summary>The installed app version, such as <c>0.11.0</c>, or null when <c>param.json</c> could not be read.</summary>
+    string? AppVersion = null,
     ComponentUpdateStatus? Updates = null)
 {
     public static CompanionStatus Initial { get; } = new(

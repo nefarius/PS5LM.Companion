@@ -111,6 +111,7 @@ else
                         <MudTh>App</MudTh>
                         <MudTh>Title ID</MudTh>
                         <MudTh>Installed</MudTh>
+                        <MudTh>Version</MudTh>
                         <MudTh>Running</MudTh>
                         <MudTh></MudTh>
                     </HeaderContent>
@@ -126,6 +127,7 @@ else
                         </MudTd>
                         <MudTd DataLabel="Title ID">@context.TitleId</MudTd>
                         <MudTd DataLabel="Installed">@(context.Installed ? "Yes" : "No")</MudTd>
+                        <MudTd DataLabel="Version">@(context.Variant == Status.Variant ? Status.AppVersion : null)</MudTd>
                         <MudTd DataLabel="Running">
                             <MudChip T="string" Size="Size.Small" Color="@RunColor(context.State)">@RunText(context.State)</MudChip>
                         </MudTd>
@@ -208,7 +210,7 @@ else
             <MudSimpleTable Dense="true" Hover="false" Elevation="0">
                 <tbody>
                     <tr><td>State</td><td><MudChip T="string" Size="Size.Small" Color="@Display.LifecycleColor(Status.Lifecycle)">@Display.Lifecycle(Status.Lifecycle)</MudChip></td></tr>
-                    <tr><td>App</td><td>@(Status.Variant == PS5Variant.Unknown ? "Not detected" : Status.Variant.ToString())</td></tr>
+                    <tr><td>App</td><td>@Display.AppText(Status)</td></tr>
                     <tr><td>Firmware</td><td>@(Status.FirmwareVersion ?? "n/a")</td></tr>
                     <tr><td>Loaded model</td><td>@(Status.LoadedModel ?? "None")</td></tr>
                     <tr><td>Command folder</td><td>@(Status.ControlRoot ?? "Unknown")</td></tr>

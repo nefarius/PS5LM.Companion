@@ -82,6 +82,32 @@ public sealed class CompanionStatusServiceTests
         Assert.Equal(DependencyHealth.Unknown, offline.Dependencies.Single(row => row.Id == PayloadDependencies.VoidShell).Health);
     }
 
+    [Theory]
+    [InlineData("01.011.000", "0.11.0")]
+    [InlineData("01.009.001", "0.9.1")]
+    public async Task The_installed_app_version_comes_from_param_json(string contentVersion, string expected)
+    {
+        var status = await Create(ConsoleFixtures.PS5LMInstalled(contentVersion: contentVersion)).RefreshAsync(CancellationToken.None);
+
+        Assert.Equal(PS5Variant.PS5LM, status.Variant);
+        Assert.Equal(expected, status.AppVersion);
+    }
+
+    [Fact]
+    public async Task A_missing_or_unreadable_param_json_leaves_the_app_version_empty()
+    {
+        var missing = await Create(ConsoleFixtures.PS5LMInstalled()).RefreshAsync(CancellationToken.None);
+        var invalid = ConsoleFixtures.PS5LMInstalled()
+            .AddFile("/data/homebrew/PPSA99575/sce_sys/param.json", "not json");
+
+        var unreadable = await Create(invalid).RefreshAsync(CancellationToken.None);
+
+        Assert.Equal(PS5Variant.PS5LM, missing.Variant);
+        Assert.Null(missing.AppVersion);
+        Assert.Equal(PS5Variant.PS5LM, unreadable.Variant);
+        Assert.Null(unreadable.AppVersion);
+    }
+
     [Fact]
     public async Task Overlapping_refreshes_run_one_at_a_time()
     {
