@@ -75,6 +75,19 @@ public sealed class SetupRunnerTests
     }
 
     [Fact]
+    public async Task Setup_replaces_a_repository_autoload_slot_for_a_payload_it_stores_locally()
+    {
+        using var harness = Ready();
+        harness.Autoload = new(false, "repo/ftpsrv@e8cce5d1,local/mine,!500");
+
+        await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
+
+        Assert.Contains("local/ftpsrv", harness.Autoload.List, StringComparison.Ordinal);
+        Assert.DoesNotContain("repo/ftpsrv@", harness.Autoload.List, StringComparison.Ordinal);
+        Assert.Contains("local/mine", harness.Autoload.List, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Existing_foreign_autoload_entries_are_kept_after_ours()
     {
         using var harness = Ready();

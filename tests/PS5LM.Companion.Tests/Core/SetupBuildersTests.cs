@@ -76,6 +76,16 @@ public sealed class SetupBuildersTests
     }
 
     [Fact]
+    public void Autoload_list_drops_another_slot_of_a_managed_payload_and_keeps_other_ids()
+    {
+        var list = AutoloadListBuilder.Build(
+            [("local/ftpsrv", 0), ("local/elfldr", 0)],
+            "repo/ftpsrv@e8cce5d1,local/mine,repo/websrv@ab12,!500");
+
+        Assert.Equal("local/ftpsrv,local/elfldr,local/mine,repo/websrv@ab12", list);
+    }
+
+    [Fact]
     public void Autoload_list_is_stable_across_repeats()
     {
         (string, int)[] ours = [("a", 0), ("b", 3000)];
