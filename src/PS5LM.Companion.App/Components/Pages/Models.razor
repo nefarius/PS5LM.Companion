@@ -135,7 +135,7 @@ else if (_settingsKnown)
     /// <summary>Increments when an auto-load save finishes. A reload that read settings earlier must not apply them.</summary>
     private int _autoLoadGeneration;
 
-    /// <summary>A reload of the console being saved was discarded and should run again when the save finishes.</summary>
+    /// <summary>Run another reload when the save finishes. Set when one was discarded, or when a failed save should show the stored settings.</summary>
     private bool _reloadAfterAutoLoadSave;
 
     /// <summary>Identifies the newest reload, so an older one does not clear the loading flag.</summary>
@@ -332,6 +332,7 @@ else if (_settingsKnown)
                 _autoLoad = previousLoad;
                 _defaultModel = previousModel;
                 _defaultInLibrary = previousInLibrary;
+                _reloadAfterAutoLoadSave = true;
             }
         }
         catch (Core.Abstractions.ConsoleUnreachableException ex)
@@ -341,6 +342,7 @@ else if (_settingsKnown)
                 _autoLoad = previousLoad;
                 _defaultModel = previousModel;
                 _defaultInLibrary = previousInLibrary;
+                _reloadAfterAutoLoadSave = true;
                 Snackbar.Add(ex.Message, Severity.Error);
             }
         }

@@ -123,6 +123,44 @@ public sealed class AutoLoadSettingsServiceTests
     }
 
     [Fact]
+    public async Task Turning_auto_load_off_keeps_a_stored_model_that_is_not_on_the_console()
+    {
+        const string gone = "/data/PS5LM/models/gone.gguf";
+        const string original = """{"auto_load":true,"default_model":"/data/PS5LM/models/gone.gguf","sounds":false}""";
+        var fs = ConsoleFixtures.PS5LMInstalled().AddFile("/data/PS5LM/settings.json", original);
+        var service = Create(fs);
+
+        var turnedOff = await service.SetAsync(false, gone, CancellationToken.None);
+        var turnedOn = await service.SetAsync(true, gone, CancellationToken.None);
+        var other = await service.SetAsync(false, "/data/PS5LM/models/other.gguf", CancellationToken.None);
+
+        Assert.Equal(OperationOutcome.Completed, turnedOff.Outcome);
+        var json = JsonNode.Parse(fs.Text("/data/PS5LM/settings.json")!)!;
+        Assert.False(json["auto_load"]!.GetValue<bool>());
+        Assert.Equal(gone, json["default_model"]!.GetValue<string>());
+        Assert.False(json["sounds"]!.GetValue<bool>());
+        Assert.Equal(OperationOutcome.NotFound, turnedOn.Outcome);
+        Assert.Equal(OperationOutcome.NotFound, other.Outcome);
+        Assert.Equal(gone, JsonNode.Parse(fs.Text("/data/PS5LM/settings.json")!)!["default_model"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task A_write_that_would_exceed_the_read_limit_is_refused()
+    {
+        var pad = new string('x', AutoLoadSettingsService.MaxSettingsBytes - 32);
+        var original = "{\"pad\":\"" + pad + "\"}";
+        Assert.InRange(System.Text.Encoding.UTF8.GetByteCount(original), 1, AutoLoadSettingsService.MaxSettingsBytes);
+        var fs = ConsoleFixtures.PS5LMInstalled().AddFile("/data/PS5LM/settings.json", original).AddFile(Model, new byte[1]);
+
+        var result = await Create(fs).SetAsync(true, Model, CancellationToken.None);
+
+        Assert.Equal(OperationOutcome.Invalid, result.Outcome);
+        Assert.Equal(original, fs.Text("/data/PS5LM/settings.json"));
+        Assert.Empty(fs.Writes);
+        Assert.Empty(fs.Moves);
+    }
+
+    [Fact]
     public async Task Turning_auto_load_on_without_a_model_is_refused_and_clearing_the_model_turns_it_off()
     {
         var fs = ConsoleFixtures.PS5LMInstalled().AddFile(Model, new byte[1]);

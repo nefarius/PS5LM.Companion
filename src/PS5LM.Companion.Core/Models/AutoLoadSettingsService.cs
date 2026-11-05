@@ -83,21 +83,6 @@ public sealed class AutoLoadSettingsService(
             return new OperationResult(OperationOutcome.Unavailable, installation?.Message ?? "The console is not reachable.");
         }
 
-        if (requested is not null)
-        {
-            var models = await catalog.ListAsync(installation, store.Current.LoadedModel, cancellationToken);
-            var model = models.FirstOrDefault(m => m.AppPath.Equals(requested, StringComparison.Ordinal));
-            if (model is null)
-            {
-                return new OperationResult(OperationOutcome.NotFound, "That model is not on the console.");
-            }
-
-            if (model.IsProjector)
-            {
-                return new OperationResult(OperationOutcome.NotFound, "A vision projector cannot load at launch.");
-            }
-        }
-
         await _gate.WaitAsync(cancellationToken);
         try
         {
@@ -105,6 +90,23 @@ public sealed class AutoLoadSettingsService(
             if (document.Error is not null || document.Object is null)
             {
                 return new OperationResult(OperationOutcome.Invalid, document.Error ?? Unreadable);
+            }
+
+            if (requested is not null)
+            {
+                var models = await catalog.ListAsync(installation, store.Current.LoadedModel, cancellationToken);
+                var model = models.FirstOrDefault(m => m.AppPath.Equals(requested, StringComparison.Ordinal));
+                if (model is { IsProjector: true })
+                {
+                    return new OperationResult(OperationOutcome.NotFound, "A vision projector cannot load at launch.");
+                }
+
+                // A path that is already the stored string can stay while auto-load is turned off. Any other missing path cannot.
+                var kept = model is null && !autoLoad && string.Equals(document.DefaultModel, requested, StringComparison.Ordinal);
+                if (model is null && !kept)
+                {
+                    return new OperationResult(OperationOutcome.NotFound, "That model is not on the console.");
+                }
             }
 
             // A wrong type is a change: the write replaces it with a bool and a string. An unreadable file is not.
@@ -116,12 +118,18 @@ public sealed class AutoLoadSettingsService(
             document.Object[AutoLoadKey] = autoLoad;
             document.Object[DefaultModelKey] = requested ?? string.Empty;
             var content = document.Object.ToJsonString(Json) + "\n";
+            var bytes = Encoding.UTF8.GetByteCount(content);
+            if (bytes > MaxSettingsBytes)
+            {
+                return new OperationResult(OperationOutcome.Invalid, "settings.json would be larger than the companion can read, so it was left unchanged.");
+            }
+
             var path = SettingsPath(root);
             var temporary = path + ".tmp";
             await fileSystem.WriteTextAsync(temporary, content, cancellationToken);
             await fileSystem.MoveAsync(temporary, path, cancellationToken);
 
-            var written = await fileSystem.ReadTextAsync(path, Encoding.UTF8.GetByteCount(content), cancellationToken);
+            var written = await fileSystem.ReadTextAsync(path, bytes, cancellationToken);
             if (!string.Equals(written, content, StringComparison.Ordinal))
             {
                 return new OperationResult(OperationOutcome.Unavailable, "The setting was written but did not read back.");

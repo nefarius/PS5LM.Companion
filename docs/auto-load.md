@@ -26,8 +26,10 @@ two keys into the file that is there, writes `settings.json.tmp` and renames it 
 file back.
 
 A file that is missing is the app's defaults (`auto_load` false, no model). A file that is not a JSON object, or that
-is larger than 64 KiB, is left unchanged. A wrong JSON type on these two keys is reported by the read and replaced by
-a write, because the app's parser rejects a type mismatch.
+is larger than 64 KiB, is left unchanged. A write that would make the file larger than that is refused before it
+replaces `settings.json`. A wrong JSON type on these two keys is reported by the read and replaced by a write, because
+the app's parser rejects a type mismatch. Turning auto-load off can keep a `default_model` string that is already
+stored and no longer in the library. Any other missing path is refused, as is a vision projector.
 
 ## What still wins at launch
 
