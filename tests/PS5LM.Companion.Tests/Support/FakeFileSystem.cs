@@ -32,6 +32,12 @@ internal sealed class FakeFileSystem : IPS5FileSystem
 
     public IReadOnlyDictionary<string, byte[]> Files => _files;
 
+    /// <summary>Paths passed to <see cref="WriteTextAsync"/>, in order.</summary>
+    public List<string> Writes { get; } = [];
+
+    /// <summary>Renames passed to <see cref="MoveAsync"/>, in order.</summary>
+    public List<(string From, string To)> Moves { get; } = [];
+
     public FakeFileSystem AddDirectory(string path)
     {
         var current = string.Empty;
@@ -113,6 +119,7 @@ internal sealed class FakeFileSystem : IPS5FileSystem
         Run(() =>
         {
             AddFile(path, content);
+            Writes.Add(path);
             return true;
         });
 
@@ -156,6 +163,7 @@ internal sealed class FakeFileSystem : IPS5FileSystem
             }
 
             AddFile(to, bytes);
+            Moves.Add((from, to));
             return true;
         });
 

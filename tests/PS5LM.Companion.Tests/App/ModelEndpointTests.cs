@@ -254,6 +254,102 @@ public sealed class ModelEndpointTests
         Assert.True(factory.FileSystem.Files.ContainsKey("/data/PS5LM/models/a.gguf"));
     }
 
+    [Fact]
+    public async Task Auto_load_can_be_read_and_set()
+    {
+        await using var factory = await StartedAsync(f => f.FileSystem
+            .AddFile("/data/PS5LM/settings.json", """{"ctx_cap":8192,"sounds":true}""")
+            .AddFile("/data/PS5LM/models/a.gguf", new byte[3]));
+        using var client = factory.CreateClient();
+
+        var before = await client.GetFromJsonAsync<JsonElement>("/api/consoles/ps5/app-settings/auto-load");
+        using var updated = await client.PutAsJsonAsync(
+            "/api/consoles/ps5/app-settings/auto-load",
+            new { autoLoad = true, defaultModel = "/data/PS5LM/models/a.gguf" });
+        var after = await client.GetFromJsonAsync<JsonElement>("/api/consoles/ps5/app-settings/auto-load");
+        using var storedDocument = JsonDocument.Parse(factory.FileSystem.Text("/data/PS5LM/settings.json")!);
+        var stored = storedDocument.RootElement;
+
+        Assert.False(before.GetProperty("autoLoad").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, before.GetProperty("defaultModel").ValueKind);
+        Assert.True(before.GetProperty("defaultModelInLibrary").GetBoolean());
+        Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
+        Assert.True(after.GetProperty("autoLoad").GetBoolean());
+        Assert.Equal("/data/PS5LM/models/a.gguf", after.GetProperty("defaultModel").GetString());
+        Assert.Equal(8192, stored.GetProperty("ctx_cap").GetInt32());
+        Assert.True(stored.GetProperty("sounds").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Auto_load_for_an_unknown_console_is_404()
+    {
+        await using var factory = await StartedAsync();
+        using var client = factory.CreateClient();
+
+        using var get = await client.GetAsync("/api/consoles/nope/app-settings/auto-load");
+        using var put = await client.PutAsJsonAsync(
+            "/api/consoles/nope/app-settings/auto-load",
+            new { autoLoad = false, defaultModel = (string?)null });
+
+        Assert.Equal(HttpStatusCode.NotFound, get.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, put.StatusCode);
+    }
+
+    [Fact]
+    public async Task Auto_load_without_a_state_folder_is_503()
+    {
+        await using var factory = await StartedAsync(f =>
+            f.Connectors.Replace(CompanionFactory.PrimaryId, new FakeConsole(ConsoleFixtures.PS5LMInstalled(withState: false))));
+        using var client = factory.CreateClient();
+
+        using var get = await client.GetAsync("/api/consoles/ps5/app-settings/auto-load");
+        using var put = await client.PutAsJsonAsync(
+            "/api/consoles/ps5/app-settings/auto-load",
+            new { autoLoad = false, defaultModel = (string?)null });
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, get.StatusCode);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, put.StatusCode);
+    }
+
+    [Fact]
+    public async Task Auto_load_rejects_a_missing_model_and_leaves_a_file_that_is_not_json()
+    {
+        await using var factory = await StartedAsync(f => f.FileSystem
+            .AddFile("/data/PS5LM/settings.json", "not json")
+            .AddFile("/data/PS5LM/models/a.gguf", new byte[1]));
+        using var client = factory.CreateClient();
+
+        using var noModel = await client.PutAsJsonAsync("/api/consoles/ps5/app-settings/auto-load", new { autoLoad = true });
+        using var unknown = await client.PutAsJsonAsync(
+            "/api/consoles/ps5/app-settings/auto-load",
+            new { autoLoad = true, defaultModel = "/etc/passwd" });
+        using var malformed = await client.PutAsJsonAsync(
+            "/api/consoles/ps5/app-settings/auto-load",
+            new { autoLoad = true, defaultModel = "/data/PS5LM/models/a.gguf" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, noModel.StatusCode);
+        // The file is unreadable, so the path is not considered and this is not a missing-model 404.
+        Assert.Equal(HttpStatusCode.BadRequest, unknown.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, malformed.StatusCode);
+        Assert.Equal("not json", factory.FileSystem.Text("/data/PS5LM/settings.json"));
+    }
+
+    [Fact]
+    public async Task Auto_load_rejects_a_model_that_is_not_on_the_console()
+    {
+        await using var factory = await StartedAsync(f => f.FileSystem
+            .AddFile("/data/PS5LM/settings.json", "{}")
+            .AddFile("/data/PS5LM/models/a.gguf", new byte[1]));
+        using var client = factory.CreateClient();
+
+        using var unknown = await client.PutAsJsonAsync(
+            "/api/consoles/ps5/app-settings/auto-load",
+            new { autoLoad = true, defaultModel = "/data/PS5LM/models/missing.gguf" });
+
+        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+        Assert.Equal("{}", factory.FileSystem.Text("/data/PS5LM/settings.json"));
+    }
+
     private static HttpRequestMessage Delete(string url, string path) => new(HttpMethod.Delete, url)
     {
         Content = JsonContent.Create(new { path }),

@@ -30,6 +30,44 @@ else
     <MudAlert Severity="Severity.Info" Class="mb-2">A command is waiting on the console; further load, unload or delete requests are refused until it was picked up.</MudAlert>
 }
 
+@if (_settingsError is not null)
+{
+    <MudAlert Severity="Severity.Warning" Class="mb-2">@_settingsError</MudAlert>
+}
+else if (_settingsKnown)
+{
+    <MudPaper Class="pa-4 mb-3" Elevation="1">
+        <MudStack Spacing="2">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="4" Wrap="Wrap.Wrap">
+                <MudSwitch T="bool" Value="_autoLoad" ValueChanged="OnAutoLoadChanged" Color="Color.Primary"
+                           Disabled="@(_acting || _loading || string.IsNullOrEmpty(_defaultModel))"
+                           Label="Load a model when the app starts" />
+                <MudSelect T="string" Label="Model to load" Value="@(_defaultModel ?? string.Empty)" ValueChanged="OnDefaultChanged"
+                           Disabled="@(_acting || _loading)" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:16rem;max-width:28rem">
+                    <MudSelectItem T="string" Value="@string.Empty">None</MudSelectItem>
+                    @foreach (var model in _models.Where(m => !m.IsProjector))
+                    {
+                        <MudSelectItem T="string" Value="@model.AppPath">@model.FileName</MudSelectItem>
+                    }
+                    @if (_defaultModel is not null && !_models.Any(m => !m.IsProjector && m.AppPath == _defaultModel))
+                    {
+                        <MudSelectItem T="string" Value="@_defaultModel">@_defaultModel (not on the console)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudStack>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Applies the next time the app starts. Saving settings on the console before then can overwrite it.</MudText>
+            @if (_autoLoad && string.IsNullOrEmpty(_defaultModel))
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true">Auto-load is on, but no model is chosen, so the app loads nothing. Choose a model, or select None to turn it off.</MudAlert>
+            }
+            else if (_defaultModel is not null && !_defaultInLibrary)
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true">The saved default model is not in the library, so the app will not load it.</MudAlert>
+            }
+        </MudStack>
+    </MudPaper>
+}
+
 <MudPaper Elevation="1">
     <MudTable Items="_models" Hover="true" Loading="_loading" Dense="true" T="ModelFile">
         <HeaderContent>
@@ -44,6 +82,10 @@ else
                 @if (IsLoaded(context))
                 {
                     <MudChip T="string" Size="Size.Small" Color="Color.Success" Class="ml-2">Loaded</MudChip>
+                }
+                @if (IsDefault(context))
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Info" Class="ml-2">Default</MudChip>
                 }
                 @if (context.IsProjector)
                 {
@@ -87,14 +129,37 @@ else
     private bool _acting;
     private string? _installationKey;
 
+    /// <summary>The console whose auto-load save is in flight. A reload of that console waits, so it cannot overwrite the save.</summary>
+    private ConsoleRuntime? _autoLoadSave;
+
+    /// <summary>Increments when an auto-load save finishes. A reload that read settings earlier must not apply them.</summary>
+    private int _autoLoadGeneration;
+
+    /// <summary>Run another reload when the save finishes. Set when one was discarded, or when a failed save should show the stored settings.</summary>
+    private bool _reloadAfterAutoLoadSave;
+
+    /// <summary>Identifies the newest reload, so an older one does not clear the loading flag.</summary>
+    private int _reload;
+    private bool _settingsKnown;
+    private string? _settingsError;
+    private bool _autoLoad;
+    private string? _defaultModel;
+    private bool _defaultInLibrary = true;
+
     protected override async Task OnConsoleChangedAsync()
     {
         _models = [];
         _error = null;
+        _settingsKnown = false;
+        _settingsError = null;
+        _autoLoad = false;
+        _defaultModel = null;
+        _defaultInLibrary = true;
         _completed = CompletedCount();
         _installationKey = InstallationKey();
         if (Target is null)
         {
+            _loading = false;
             return;
         }
 
@@ -125,6 +190,8 @@ else
 
     private bool IsLoaded(ModelFile model) => !model.IsProjector && ModelNames.IsSameModel(Status.LoadedModel, model.FileName, model.AppPath);
 
+    private bool IsDefault(ModelFile model) => !model.IsProjector && model.AppPath == _defaultModel;
+
     private bool CanDelete(ModelFile model)
     {
         if (!model.Writable || Status.CommandPending || _acting || Status.Lifecycle == CompanionLifecycle.Loading)
@@ -146,42 +213,172 @@ else
         if (console is null)
         {
             _models = [];
+            _settingsKnown = false;
+            _settingsError = null;
+            _defaultModel = null;
             _loading = false;
             return;
         }
 
+        var reload = ++_reload;
         _loading = true;
         _error = null;
         try
         {
             var installation = console.Status.LastInstallation;
-            var models = installation?.StateRoot is null
-                ? []
-                : await console.Models.ListAsync(installation, null, CancellationToken.None);
-            if (!ReferenceEquals(console, Target))
+            if (installation?.StateRoot is null)
             {
-                // The selection moved on while this was loading; the newer reload owns the page state.
+                if (!ReferenceEquals(console, Target))
+                {
+                    return;
+                }
+
+                _models = [];
+                _settingsKnown = false;
+                _settingsError = null;
+                _defaultModel = null;
+                _error = installation?.Message ?? "The console is not reachable.";
+                return;
+            }
+
+            // Captured before the read. A save that finishes later makes this result stale.
+            var generation = _autoLoadGeneration;
+            var models = await console.Models.ListAsync(installation, null, CancellationToken.None);
+            var settings = await console.AutoLoad.GetAsync(CancellationToken.None);
+            if (!ReferenceEquals(console, Target) || reload != _reload)
+            {
+                return;
+            }
+
+            if (ReferenceEquals(console, _autoLoadSave))
+            {
+                // The save still owns this console. Read it again when the save finishes.
+                _reloadAfterAutoLoadSave = true;
+                return;
+            }
+
+            if (generation != _autoLoadGeneration)
+            {
+                // These settings were read before the latest save finished. Read again at the current generation.
+                // The new reload takes the next id, so this call's cleanup leaves the loading flag alone.
+                await ReloadAsync();
                 return;
             }
 
             _models = models;
-            _error = installation?.StateRoot is null ? installation?.Message ?? "The console is not reachable." : null;
+            _error = null;
+            ApplySettings(settings);
         }
         catch (Exception ex) when (ex is Core.Abstractions.ConsoleUnreachableException)
         {
-            if (ReferenceEquals(console, Target))
+            if (reload == _reload && ReferenceEquals(console, Target))
             {
                 _error = ex.Message;
                 _models = [];
+                _settingsKnown = false;
+                _settingsError = null;
             }
         }
         finally
         {
-            if (ReferenceEquals(console, Target))
+            if (reload == _reload && ReferenceEquals(console, Target))
             {
                 _loading = false;
             }
         }
+    }
+
+    private Task OnAutoLoadChanged(bool autoLoad) => SaveAutoLoadAsync(autoLoad, _defaultModel);
+
+    private Task OnDefaultChanged(string value)
+    {
+        var model = string.IsNullOrEmpty(value) ? null : value;
+        return SaveAutoLoadAsync(model is null ? false : _autoLoad, model);
+    }
+
+    private async Task SaveAutoLoadAsync(bool autoLoad, string? defaultModel)
+    {
+        if (Target is not { } console || _acting || _loading)
+        {
+            return;
+        }
+
+        if (autoLoad && string.IsNullOrEmpty(defaultModel))
+        {
+            return;
+        }
+
+        var previousLoad = _autoLoad;
+        var previousModel = _defaultModel;
+        var previousInLibrary = _defaultInLibrary;
+        _acting = true;
+        _autoLoadSave = console;
+        _autoLoad = autoLoad;
+        _defaultModel = string.IsNullOrEmpty(defaultModel) ? null : defaultModel;
+        _defaultInLibrary = _defaultModel is null || _models.Any(m => !m.IsProjector && m.AppPath == _defaultModel);
+        try
+        {
+            var result = await console.AutoLoad.SetAsync(_autoLoad, _defaultModel, CancellationToken.None);
+            if (!ReferenceEquals(console, Target))
+            {
+                return;
+            }
+
+            Snackbar.Add(
+                result.Message ?? result.Outcome.ToString(),
+                result.Succeeded ? Severity.Success : Severity.Error);
+            if (!result.Succeeded)
+            {
+                _autoLoad = previousLoad;
+                _defaultModel = previousModel;
+                _defaultInLibrary = previousInLibrary;
+                _reloadAfterAutoLoadSave = true;
+            }
+        }
+        catch (Core.Abstractions.ConsoleUnreachableException ex)
+        {
+            if (ReferenceEquals(console, Target))
+            {
+                _autoLoad = previousLoad;
+                _defaultModel = previousModel;
+                _defaultInLibrary = previousInLibrary;
+                _reloadAfterAutoLoadSave = true;
+                Snackbar.Add(ex.Message, Severity.Error);
+            }
+        }
+        finally
+        {
+            // Clear even when the page has moved on, so the next console's reload is not left blocked.
+            // A discarded reload is retried only when this console is still the one on screen.
+            var retry = _reloadAfterAutoLoadSave && ReferenceEquals(console, Target);
+            _reloadAfterAutoLoadSave = false;
+            _autoLoadSave = null;
+            _acting = false;
+            _autoLoadGeneration++;
+            if (retry)
+            {
+                await ReloadAsync();
+            }
+        }
+    }
+
+    private void ApplySettings(AutoLoadRead read)
+    {
+        if (read.Settings is { } settings)
+        {
+            _settingsKnown = true;
+            _settingsError = null;
+            _autoLoad = settings.AutoLoad;
+            _defaultModel = settings.DefaultModel;
+            _defaultInLibrary = settings.DefaultModelInLibrary;
+            return;
+        }
+
+        _settingsKnown = false;
+        _settingsError = read.Message ?? "settings.json could not be read.";
+        _autoLoad = false;
+        _defaultModel = null;
+        _defaultInLibrary = true;
     }
 
     private Task LoadAsync(ModelFile model)

@@ -33,6 +33,11 @@ public sealed record VariantProfile(
     /// <summary>Command file the app polls: presence requests unloading.</summary>
     public const string UnloadCommandFile = "unload";
 
+    /// <summary>
+    /// The app's settings, read when it starts. The companion changes only <c>auto_load</c> and <c>default_model</c>.
+    /// </summary>
+    public const string SettingsFile = "settings.json";
+
     /// <summary>Command file the app polls: presence makes it end itself through the system's exit path.</summary>
     public const string QuitCommandFile = "quit";
 

@@ -140,24 +140,58 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
                 // Keep an existing destination under a backup name until the rename succeeds, so a failed or
                 // cancelled move never leaves the console without the old file.
                 string? backup = null;
+                var parked = false;
                 if (await FindAsync(client, to, cancellationToken) is { Type: FtpObjectType.File })
                 {
                     backup = $"{to}.{Guid.NewGuid():N}.bak";
-                    await client.Rename(to, backup, cancellationToken);
                 }
 
                 try
                 {
+                    if (backup is not null)
+                    {
+                        // Inside the try: a rename that moved the file and then reported failure can be undone below.
+                        await client.Rename(to, backup, cancellationToken);
+                        parked = true;
+                    }
+
                     await client.Rename(from, to, cancellationToken);
                 }
-                catch
+                catch (Exception moveError)
                 {
-                    if (backup is not null)
+                    if (backup is null)
+                    {
+                        throw;
+                    }
+
+                    Exception? restoreError = null;
+                    try
                     {
                         await client.Rename(backup, to, CancellationToken.None);
                     }
+                    catch (Exception ex)
+                    {
+                        restoreError = ex;
+                    }
 
-                    throw;
+                    if (restoreError is null)
+                    {
+                        throw;
+                    }
+
+                    // A rename that never reported success may have left the destination where it was. Confirming that
+                    // keeps the original failure, including cancellation, instead of wrapping it.
+                    if (!parked && await DestinationUnmovedAsync(client, to, backup))
+                    {
+                        throw;
+                    }
+
+                    var where = parked
+                        ? $"The previous {to} is at {backup}."
+                        : $"The previous {to} may be at {backup} if that rename took effect.";
+                    throw new IOException(
+                        $"Moving {from} to {to} failed: {moveError.Message} {where} Rename that file back to {to} if it is there. Restoring it failed: {restoreError.Message}",
+                        new AggregateException(moveError, restoreError));
                 }
 
                 if (backup is not null)
@@ -206,6 +240,39 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
                 return true;
             },
             cancellationToken);
+
+    /// <summary>
+    /// True when the destination is still listed and the backup name is not. A failed listing is not confirmation.
+    /// </summary>
+    private static async Task<bool> DestinationUnmovedAsync(AsyncFtpClient client, string to, string backup)
+    {
+        try
+        {
+            var destination = to.TrimEnd('/');
+            var split = destination.LastIndexOf('/');
+            if (split < 0 || destination.Length == 0)
+            {
+                return false;
+            }
+
+            var parent = split == 0 ? "/" : destination[..split];
+            var name = destination[(split + 1)..];
+            var backupName = backup[(backup.LastIndexOf('/') + 1)..];
+            var items = await TryListAsync(client, parent, CancellationToken.None);
+            if (items is null)
+            {
+                return false;
+            }
+
+            var remains = items.Any(item => item.Type == FtpObjectType.File && string.Equals(item.Name, name, StringComparison.Ordinal));
+            var backupAbsent = !items.Any(item => item.Type == FtpObjectType.File && string.Equals(item.Name, backupName, StringComparison.Ordinal));
+            return remains && backupAbsent;
+        }
+        catch (Exception ex) when (ex is FtpException or SocketException or TimeoutException or IOException or OperationCanceledException)
+        {
+            return false;
+        }
+    }
 
     // ftpsrv answers MLSD only. It has no NLST, and it does not advertise SIZE or MDTM, so FluentFTP's own
     // FileExists/DirectoryExists fail with 502. It also ignores the path argument of MLSD and lists the working

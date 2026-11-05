@@ -35,6 +35,7 @@ works before any model exists. It needs no changes to either app.
 - Detects PS5LM (`PPSA99575`) and PS5LM Plus (`PPSA99581`) over FTP.
 - Lifecycle-aware status: disconnected, app available without a model, loading, ready, generating.
 - Lists models on the console; loads and unloads a model through the apps' command files, and deletes one GGUF at a time.
+- Sets whether the app loads a model at launch, and which model (`auto_load` and `default_model` in `settings.json`). Every other setting is left as it is. The change applies the next time the app starts. See [docs/auto-load.md](docs/auto-load.md).
 - Downloads GGUF models from Hugging Face on the companion and uploads them to the console.
 - Optional inference gateway: one OpenAI/Anthropic-compatible endpoint that load-balances consoles running the same model.
 - Checks whether PS5LM or PS5LM Plus is installed and running, and launches it, through the required [nefarius/voidshell](https://github.com/nefarius/voidshell) fork.
@@ -47,7 +48,7 @@ works before any model exists. It needs no changes to either app.
 - Console: jailbroken PS5 running PS5LM or PS5LM Plus with [ftpsrv](https://github.com/ps5-payload-dev/ftpsrv) on port 2121.
 - Payload launch needs [PS5 Payload Manager](https://github.com/itsPLK/ps5-payload-manager) on port 8084 and elfldr already listening on port 9021. Payload Manager cannot start elfldr itself.
 - App check and launch require the pinned [nefarius/voidshell](https://github.com/nefarius/voidshell) fork on port 7007 (`/api/library`, `/api/stats`, `POST /api/launch`). `setup` installs `v1.1.1-nefarius.4`. That fork reports `running_app` and `firmware` on `/api/stats`. Its `/api/version` string stays `V1.1`, and from `v1.1.1-nefarius.4` on it adds the full SemVer as `semver` (shown in the dependency status; absent on upstream and older fork builds), and the companion still accepts an upstream-shaped stats body. A port of 0 is rejected. Probes use the configured console host only; nothing scans the network for these services. A truncated title ID of at least 6 characters is matched as a prefix (`PPSA9957` is PS5LM). A VoidShell launch is only queued and is not confirmed. The app listens on port 8081 only once a model is loaded. REST: `GET /api/consoles/{id}/apps`, `POST /api/consoles/{id}/apps/{ps5lm|ps5lmplus}/launch` and `.../close`. Close writes the `quit` command file the apps poll (over FTP) so they exit through the system's exit path; it is never a kill, and a request the app does not pick up within 20 seconds is withdrawn.
-- Not supported: force-killing the PS5LM app, editing the apps' `settings.json`, or detecting a payload that patches the system and leaves no process. Running checks match process names (for example `kstuff.elf`, `etahen.elf`, `onion_daemon.elf`, `shadowmountplus.elf`) from Payload Manager's `/processes_list`.
+- Not supported: force-killing the PS5LM app, or detecting a payload that patches the system and leaves no process. Running checks match process names (for example `kstuff.elf`, `etahen.elf`, `onion_daemon.elf`, `shadowmountplus.elf`) from Payload Manager's `/processes_list`. The companion edits only `auto_load` and `default_model` in `settings.json`; the apps' other settings stay untouched.
 
 ## Quick start
 
