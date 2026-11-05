@@ -5,7 +5,8 @@ internal sealed record VersionCheckStatus(
     string? LocalVersion,
     string? LatestVersion,
     bool UpdateAvailable,
-    Uri? ReleaseUri)
+    Uri? ReleaseUri,
+    bool CheckFailed = false)
 {
     public bool HasLocalVersion => !string.IsNullOrWhiteSpace(LocalVersion);
 
@@ -16,12 +17,18 @@ internal sealed record VersionCheckStatus(
 
     public string AriaLabel => $"Version {ChipLabel}";
 
-    public string Tooltip =>
-        !HasLocalVersion
-            ? "Version unavailable"
-            : UpdateAvailable && !string.IsNullOrWhiteSpace(LatestVersion)
-                ? $"Running version {Display(LocalVersion)}. Version {Display(LatestVersion)} is available."
-                : $"Running version {Display(LocalVersion)}.";
+    public string Tooltip
+    {
+        get
+        {
+            var summary = !HasLocalVersion
+                ? "Version unavailable"
+                : UpdateAvailable && !string.IsNullOrWhiteSpace(LatestVersion)
+                    ? $"Running version {Display(LocalVersion)}. Version {Display(LatestVersion)} is available."
+                    : $"Running version {Display(LocalVersion)}.";
+            return CheckFailed ? $"{summary} Could not check for updates." : summary;
+        }
+    }
 
     private static string Display(string? version)
     {
