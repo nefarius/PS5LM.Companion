@@ -258,7 +258,9 @@ else if (_settingsKnown)
 
             if (generation != _autoLoadGeneration)
             {
-                // These settings were read before the latest save finished.
+                // These settings were read before the latest save finished. Read again at the current generation.
+                // The new reload takes the next id, so this call's cleanup leaves the loading flag alone.
+                await ReloadAsync();
                 return;
             }
 
