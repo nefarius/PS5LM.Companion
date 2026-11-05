@@ -127,9 +127,13 @@ internal sealed class LatestReleaseChecker : IDisposable
                 return LocalOnly(localVersion, checkFailed: true);
             }
 
+            if (string.IsNullOrWhiteSpace(release.TagName))
+            {
+                return LocalOnly(localVersion, checkFailed: true);
+            }
+
             if (release.Draft
                 || release.Prerelease
-                || string.IsNullOrWhiteSpace(release.TagName)
                 || !SemanticVersion.IsNewer(release.TagName, localVersion))
             {
                 return LocalOnly(localVersion);

@@ -147,6 +147,36 @@ public sealed class DashboardTests
     }
 
     [Fact]
+    public async Task A_check_does_not_claim_the_build_is_current_when_its_version_is_unknown()
+    {
+        var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                """{"tag_name":"v1.0.0","html_url":"https://github.com/nefarius/PS5LM.Companion/releases/tag/v1.0.0","draft":false,"prerelease":false}""",
+                Encoding.UTF8,
+                "application/json"),
+        });
+        var http = new HttpClient(handler, disposeHandler: false);
+        var checker = new LatestReleaseChecker(http, new FixedVersion(null));
+        await using var ctx = new BunitContext();
+        ctx.JSInterop.Mode = JSRuntimeMode.Loose;
+        ctx.Services.AddSingleton(checker);
+        var registry = new EmptyRegistry();
+        ctx.Services.AddSingleton<IConsoleRegistry>(registry);
+        ctx.Services.AddSingleton(new TransferService(
+            new FakeHub(), registry, new MemoryTransferStore(), new TransferOptions(), TimeProvider.System));
+        ctx.Services.AddMudServices();
+
+        var cut = ctx.Render<PS5LM.Companion.App.Components.Layout.MainLayout>();
+
+        cut.WaitForAssertion(() => Assert.Contains("unknown", cut.Find(".app-version").TextContent));
+        await cut.Find(".app-version-check").ClickAsync(new MouseEventArgs());
+
+        cut.WaitForAssertion(() => Assert.Contains("The running version could not be determined.", cut.Markup));
+        Assert.DoesNotContain("You are running the latest version.", cut.Markup);
+    }
+
+    [Fact]
     public async Task The_nav_menu_expands_and_collapses_every_console()
     {
         var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound));

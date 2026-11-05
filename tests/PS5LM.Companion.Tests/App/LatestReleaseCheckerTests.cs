@@ -214,6 +214,20 @@ public sealed class LatestReleaseCheckerTests
     }
 
     [Fact]
+    public async Task A_release_without_a_tag_is_a_failed_check()
+    {
+        var handler = new RecordingHandler("{}", HttpStatusCode.OK);
+        using var checker = Create(handler, "1.0.0");
+
+        var status = await checker.RefreshAsync();
+
+        Assert.True(status.CheckFailed);
+        Assert.False(status.UpdateAvailable);
+        Assert.Null(status.LatestVersion);
+        Assert.Equal("Running version v1.0.0. Could not check for updates.", status.Tooltip);
+    }
+
+    [Fact]
     public void The_local_chip_does_not_contact_GitHub()
     {
         var handler = new RecordingHandler(_ => throw new HttpRequestException("offline"));

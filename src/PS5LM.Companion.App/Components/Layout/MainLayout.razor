@@ -194,6 +194,10 @@
             {
                 Snackbar.Add("Could not check for updates.", Severity.Error);
             }
+            else if (!_versionStatus.HasLocalVersion)
+            {
+                Snackbar.Add("The running version could not be determined.", Severity.Warning);
+            }
             else
             {
                 Snackbar.Add("You are running the latest version.", Severity.Success);
