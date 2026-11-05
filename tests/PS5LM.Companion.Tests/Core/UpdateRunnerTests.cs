@@ -72,7 +72,7 @@ public sealed class UpdateRunnerTests
         var report = await Runner(harness).RunAsync(CancellationToken.None);
 
         Assert.Equal(["upload:kstuff-lite.elf"], harness.Events);
-        Assert.Contains(report.Lines, l => l.Component == "kstuff-lite" && l.Status == SetupStatus.Warn);
+        Assert.Contains(report.Lines, l => l.Component == "kstuff-lite" && l.Status == SetupStatus.Warn && l.Message.Contains("cannot replace it while it runs", StringComparison.Ordinal));
         Assert.Equal(0, report.ExitCode);
     }
 
@@ -170,6 +170,126 @@ public sealed class UpdateRunnerTests
         await Runner(harness, restart: true).RunAsync(CancellationToken.None);
 
         Assert.DoesNotContain(harness.Events, e => e.StartsWith("kill:", StringComparison.Ordinal));
+    }
+
+    private static SetupHarness RunningStaleShadowMount(SetupHarness harness, int? pid = 42)
+    {
+        Stale(harness, "shadowmountplus.elf");
+        if (pid is int id)
+        {
+            harness.Pids[id] = "shadowmountplus.elf";
+        }
+
+        return harness;
+    }
+
+    [Fact]
+    public async Task Restart_relaunches_a_self_replacing_payload_and_waits_for_the_new_pid()
+    {
+        using var harness = RunningStaleShadowMount(await PreparedAsync());
+        harness.HandoffPid = 77;
+
+        var report = await Runner(harness, restart: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal(["upload:shadowmountplus.elf", "load:shadowmountplus.elf"], harness.Events);
+        Assert.Equal("shadowmountplus.elf", harness.Pids[77]);
+        Assert.DoesNotContain(42, harness.Pids.Keys);
+        Assert.Contains(report.Lines, l => l.Component == "ShadowMountPlus" && l.Status == SetupStatus.Ok && l.Message.Contains("handed over", StringComparison.Ordinal));
+        Assert.Equal(0, report.ExitCode);
+    }
+
+    [Fact]
+    public async Task Restart_warns_when_the_self_replacing_payload_keeps_the_old_pid()
+    {
+        using var harness = RunningStaleShadowMount(await PreparedAsync());
+
+        var report = await Runner(harness, restart: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal(["upload:shadowmountplus.elf", "load:shadowmountplus.elf"], harness.Events);
+        Assert.Contains(42, harness.Pids.Keys);
+        Assert.Contains(report.Lines, l => l.Component == "ShadowMountPlus" && l.Status == SetupStatus.Warn && l.Message.Contains("did not hand over", StringComparison.Ordinal));
+        Assert.Equal(0, report.ExitCode);
+    }
+
+    [Fact]
+    public async Task Restart_does_not_relaunch_a_self_replacing_payload_while_a_title_is_running()
+    {
+        using var harness = RunningStaleShadowMount(await PreparedAsync());
+        harness.VoidShell.SetUp([SetupHarness.TitleId], runningKnown: true, active: SetupHarness.TitleId);
+        harness.HandoffPid = 77;
+
+        var report = await Runner(harness, restart: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal(["upload:shadowmountplus.elf"], harness.Events);
+        Assert.Contains(report.Lines, l => l.Component == "ShadowMountPlus" && l.Status == SetupStatus.Warn && l.Message.Contains("a title is running", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Restart_does_not_relaunch_a_self_replacing_payload_when_voidshell_cannot_say(bool voidShellMissing)
+    {
+        using var harness = RunningStaleShadowMount(await PreparedAsync());
+        harness.HandoffPid = 77;
+        if (voidShellMissing)
+        {
+            harness.VoidShell.Snapshot = PS5LM.Companion.Core.Abstractions.AppProviderSnapshot.Unavailable(harness.VoidShell.Kind, "down");
+        }
+        else
+        {
+            harness.VoidShell.SetUp([SetupHarness.TitleId], runningKnown: false);
+        }
+
+        var report = await Runner(harness, restart: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal(["upload:shadowmountplus.elf"], harness.Events);
+        Assert.Contains(report.Lines, l => l.Component == "ShadowMountPlus" && l.Status == SetupStatus.Warn && l.Message.Contains("not reporting", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Self_replacing_payload_is_not_restarted_without_the_restart_option()
+    {
+        using var harness = RunningStaleShadowMount(await PreparedAsync());
+
+        var report = await Runner(harness).RunAsync(CancellationToken.None);
+
+        Assert.Equal(["upload:shadowmountplus.elf"], harness.Events);
+        Assert.Contains(report.Lines, l => l.Component == "ShadowMountPlus" && l.Status == SetupStatus.Warn && l.Message.Contains("--restart", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Restart_does_not_launch_a_self_replacing_payload_when_its_pid_is_not_listed()
+    {
+        using var harness = RunningStaleShadowMount(await PreparedAsync(), pid: null);
+
+        var report = await Runner(harness, restart: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal(["upload:shadowmountplus.elf"], harness.Events);
+        Assert.Contains(report.Lines, l => l.Component == "ShadowMountPlus" && l.Status == SetupStatus.Warn && l.Message.Contains("no running process", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Restart_does_not_launch_a_self_replacing_payload_when_process_ids_cannot_be_read()
+    {
+        using var harness = RunningStaleShadowMount(await PreparedAsync());
+        harness.ProcessIdsUnreadable = true;
+
+        var report = await Runner(harness, restart: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal(["upload:shadowmountplus.elf"], harness.Events);
+        Assert.Contains(report.Lines, l => l.Component == "ShadowMountPlus" && l.Status == SetupStatus.Warn && l.Message.Contains("process list", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Restart_warns_when_the_self_replacing_launch_is_refused()
+    {
+        using var harness = RunningStaleShadowMount(await PreparedAsync());
+        harness.LoadFails.Add("shadowmountplus.elf");
+
+        var report = await Runner(harness, restart: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal(["upload:shadowmountplus.elf"], harness.Events);
+        Assert.Contains(report.Lines, l => l.Component == "ShadowMountPlus" && l.Status == SetupStatus.Warn && l.Message.Contains("Failed to launch payload", StringComparison.Ordinal));
     }
 
     [Fact]

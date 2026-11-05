@@ -52,7 +52,8 @@
       "url": "https://github.com/drakmor/ShadowMountPlus/releases/download/1.7beta11/shadowmountplus.elf",
       "sha256": "08c843018750bef013fe3a4de5f80c5c9738c6c2dafa2406e6b6e68d7585f3da",
       "ready": { "processes": ["shadowmountplus.elf"] },
-      "readyTimeoutSeconds": 30
+      "readyTimeoutSeconds": 30,
+      "selfReplacing": true
     },
     {
       "id": "voidshell",

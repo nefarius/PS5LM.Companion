@@ -18,6 +18,7 @@ public sealed record ReadyCheck(int Port = 0, IReadOnlyList<string>? Processes =
 /// <param name="DelayAfterMs">Autoload pause (and manual wait) after this payload, for heavy ones.</param>
 /// <param name="ReadyTimeoutSeconds">How long to wait for <see cref="Ready"/> after launching.</param>
 /// <param name="PidFile">File on the console where the payload writes its own pid; lets <c>update --restart</c> replace a running copy.</param>
+/// <param name="SelfReplacing">Launching a new copy stops the running one, so <c>update --restart</c> replaces it by launching it again.</param>
 /// <param name="Optional">When true, a payload that is not up at the end is reported as a warning instead of a failure.</param>
 /// <param name="OptionalNote">Shown with the warning to explain why the payload may legitimately not start.</param>
 public sealed record ManifestPayload(
@@ -32,7 +33,8 @@ public sealed record ManifestPayload(
     IReadOnlyList<ManifestFile>? Files = null,
     bool Optional = false,
     string? OptionalNote = null,
-    string? PidFile = null)
+    string? PidFile = null,
+    bool SelfReplacing = false)
 {
     public string UploadName => Id + ".elf";
 }
@@ -127,6 +129,16 @@ public sealed record SetupManifest(
             if (payload.PidFile is { } pidFile && (!pidFile.StartsWith("/data/", StringComparison.Ordinal) || pidFile.Contains("..", StringComparison.Ordinal) || pidFile.EndsWith('/')))
             {
                 throw new InvalidDataException($"Payload '{payload.Id}' pidFile '{pidFile}' must be an absolute path under /data/.");
+            }
+
+            if (payload.SelfReplacing && payload.PidFile is not null)
+            {
+                throw new InvalidDataException($"Payload '{payload.Id}' cannot set both selfReplacing and pidFile.");
+            }
+
+            if (payload.SelfReplacing && (payload.Ready.Processes is null || payload.Ready.Processes.Count == 0))
+            {
+                throw new InvalidDataException($"Payload '{payload.Id}' selfReplacing needs a ready process list, so the handoff can be checked by process id.");
             }
 
             foreach (var file in payload.Files ?? [])
