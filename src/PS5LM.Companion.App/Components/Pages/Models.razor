@@ -244,7 +244,7 @@ else if (_settingsKnown)
             var generation = _autoLoadGeneration;
             var models = await console.Models.ListAsync(installation, null, CancellationToken.None);
             var settings = await console.AutoLoad.GetAsync(CancellationToken.None);
-            if (!ReferenceEquals(console, Target))
+            if (!ReferenceEquals(console, Target) || reload != _reload)
             {
                 return;
             }
@@ -270,7 +270,7 @@ else if (_settingsKnown)
         }
         catch (Exception ex) when (ex is Core.Abstractions.ConsoleUnreachableException)
         {
-            if (ReferenceEquals(console, Target))
+            if (reload == _reload && ReferenceEquals(console, Target))
             {
                 _error = ex.Message;
                 _models = [];
