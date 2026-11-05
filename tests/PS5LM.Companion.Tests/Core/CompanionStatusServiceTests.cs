@@ -82,6 +82,50 @@ public sealed class CompanionStatusServiceTests
         Assert.Equal(DependencyHealth.Unknown, offline.Dependencies.Single(row => row.Id == PayloadDependencies.VoidShell).Health);
     }
 
+    [Theory]
+    [InlineData("01.011.000", "0.11.0")]
+    [InlineData("01.009.001", "0.9.1")]
+    public async Task The_installed_app_version_comes_from_param_json(string contentVersion, string expected)
+    {
+        var status = await Create(ConsoleFixtures.PS5LMInstalled(contentVersion: contentVersion)).RefreshAsync(CancellationToken.None);
+
+        Assert.Equal(PS5Variant.PS5LM, status.Variant);
+        Assert.Equal(expected, status.AppVersion);
+    }
+
+    [Fact]
+    public async Task A_missing_or_unreadable_param_json_leaves_the_app_version_empty()
+    {
+        var missing = await Create(ConsoleFixtures.PS5LMInstalled()).RefreshAsync(CancellationToken.None);
+        var invalid = ConsoleFixtures.PS5LMInstalled()
+            .AddFile("/data/homebrew/PPSA99575/sce_sys/param.json", "not json");
+
+        var unreadable = await Create(invalid).RefreshAsync(CancellationToken.None);
+
+        Assert.Equal(PS5Variant.PS5LM, missing.Variant);
+        Assert.Null(missing.AppVersion);
+        Assert.Equal(PS5Variant.PS5LM, unreadable.Variant);
+        Assert.Null(unreadable.AppVersion);
+    }
+
+    [Fact]
+    public async Task A_default_PS5LM_Plus_content_version_is_unknown_and_a_real_one_is_kept()
+    {
+        var placeholder = await Create(Plus("01.000.000")).RefreshAsync(CancellationToken.None);
+        var released = await Create(Plus("01.008.003")).RefreshAsync(CancellationToken.None);
+        var ps5lm = await Create(ConsoleFixtures.PS5LMInstalled(contentVersion: "01.000.000")).RefreshAsync(CancellationToken.None);
+
+        Assert.Equal(PS5Variant.PS5LMPlus, placeholder.Variant);
+        Assert.Null(placeholder.AppVersion);
+        Assert.Equal("0.8.3", released.AppVersion);
+        Assert.Equal("0.0.0", ps5lm.AppVersion);
+    }
+
+    private static FakeFileSystem Plus(string contentVersion) =>
+        ConsoleFixtures.PS5LMPlusInstalled().AddFile(
+            "/data/homebrew/PPSA99581/sce_sys/param.json",
+            $$"""{"titleId":"PPSA99581","contentVersion":"{{contentVersion}}"}""");
+
     [Fact]
     public async Task Overlapping_refreshes_run_one_at_a_time()
     {

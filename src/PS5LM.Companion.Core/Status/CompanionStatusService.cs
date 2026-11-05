@@ -114,7 +114,31 @@ public sealed class CompanionStatusService(
             PayloadDependencies.Evaluate(catalog, ftp.Reachable, sensors is not null, elfldrListening, options.ElfldrPort, voidShellAnswering, voidShellDetail),
             apps,
             appSnapshots?.FirstOrDefault(snapshot => snapshot is { Available: true, Kind: AppProviderKind.VoidShell, Firmware: { Length: > 0 } })?.Firmware,
+            FormatInstalledVersion(ftp.Installation),
             MergeUpdates(catalog.ManagerVersion, VoidShellSemVer(appSnapshots)));
+    }
+
+    /// <summary>
+    /// PS5LM Plus left <c>contentVersion</c> at the package default <c>01.000.000</c> through v0.8.1.
+    /// That decodes to 0.0.0 and is not a release. A later Plus build and every PS5LM build keep the
+    /// version from <c>param.json</c>. No other installed-version source is already available.
+    /// </summary>
+    private static string? FormatInstalledVersion(Installation? installation)
+    {
+        if (installation?.AppVersion is not { } version)
+        {
+            return null;
+        }
+
+        if (installation.Profile?.Variant == PS5Variant.PS5LMPlus
+            && version.Major == 0
+            && version.Minor == 0
+            && version.Patch == 0)
+        {
+            return null;
+        }
+
+        return AppVersion.Format(version);
     }
 
     private ComponentUpdateStatus MergeUpdates(string? managerVersion, string? voidShellSemVer)
