@@ -234,6 +234,53 @@ public sealed class UpdateRunnerTests
     }
 
     [Fact]
+    public async Task Ftpsrv_that_answers_but_fails_transfers_is_replaced_once()
+    {
+        using var harness = await PreparedAsync();
+        var path = harness.Stored.Single(s => s.FileName == "ftpsrv.elf").Path!;
+        harness.Files.Unreadable.Add(path);
+        harness.Pids[31] = "ftpsrv.elf";
+        harness.HandoffPid = 88;
+
+        var report = await Runner(harness).RunAsync(CancellationToken.None);
+
+        Assert.Equal(1, harness.Events.Count(e => e == "upload:ftpsrv.elf"));
+        Assert.Equal(1, harness.Events.Count(e => e == "load:ftpsrv.elf"));
+        Assert.Contains(report.Lines, l => l.Component == "ftpsrv" && l.Status == SetupStatus.Ok && l.Message.Contains("handed over", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Ftpsrv_recovery_replaces_a_file_in_use_over_ftp_when_ftp_answers()
+    {
+        using var harness = await PreparedAsync();
+        var path = harness.Stored.Single(s => s.FileName == "ftpsrv.elf").Path!;
+        harness.Files.Unreadable.Add(path);
+        harness.UploadFails.Add("ftpsrv.elf");
+        harness.Pids[31] = "ftpsrv.elf";
+        harness.HandoffPid = 88;
+
+        await Runner(harness).RunAsync(CancellationToken.None);
+
+        Assert.Contains((path + ".part", path), harness.Files.Moves);
+        Assert.Contains("load:ftpsrv.elf", harness.Events);
+    }
+
+    [Fact]
+    public async Task Dead_ftpsrv_whose_file_cannot_be_replaced_reports_a_reboot()
+    {
+        using var harness = await PreparedAsync();
+        Stale(harness, "ftpsrv.elf");
+        harness.Ports.Remove(2121);
+        harness.UploadFails.Add("ftpsrv.elf");
+
+        var report = await Runner(harness).RunAsync(CancellationToken.None);
+
+        Assert.DoesNotContain(harness.Files.Moves, m => m.To.EndsWith("/ftpsrv.elf", StringComparison.Ordinal));
+        Assert.DoesNotContain("load:ftpsrv.elf", harness.Events);
+        Assert.Contains(report.Lines, l => l.Component == "ftpsrv" && l.Status == SetupStatus.Warn && l.Message.Contains("reboot", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Dead_ftpsrv_is_only_reported_when_checking()
     {
         using var harness = await PreparedAsync();
@@ -519,7 +566,7 @@ public sealed class UpdateRunnerTests
 
         await Runner(harness).RunAsync(CancellationToken.None);
 
-        Assert.Empty(harness.Events);
+        Assert.DoesNotContain("upload:kstuff-lite.elf", harness.Events);
     }
 
     [Fact]
