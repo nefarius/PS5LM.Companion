@@ -34,8 +34,9 @@ In a container, mount `/data` so downloads are cached, and pass `--upgrade-paylo
 1. Payload Manager must answer on port 8084 and be 0.6.0 or newer. An older one is upgraded (below), after consent.
 2. List what Payload Manager stores and compare it with the manifest.
 3. Download missing payloads, verify the SHA-256, upload each as `<id>.elf` (slot `local/<id>`).
-4. Enable autoload with: elfldr, kstuff-lite, 3 s pause, OnionHEN, 3 s pause, ftpsrv, ShadowMountPlus, VoidShell, PS5 Web File
-   Manager. Entries you already had are kept after these.
+4. Enable autoload with the payloads in order and a 3 s pause between every step, including entries you already had:
+   elfldr, kstuff-lite, OnionHEN, ftpsrv, ShadowMountPlus, VoidShell, PS5 Web File Manager. A longer pause on a payload in
+   the manifest is kept. `update` does not rewrite this list; re-run `setup` on a console that was already prepared.
 5. Launch them in that order, skipping any that already run, waiting for each one's port or process. If elfldr does not come up,
    launching stops: Payload Manager sends everything through elfldr and cannot start it.
 6. Place extra files over FTP (VoidShell's `index.html` to `/data/voidshell/www/index.html`). Uploaded as `.part`, then renamed.

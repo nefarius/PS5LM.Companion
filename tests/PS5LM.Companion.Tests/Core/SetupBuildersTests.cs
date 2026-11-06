@@ -72,7 +72,7 @@ public sealed class SetupBuildersTests
             [("a", 0), ("b", 3000), ("c", 0)],
             "!1000, x ,a,x,!2000");
 
-        Assert.Equal("a,b,!3000,c,x", list);
+        Assert.Equal("a,!3000,b,!3000,c,!3000,x", list);
     }
 
     [Fact]
@@ -82,7 +82,15 @@ public sealed class SetupBuildersTests
             [("local/ftpsrv", 0), ("local/elfldr", 0)],
             "repo/ftpsrv@e8cce5d1,local/mine,repo/websrv@ab12,!500");
 
-        Assert.Equal("local/ftpsrv,local/elfldr,local/mine,repo/websrv@ab12", list);
+        Assert.Equal("local/ftpsrv,!3000,local/elfldr,!3000,local/mine,!3000,repo/websrv@ab12", list);
+    }
+
+    [Fact]
+    public void Autoload_list_keeps_a_longer_delay_and_adds_no_trailing_pause()
+    {
+        var list = AutoloadListBuilder.Build([("a", 5000), ("b", 0)], null);
+
+        Assert.Equal("a,!5000,b", list);
     }
 
     [Fact]

@@ -15,7 +15,7 @@ public sealed record ReadyCheck(int Port = 0, IReadOnlyList<string>? Processes =
 
 /// <summary>One payload that setup uploads, autoloads and launches.</summary>
 /// <param name="Id">Stable id; the payload is uploaded as <c>{Id}.elf</c>.</param>
-/// <param name="DelayAfterMs">Autoload pause (and manual wait) after this payload, for heavy ones.</param>
+/// <param name="DelayAfterMs">Autoload pause after this payload when it is longer than the step gap, and the manual settle wait during setup.</param>
 /// <param name="ReadyTimeoutSeconds">How long to wait for <see cref="Ready"/> after launching.</param>
 /// <param name="PidFile">File on the console where the payload writes its own pid; lets <c>update --restart</c> replace a running copy.</param>
 /// <param name="SelfReplacing">Launching a new copy stops the running one, so <c>update --restart</c> replaces it by launching it again.</param>

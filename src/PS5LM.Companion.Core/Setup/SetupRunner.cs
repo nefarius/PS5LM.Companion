@@ -178,7 +178,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         return resolved;
     }
 
-    // Step 4: autoload on, our payloads in order with pauses after the heavy ones.
+    // Step 4: autoload on, our payloads in order with a pause between every step.
     private async Task ConfigureAutoloadAsync(List<(ManifestPayload Payload, ManagedPayload Stored)> resolved, CancellationToken cancellationToken)
     {
         var current = await services.Manager.GetAutoloadAsync(cancellationToken);

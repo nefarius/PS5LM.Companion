@@ -24,7 +24,7 @@ public sealed class SetupRunnerTests
 
         Assert.Equal(0, report.ExitCode);
         Assert.Equal(
-            "local/elfldr,local/kstuff-lite,!3000,local/onionhen,!3000,local/ftpsrv,local/shadowmountplus,local/voidshell,local/ps5-web-file-manager",
+            "local/elfldr,!3000,local/kstuff-lite,!3000,local/onionhen,!3000,local/ftpsrv,!3000,local/shadowmountplus,!3000,local/voidshell,!3000,local/ps5-web-file-manager",
             harness.Autoload.List);
         Assert.True(harness.Autoload.Enabled);
         Assert.Equal(
@@ -95,7 +95,7 @@ public sealed class SetupRunnerTests
 
         await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
 
-        Assert.EndsWith(",local/ps5-web-file-manager,local/mine", harness.Autoload.List);
+        Assert.EndsWith(",local/ps5-web-file-manager,!3000,local/mine", harness.Autoload.List);
     }
 
     [Fact]
