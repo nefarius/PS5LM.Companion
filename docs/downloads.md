@@ -21,7 +21,7 @@ Opening a repository checks each top-level model file:
 - A header that cannot be read, or a packing llama.cpp refuses (PrismML PQ2_0 and PTQ1_0), is **Unknown**.
 - A split model (`name-00001-of-00003.gguf`) is judged from the sum of its parts, on the first part, when every part is listed. A missing part is **Unknown** unless the parts that are listed are already too big. The other parts have no verdict.
 
-Two files are checked at a time. A result is remembered by the file's SHA-256, or by the repository and name when the hub has no hash, together with the budget it was planned against.
+Two files are checked at a time. A result is remembered by the file name together with its SHA-256, or by the repository and name when the hub has no hash, and by the budget it was planned against. The name stays in the key because a preset can cap the context from the file name.
 
 ## Where the budget comes from
 

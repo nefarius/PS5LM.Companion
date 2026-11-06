@@ -110,25 +110,27 @@ public sealed class HubFitServiceTests
     }
 
     [Fact]
-    public async Task A_second_file_with_the_same_hash_reuses_the_verdict()
+    public async Task The_same_hash_under_another_name_is_planned_for_that_name()
     {
         var header = new GgufBuilder()
             .Kv("general.architecture", "llama")
+            .Kv("general.name", "Llama")
             .Kv("llama.block_count", 4u)
             .Kv("llama.attention.head_count", 4u)
             .Kv("llama.embedding_length", 128u)
-            .Kv("llama.context_length", 8192u)
             .Bytes();
         var hub = new HeaderHub { Header = header };
         var service = new HubFitService(hub);
         var budget = ModelBudget.Assumed(11.38);
 
-        await Collect(service.CheckAsync("acme/m", [new HubFile("a.gguf", 1024, "same")], budget));
-        var second = await Collect(service.CheckAsync("acme/m", [new HubFile("b.gguf", 1024, "same")], budget));
+        var plain = await Collect(service.CheckAsync("acme/m", [new HubFile("plain.gguf", 1024, "same")], budget));
+        var named = await Collect(service.CheckAsync("acme/m", [new HubFile("gpt-oss-copy.gguf", 1024, "same")], budget));
+        var again = await Collect(service.CheckAsync("acme/m", [new HubFile("plain.gguf", 1024, "same")], budget));
 
-        Assert.Equal(1, hub.Headers);
-        Assert.Equal("b.gguf", second.Single().Name);
-        Assert.Equal(HubFitKind.Fits, second.Single().Kind);
+        Assert.Equal(2, hub.Headers);
+        Assert.Equal("Fits - 64k, q8_0", plain.Single().Label);
+        Assert.Equal("Fits - 16k, q8_0", named.Single().Label);
+        Assert.Equal(plain.Single().Label, again.Single().Label);
     }
 
     [Fact]

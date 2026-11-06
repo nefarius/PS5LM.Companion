@@ -221,6 +221,7 @@ public sealed class HubFitService
         string.Join(
             '\u001f',
             string.IsNullOrEmpty(file.Sha256) ? $"{repo}/{file.Name}" : file.Sha256,
+            file.Name,
             weightBytes.ToString(CultureInfo.InvariantCulture),
             budget.Gib.ToString("R", CultureInfo.InvariantCulture),
             budget.CtxCap.ToString(CultureInfo.InvariantCulture),
