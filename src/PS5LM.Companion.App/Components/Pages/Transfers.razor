@@ -1,7 +1,10 @@
 @page "/consoles/{ConsoleId}/downloads"
+@using PS5LM.Companion.Core.Models.Planning
 @inherits LiveComponent
 @inject IModelHub Hub
+@inject HubFitService Fits
 @inject ISnackbar Snackbar
+@inject TimeProvider Time
 
 <AppPageTitle Page='@(Target is null ? "Console not found" : $"Downloads - {Target.Name}")' />
 
@@ -59,7 +62,18 @@ else
         <MudList T="HubRepo" Class="mt-2" Style="max-height:16rem;overflow:auto" Disabled="@(_searching || _loadingRepo is not null)" SelectedValueChanged="OnRepoSelected">
             @foreach (var repo in _repos)
             {
-                <MudListItem T="HubRepo" Value="@repo" Text="@repo.Id" SecondaryText="@($"{repo.Downloads:N0} downloads")" />
+                <MudListItem T="HubRepo" Value="@repo">
+                    <div class="d-flex align-center" style="gap:0.5rem">
+                        <span>@repo.Id</span>
+                        @if (Hint(repo) is { } hint)
+                        {
+                            <MudTooltip Text="@hint.Detail">
+                                <MudChip T="string" Size="Size.Small" Color="@HintColor(hint.Kind)">@hint.Label</MudChip>
+                            </MudTooltip>
+                        }
+                    </div>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">@($"{repo.Downloads:N0} downloads")</MudText>
+                </MudListItem>
             }
         </MudList>
     }
@@ -72,26 +86,45 @@ else
     {
         <MudText Typo="Typo.subtitle1" Class="mt-3">@_selectedRepo</MudText>
         <MudSimpleTable Dense="true" Hover="true">
-            <thead><tr><th>File</th><th>Size</th><th></th></tr></thead>
+            <thead><tr><th>File</th><th>Size</th><th>Fit on PS5</th><th></th></tr></thead>
             <tbody>
                 @foreach (var file in _files.Where(f => f.IsLoadableModel))
                 {
                     <tr>
                         <td>@file.Name</td>
                         <td>@Display.Bytes(file.SizeBytes)</td>
+                        <td>
+                            @if (FitOf(file) is { } fit)
+                            {
+                                @if (fit.Kind != HubFitKind.NotApplicable)
+                                {
+                                    <MudTooltip Text="@fit.Detail">
+                                        <MudChip T="string" Size="Size.Small" Color="@FitColor(fit.Kind)">@fit.Label</MudChip>
+                                    </MudTooltip>
+                                }
+                            }
+                            else
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                            }
+                        </td>
                         <td><MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Download"
                                        OnClick="@(() => EnqueueAsync(file))" Disabled="@_enqueuing.Contains(file.Name)">Download to console</MudButton></td>
                     </tr>
                 }
                 @if (_files.Count(f => f.IsLoadableModel) == 0)
                 {
-                    <tr><td colspan="3">This repository has no top-level model .gguf files.</td></tr>
+                    <tr><td colspan="4">This repository has no top-level model .gguf files.</td></tr>
                 }
             </tbody>
         </MudSimpleTable>
         @if (_files.Count(f => !f.IsLoadableModel) is > 0 and var hidden)
         {
             <MudText Typo="Typo.caption" Color="Color.Secondary">@hidden vision projector or imatrix @(hidden == 1 ? "file is" : "files are") not listed: they cannot be loaded on their own.</MudText>
+        }
+        @if (_budget is { } budget)
+        {
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Fit uses @budget.Caption. It follows the app's planner and does not check whether this llama.cpp build knows the architecture. Downloading stays available either way.</MudText>
         }
     }
 </MudPaper>
@@ -156,9 +189,21 @@ else
     private IReadOnlyList<string> _targets = [];
     private IReadOnlyList<HubRepo> _repos = [];
     private IReadOnlyList<HubFile>? _files;
+    private Dictionary<string, HubFileFit> _fits = new(StringComparer.Ordinal);
+    private ModelBudget? _budget;
+    private ModelBudget? _fitBudget;
 
     private string? _targetsFor;
     private string? _loadingKey;
+    private string? _budgetFor;
+    private string? _budgetLoading;
+    private DateTimeOffset _budgetReadAt;
+    private CancellationTokenSource? _fitsCancel;
+
+    /// <summary>
+    /// How often a live update may reread <c>app.log</c>. Status and transfer progress arrive much more often.
+    /// </summary>
+    internal static readonly TimeSpan BudgetRefreshInterval = TimeSpan.FromSeconds(30);
 
     protected override Task OnConsoleChangedAsync()
     {
@@ -170,14 +215,29 @@ else
         _searching = false;
         _repos = [];
         _files = null;
+        _fits = new(StringComparer.Ordinal);
+        _budget = null;
+        _fitBudget = null;
+        _budgetFor = null;
+        _budgetReadAt = default;
         _requestVersion++;
         _enqueuing.Clear();
+        CancelFits();
         ClearTargets();
-        return RefreshTargetsAsync();
+        return RefreshConsoleAsync();
+    }
+
+    protected override void OnDisposed()
+    {
+        CancelFits();
+        _fitsCancel?.Dispose();
+        _fitsCancel = null;
     }
 
     // The console (or its state folder) can appear after this page opened.
-    protected override Task OnLiveChangeAsync() => Target is null ? Task.CompletedTask : RefreshTargetsAsync();
+    protected override Task OnLiveChangeAsync() => Target is null ? Task.CompletedTask : RefreshConsoleAsync();
+
+    private Task RefreshConsoleAsync() => Task.WhenAll(RefreshTargetsAsync(), RefreshBudgetAsync());
 
     private string? CurrentTargetsKey() =>
         Target?.Status.LastInstallation?.StateRoot is { } root ? $"{Target.Id}:{root.FtpPath}" : null;
@@ -261,6 +321,61 @@ else
         _target = null;
     }
 
+    private async Task RefreshBudgetAsync()
+    {
+        var console = Target;
+        var key = console is null ? null : CurrentTargetsKey() ?? $"{console.Id}:none";
+        if (console is null || key is null)
+        {
+            _budget = null;
+            _budgetFor = null;
+            _budgetReadAt = default;
+            return;
+        }
+
+        // Progress wakes this page many times a second. The same console is reread on the interval above.
+        if (_budgetLoading == key || (key == _budgetFor && Time.GetUtcNow() - _budgetReadAt < BudgetRefreshInterval))
+        {
+            return;
+        }
+
+        _budgetLoading = key;
+        ModelBudget budget;
+        try
+        {
+            budget = await Fits.ReadBudgetAsync(console.FileSystem, console.Status.LastInstallation?.StateRoot, CancellationToken.None);
+        }
+        catch (Core.Abstractions.ConsoleUnreachableException)
+        {
+            budget = Fits.AssumedBudget;
+        }
+        finally
+        {
+            if (_budgetLoading == key)
+            {
+                _budgetLoading = null;
+            }
+        }
+
+        var current = Target;
+        var currentKey = current is null ? null : CurrentTargetsKey() ?? $"{current.Id}:none";
+        if (currentKey != key)
+        {
+            return;
+        }
+
+        _budget = budget;
+        _budgetFor = key;
+        _budgetReadAt = Time.GetUtcNow();
+        if (_files is not null && _selectedRepo is not null && _fitBudget is { } used && !SameBudget(used, budget))
+        {
+            _ = ShowFitsAsync(_requestVersion, _selectedRepo, _files);
+        }
+    }
+
+    private static bool SameBudget(ModelBudget left, ModelBudget right) =>
+        left.FromAppLog == right.FromAppLog && left.CtxCap == right.CtxCap && left.KvType == right.KvType && left.Gib == right.Gib;
+
     private bool SearchBlocked => _searching || _loadingRepo is not null || string.IsNullOrWhiteSpace(_query);
 
     private bool NoMatches => _searchedFor is not null && !_searching && _repos.Count == 0;
@@ -280,6 +395,8 @@ else
         {
             _files = null;
             _selectedRepo = null;
+            _fits = new(StringComparer.Ordinal);
+            CancelFits();
             var query = _query;
             var repos = await Hub.SearchAsync(query, CancellationToken.None);
             if (version == _requestVersion)
@@ -299,11 +416,14 @@ else
                 // The repository and its file list are committed together, and only for the latest request.
                 _files = null;
                 _selectedRepo = null;
+                _fits = new(StringComparer.Ordinal);
+                CancelFits();
                 var files = await Hub.ListFilesAsync(repo.Id, CancellationToken.None);
                 if (version == _requestVersion)
                 {
                     _selectedRepo = repo.Id;
                     _files = files;
+                    _ = ShowFitsAsync(version, repo.Id, files);
                 }
             });
 
@@ -364,4 +484,72 @@ else
     }
 
     private async Task CancelAsync(Transfer transfer) => await Transfers.CancelAsync(transfer.Id, CancellationToken.None);
+
+    private RepoFit? Hint(HubRepo repo) => _budget is null ? null : RepoFit.Estimate(repo.Parameters, repo.Architecture, _budget.Gib);
+
+    private HubFileFit? FitOf(HubFile file) => _fits.TryGetValue(file.Name, out var fit) ? fit : null;
+
+    private static Color HintColor(RepoFitKind kind) => kind switch
+    {
+        RepoFitKind.LikelyFits => Color.Success,
+        RepoFitKind.LowBitOnly => Color.Warning,
+        _ => Color.Error,
+    };
+
+    private static Color FitColor(HubFitKind kind) => kind switch
+    {
+        HubFitKind.Fits => Color.Success,
+        HubFitKind.TooBig => Color.Error,
+        _ => Color.Default,
+    };
+
+    private void CancelFits()
+    {
+        var running = _fitsCancel;
+        _fitsCancel = null;
+        if (running is null)
+        {
+            return;
+        }
+
+        running.Cancel();
+        running.Dispose();
+    }
+
+    private async Task ShowFitsAsync(int version, string repo, IReadOnlyList<HubFile> files)
+    {
+        _fitsCancel?.Cancel();
+        _fitsCancel?.Dispose();
+        _fitsCancel = new CancellationTokenSource();
+        var token = _fitsCancel.Token;
+        _fits = new Dictionary<string, HubFileFit>(StringComparer.Ordinal);
+        var budget = _budget ?? Fits.AssumedBudget;
+        _fitBudget = budget;
+        try
+        {
+            await foreach (var fit in Fits.CheckAsync(repo, files, budget, token))
+            {
+                if (version != _requestVersion)
+                {
+                    break;
+                }
+
+                _fits[fit.Name] = fit;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
+        {
+            // A newer search or another repository replaced this check.
+        }
+        catch (Exception ex) when (version == _requestVersion)
+        {
+            _error = ex.Message;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception)
+        {
+            // Superseded by a newer request.
+        }
+    }
 }

@@ -17,6 +17,9 @@ public sealed class HuggingFaceHub(IHuggingFaceApi api, IHttpClientFactory httpC
     /// <summary>The same number of results PS5LM's own model page asks for.</summary>
     private const int SearchLimit = 30;
 
+    /// <summary>The first bytes of a GGUF, which hold its metadata. The same cap PS5LM's model page uses.</summary>
+    public const int HeaderBytes = 16 * 1024 * 1024;
+
     /// <summary>How long a download may receive nothing before it is treated as dropped.</summary>
     public TimeSpan IdleTimeout { get; init; } = TimeSpan.FromSeconds(60);
 
@@ -28,8 +31,50 @@ public sealed class HuggingFaceHub(IHuggingFaceApi api, IHttpClientFactory httpC
         var models = await Hub(() => api.SearchAsync(query, "gguf", "downloads", "-1", SearchLimit, cancellationToken));
         return models
             .Where(m => !string.IsNullOrEmpty(m.Id))
-            .Select(m => new HubRepo(m.Id!, m.Downloads))
+            .Select(m => new HubRepo(m.Id!, m.Downloads, m.Gguf?.Total is > 0 and var total ? total : null, m.Gguf?.Architecture))
             .ToList();
+    }
+
+    public async Task<Stream> OpenHeaderAsync(string repo, string fileName, CancellationToken cancellationToken)
+    {
+        var http = httpClients.CreateClient(DownloadClientName);
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"/{repo}/resolve/main/{Uri.EscapeDataString(fileName)}");
+        request.Headers.Range = new RangeHeaderValue(0, HeaderBytes - 1);
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await SendWithHeaderTimeoutAsync(http, request, cancellationToken);
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested && ex is HttpRequestException or IOException or TaskCanceledException)
+        {
+            http.Dispose();
+            throw new HubUnavailableException($"The model hub did not answer: {ex.Message}", ex);
+        }
+        catch
+        {
+            http.Dispose();
+            throw;
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            response.Dispose();
+            http.Dispose();
+            throw new HubUnavailableException($"The model hub did not answer: {(int)response.StatusCode}.");
+        }
+
+        try
+        {
+            var body = await response.Content.ReadAsStreamAsync(cancellationToken);
+            return new BoundedResponseStream(http, response, body, HeaderBytes, IdleTimeout);
+        }
+        catch
+        {
+            response.Dispose();
+            http.Dispose();
+            throw;
+        }
     }
 
     public async Task<IReadOnlyList<HubFile>> ListFilesAsync(string repo, CancellationToken cancellationToken)
@@ -133,6 +178,78 @@ public sealed class HuggingFaceHub(IHuggingFaceApi api, IHttpClientFactory httpC
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             throw new IOException($"The download stalled: no data for {IdleTimeout.TotalSeconds:0} seconds.");
+        }
+    }
+
+    /// <summary>
+    /// The response body, capped so a server that ignores <c>Range</c> cannot stream a whole model, and disposed
+    /// together with the client that owns the connection. Each read uses the same idle timeout as a download.
+    /// </summary>
+    private sealed class BoundedResponseStream(HttpClient client, HttpResponseMessage response, Stream inner, long limit, TimeSpan idleTimeout) : Stream
+    {
+        private long _remaining = limit;
+
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) =>
+            ReadAsync(buffer.AsMemory(offset, count), CancellationToken.None).AsTask().GetAwaiter().GetResult();
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            if (_remaining <= 0 || buffer.Length == 0)
+            {
+                return 0;
+            }
+
+            var slice = buffer[..(int)Math.Min(buffer.Length, _remaining)];
+            using var idle = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            idle.CancelAfter(idleTimeout);
+            int read;
+            try
+            {
+                read = await inner.ReadAsync(slice, idle.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                throw new IOException($"The download stalled: no data for {idleTimeout.TotalSeconds:0} seconds.");
+            }
+
+            _remaining -= read;
+            return read;
+        }
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                inner.Dispose();
+                response.Dispose();
+                client.Dispose();
+            }
+
+            base.Dispose(disposing);
         }
     }
 }

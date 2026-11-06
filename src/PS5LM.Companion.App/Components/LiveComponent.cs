@@ -216,6 +216,12 @@ public abstract class LiveComponent : ComponentBase, IDisposable
 
         Transfers.Changed -= OnChanged;
         Consoles.Changed -= OnRegistryChanged;
+        OnDisposed();
         GC.SuppressFinalize(this);
+    }
+
+    /// <summary>Releases what a page added. The base subscriptions are already removed.</summary>
+    protected virtual void OnDisposed()
+    {
     }
 }
