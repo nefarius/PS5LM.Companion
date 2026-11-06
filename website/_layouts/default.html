@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% if page.title %}{{ page.title | escape }} · {% endif %}{{ site.title | escape }}</title>
+    <meta name="description" content="{{ page.description | default: site.description | escape }}">
+    <meta name="theme-color" content="#111217">
+    <link rel="canonical" href="{{ page.url | absolute_url }}">
+    <meta property="og:title" content="{{ site.title | escape }}">
+    <meta property="og:description" content="{{ site.description | escape }}">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="{{ page.url | absolute_url }}">
+    <meta property="og:image" content="{{ '/assets/images/overview.png' | absolute_url }}">
+    <link rel="icon" type="image/png" href="{{ '/assets/images/logo.png' | relative_url }}">
+    <link rel="stylesheet" href="{{ '/assets/style.css' | relative_url }}">
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header wrap">
+      <a class="brand" href="{{ '/' | relative_url }}"><img src="{{ '/assets/images/logo.png' | relative_url }}" alt="" width="36" height="36">PS5LM <span>Companion</span></a>
+      <nav aria-label="Main navigation">
+        <a href="{{ '/' | relative_url }}#features">Features</a>
+        <a href="{{ '/' | relative_url }}#start">Get started</a>
+        <a href="{{ site.repository_url }}/blob/master/README.md">Docs <span aria-hidden="true">↗</span></a>
+        <a class="nav-github" href="{{ site.repository_url }}">GitHub <span aria-hidden="true">↗</span></a>
+      </nav>
+    </header>
+    <main id="main">{{ content }}</main>
+    <footer class="site-footer wrap">
+      <div><a class="brand" href="{{ '/' | relative_url }}">PS5LM <span>Companion</span></a><p>Made for the homebrew community. Open source under MIT.</p></div>
+      <div class="footer-links"><a href="{{ site.repository_url }}/blob/master/LICENSE">License</a><a href="{{ site.repository_url }}/issues">Issues</a><a href="https://discord.nefarius.at/">Discord</a></div>
+      <p class="fine-print">An independent community project. Not affiliated with Sony Interactive Entertainment.</p>
+    </footer>
+  </body>
+</html>

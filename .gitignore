@@ -444,3 +444,12 @@ FodyWeavers.xsd
 # Generated ASP.NET Data Protection keys
 src/PS5LM.Companion.App/data/
 **/keys/key-*.xml
+
+# Jekyll website output and local Ruby dependencies
+/website/_site/
+/website/.jekyll-cache/
+/website/.jekyll-metadata
+/website/.sass-cache/
+/website/.bundle/
+/website/vendor/
+/_site/
