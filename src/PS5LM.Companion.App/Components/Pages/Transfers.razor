@@ -32,6 +32,7 @@ else
                 @:Search
             }
         </MudButton>
+        <MudSwitch T="bool" @bind-Value="_hideTooBig" Color="Color.Primary" Label="Hide models that are too big" />
         @if (_targets.Count > 1)
         {
             <MudSelect T="string" @bind-Value="_target" Label="Upload to" Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width:14rem">
@@ -57,10 +58,10 @@ else
         <MudAlert Severity="Severity.Info" Class="mt-3">No GGUF repositories match "@_searchedFor".</MudAlert>
     }
 
-    @if (_repos.Count > 0)
+    @if (VisibleRepos.Any())
     {
         <MudList T="HubRepo" Class="mt-2" Style="max-height:16rem;overflow:auto" Disabled="@(_searching || _loadingRepo is not null)" SelectedValueChanged="OnRepoSelected">
-            @foreach (var repo in _repos)
+            @foreach (var repo in VisibleRepos)
             {
                 <MudListItem T="HubRepo" Value="@repo">
                     <div class="d-flex align-center" style="gap:0.5rem">
@@ -77,6 +78,10 @@ else
             }
         </MudList>
     }
+    @if (HiddenTooBigRepos > 0)
+    {
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2">@HiddenReposCaption</MudText>
+    }
 
     @if (_loadingRepo is not null)
     {
@@ -88,7 +93,7 @@ else
         <MudSimpleTable Dense="true" Hover="true">
             <thead><tr><th>File</th><th>Size</th><th>Fit on PS5</th><th></th></tr></thead>
             <tbody>
-                @foreach (var file in _files.Where(f => f.IsLoadableModel))
+                @foreach (var file in _files.Where(f => f.IsLoadableModel && ShowFile(f)))
                 {
                     <tr>
                         <td>@file.Name</td>
@@ -184,6 +189,7 @@ else
     private string? _searchedFor;
     private string? _loadingRepo;
     private bool _searching;
+    private bool _hideTooBig;
     private int _requestVersion;
     private readonly HashSet<string> _enqueuing = [];
     private IReadOnlyList<string> _targets = [];
@@ -208,6 +214,7 @@ else
     protected override Task OnConsoleChangedAsync()
     {
         _query = string.Empty;
+        _hideTooBig = false;
         _error = null;
         _selectedRepo = null;
         _searchedFor = null;
@@ -486,6 +493,23 @@ else
     private async Task CancelAsync(Transfer transfer) => await Transfers.CancelAsync(transfer.Id, CancellationToken.None);
 
     private RepoFit? Hint(HubRepo repo) => _budget is null ? null : RepoFit.Estimate(repo.Parameters, repo.Architecture, _budget.Gib);
+
+    private IEnumerable<HubRepo> VisibleRepos => _hideTooBig
+        ? _repos.Where(repo => Hint(repo)?.Kind != RepoFitKind.TooBig)
+        : _repos;
+
+    private int HiddenTooBigRepos => _hideTooBig ? _repos.Count(repo => Hint(repo)?.Kind == RepoFitKind.TooBig) : 0;
+
+    private string HiddenReposCaption
+    {
+        get
+        {
+            var noun = HiddenTooBigRepos == 1 ? "repository" : "repositories";
+            return $"{HiddenTooBigRepos} {noun} hidden as too big for {ModelBudget.OneDecimal(_budget!.Gib)} GiB.";
+        }
+    }
+
+    private bool ShowFile(HubFile file) => !_hideTooBig || FitOf(file)?.Kind != HubFitKind.TooBig;
 
     private HubFileFit? FitOf(HubFile file) => _fits.TryGetValue(file.Name, out var fit) ? fit : null;
 
