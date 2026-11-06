@@ -195,8 +195,21 @@ public sealed class CompanionStatusServiceTests
         Assert.Equal(CompanionLifecycle.Disconnected, status.Lifecycle);
     }
 
+    [Fact]
+    public async Task A_slow_ftp_service_behind_an_upload_that_moves_data_stays_connected()
+    {
+        var service = new CompanionStatusService(_options, new HangingFileSystem { IsMovingData = true }, _llama, _sensors, new FakePayloadCatalog(), new FakeElfldrProbe(), _tracker, _time);
+
+        var status = await service.RefreshAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(15));
+
+        Assert.Equal(CompanionLifecycle.AppAvailableNoModel, status.Lifecycle);
+        Assert.False(status.Capabilities.Ftp);
+    }
+
     private sealed class HangingFileSystem : IPS5FileSystem
     {
+        public bool IsMovingData { get; init; }
+
         private static async Task<T> HangAsync<T>(CancellationToken token)
         {
             await Task.Delay(Timeout.Infinite, token);

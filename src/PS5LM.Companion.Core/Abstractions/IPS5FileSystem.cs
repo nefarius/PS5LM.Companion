@@ -55,4 +55,10 @@ public interface IPS5FileSystem
     Task MoveDirectoryAsync(string from, string to, CancellationToken cancellationToken);
 
     Task DeleteAsync(string path, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Whether an upload holds the connection and sent data recently. Other operations wait behind it, so a slow
+    /// answer then means a busy console, not a dead one.
+    /// </summary>
+    bool IsMovingData => false;
 }

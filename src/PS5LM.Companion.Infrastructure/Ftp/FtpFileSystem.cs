@@ -25,10 +25,17 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
     /// <summary>Waiting this long behind another operation is worth a log line.</summary>
     private static readonly TimeSpan SlowGateWait = TimeSpan.FromSeconds(1);
 
+    /// <summary>An upload that sent nothing for this long no longer counts as moving data.</summary>
+    private static readonly TimeSpan DataStallWindow = TimeSpan.FromSeconds(10);
+
     private readonly SemaphoreSlim _gate = new(1, 1);
     private Holder? _holder;
+    private long _lastDataAt;
 
     public void Dispose() => _gate.Dispose();
+
+    public bool IsMovingData =>
+        Interlocked.Read(ref _lastDataAt) is var last and not 0 && Stopwatch.GetElapsedTime(last) < DataStallWindow;
 
     public Task<bool> DirectoryExistsAsync(string path, CancellationToken cancellationToken) =>
         RunAsync(async client => path == "/" || await FindAsync(client, path, cancellationToken) is { Type: FtpObjectType.Directory }, cancellationToken);
@@ -119,8 +126,21 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
         RunAsync(
             async client =>
             {
-                var relay = progress is null ? null : new InlineProgress<FtpProgress>(p => progress.Report(p.TransferredBytes));
-                var status = await client.UploadStream(content, path, FtpRemoteExists.NoCheck, true, relay, cancellationToken);
+                var relay = new InlineProgress<FtpProgress>(p =>
+                {
+                    Interlocked.Exchange(ref _lastDataAt, Stopwatch.GetTimestamp());
+                    progress?.Report(p.TransferredBytes);
+                });
+                FtpStatus status;
+                try
+                {
+                    status = await client.UploadStream(content, path, FtpRemoteExists.NoCheck, true, relay, cancellationToken);
+                }
+                finally
+                {
+                    Interlocked.Exchange(ref _lastDataAt, 0);
+                }
+
                 EnsureUploaded(status, path);
 
                 // Chunk reports arrive synchronously (InlineProgress), so this final report cannot be overtaken.
@@ -387,7 +407,6 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
         holder is null ? "another operation" : $"{holder.Name} (running for {(long)Stopwatch.GetElapsedTime(holder.Started).TotalMilliseconds} ms)";
 
     private sealed record Holder(string Name, long Started);
-
     private static FtpConfig CreateConfig() => new()
     {
         ConnectTimeout = (int)ConnectTimeout.TotalMilliseconds,
