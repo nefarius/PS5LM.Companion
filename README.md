@@ -3,6 +3,7 @@
 [![Build status](https://github.com/nefarius/PS5LM.Companion/actions/workflows/ci.yml/badge.svg)](https://github.com/nefarius/PS5LM.Companion/actions/workflows/ci.yml)
 [![GitHub Release](https://img.shields.io/github/v/release/nefarius/PS5LM.Companion?include_prereleases)](https://github.com/nefarius/PS5LM.Companion/releases/latest)
 [![Docker Pulls](https://img.shields.io/docker/pulls/containinger/ps5lm-companion)](https://hub.docker.com/r/containinger/ps5lm-companion)
+[![Docker Image Version](https://img.shields.io/docker/v/containinger/ps5lm-companion)](https://hub.docker.com/r/containinger/ps5lm-companion)
 [![License: MIT](https://img.shields.io/github/license/nefarius/PS5LM.Companion)](LICENSE)
 [![Discord](https://img.shields.io/discord/346756263763378176.svg)](https://discord.nefarius.at/)
 
