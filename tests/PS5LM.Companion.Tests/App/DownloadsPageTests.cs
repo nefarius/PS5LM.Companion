@@ -166,6 +166,70 @@ public sealed class DownloadsPageTests
     }
 
     [Fact]
+    public async Task Hiding_models_that_are_too_big_keeps_likely_low_bit_and_repositories_without_a_size()
+    {
+        await using var page = await OpenAsync(new ScriptedHub
+        {
+            Search = _ => Task.FromResult<IReadOnlyList<HubRepo>>([
+                new HubRepo("acme/small", 10, 1_000_000_000, "llama"),
+                new HubRepo("acme/low", 10, 20_000_000_000, "llama"),
+                new HubRepo("acme/giant", 10, 200_000_000_000, "llama"),
+                new HubRepo("acme/unknown", 10),
+            ]),
+        });
+
+        TypeQuery(page, "llama");
+        await SearchButton(page).ClickAsync();
+        page.WaitForAssertion(() =>
+        {
+            Assert.Contains("acme/small", page.Markup, StringComparison.Ordinal);
+            Assert.Contains("acme/low", page.Markup, StringComparison.Ordinal);
+            Assert.Contains("acme/giant", page.Markup, StringComparison.Ordinal);
+            Assert.Contains("acme/unknown", page.Markup, StringComparison.Ordinal);
+        });
+
+        await page.Cut.InvokeAsync(() => page.Cut.Find(".mud-switch input").Change(true));
+        page.WaitForAssertion(() =>
+        {
+            Assert.Contains("acme/small", page.Markup, StringComparison.Ordinal);
+            Assert.Contains("acme/low", page.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("acme/giant", page.Markup, StringComparison.Ordinal);
+            Assert.Contains("acme/unknown", page.Markup, StringComparison.Ordinal);
+            Assert.Contains("1 repository hidden as too big for 11.4 GiB.", page.Markup, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public async Task Hiding_models_that_are_too_big_drops_that_file_and_keeps_the_smaller_one()
+    {
+        await using var page = await OpenAsync(new ScriptedHub
+        {
+            Search = _ => Task.FromResult<IReadOnlyList<HubRepo>>([new HubRepo("acme/mix", 10)]),
+            Files = _ => Task.FromResult<IReadOnlyList<HubFile>>([
+                new HubFile("huge.gguf", 20L << 30, null),
+                new HubFile("small.gguf", 1024, null),
+            ]),
+        });
+
+        TypeQuery(page, "mix");
+        await SearchButton(page).ClickAsync();
+        await page.Cut.Find(".mud-list-item").ClickAsync();
+        page.WaitForAssertion(() =>
+        {
+            Assert.Contains("huge.gguf", page.Markup, StringComparison.Ordinal);
+            Assert.Contains("small.gguf", page.Markup, StringComparison.Ordinal);
+            Assert.Contains("Too big", page.Markup, StringComparison.Ordinal);
+        });
+
+        await page.Cut.InvokeAsync(() => page.Cut.Find(".mud-switch input").Change(true));
+        page.WaitForAssertion(() =>
+        {
+            Assert.DoesNotContain("huge.gguf", page.Markup, StringComparison.Ordinal);
+            Assert.Contains("small.gguf", page.Markup, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
     public async Task A_file_that_is_too_big_stays_downloadable_and_the_assumed_budget_is_named()
     {
         await using var page = await OpenAsync(new ScriptedHub

@@ -12,7 +12,7 @@ Search results that include a parameter count get a rough chip, from the weights
 | low-bit only | Only a 2.7-bit quant (about Q2_K) fits; a 4.5-bit quant does not |
 | too big | Even a 2.7-bit quant plus the reserve is larger than the free memory |
 
-A repository with no parameter count has no chip. The chip is not a verdict for a particular file.
+A repository with no parameter count has no chip. The chip is not a verdict for a particular file. A switch, off by default, hides repositories whose chip says too big and files whose verdict is Too big, while likely fits, low-bit only, and repositories with no parameter count stay.
 
 Opening a repository checks each top-level model file:
 
