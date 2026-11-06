@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace PS5LM.Companion.Core.Setup;
 
 /// <summary>
@@ -70,8 +72,11 @@ public static class AutoloadListBuilder
         return string.Join(',', entries);
     }
 
-    /// <summary>False when <paramref name="list"/> is longer than <see cref="MaxListLength"/> and Payload Manager would reject the save.</summary>
-    public static bool Fits(string list) => list.Length <= MaxListLength;
+    /// <summary>
+    /// False when the UTF-8 size of <paramref name="list"/> is longer than <see cref="MaxListLength"/>. Payload Manager
+    /// measures the list after JSON decoding, which stores it as UTF-8 bytes.
+    /// </summary>
+    public static bool Fits(string list) => Encoding.UTF8.GetByteCount(list) <= MaxListLength;
 
     /// <summary><c>local/{id}</c> or <c>repo/{id}@{rev}</c>; null when the entry does not name a payload that way.</summary>
     private static string? PayloadId(string slot)

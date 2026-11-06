@@ -110,6 +110,7 @@ public sealed class SetupRunnerTests
         Assert.Equal(existing, harness.Autoload.List);
         Assert.False(harness.Autoload.Enabled);
         var line = Assert.Single(report.Lines, l => l.Component == "Autoload" && l.Status == SetupStatus.Fail);
+        Assert.Contains($"{AutoloadListBuilder.MaxListLength} bytes", line.Message, StringComparison.Ordinal);
         Assert.Contains("Shorten the existing autoload list", line.Message, StringComparison.Ordinal);
         Assert.Equal(2, report.ExitCode);
     }

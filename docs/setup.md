@@ -36,7 +36,7 @@ In a container, mount `/data` so downloads are cached, and pass `--upgrade-paylo
 3. Download missing payloads, verify the SHA-256, upload each as `<id>.elf` (slot `local/<id>`).
 4. Enable autoload with the payloads in order and a 3 s pause between every step, including entries you already had:
    elfldr, kstuff-lite, OnionHEN, ftpsrv, ShadowMountPlus, VoidShell, PS5 Web File Manager. A longer pause on a payload in
-   the manifest is kept. Payload Manager accepts at most 4094 characters. A longer list, pauses included, is left unchanged
+   the manifest is kept. Payload Manager accepts at most 4094 bytes. A longer list, pauses included, is left unchanged
    and the report says to shorten the existing entries. `update` does not rewrite this list; re-run `setup` on a console
    that was already prepared.
 5. Launch them in that order, skipping any that already run, waiting for each one's port or process. If elfldr does not come up,

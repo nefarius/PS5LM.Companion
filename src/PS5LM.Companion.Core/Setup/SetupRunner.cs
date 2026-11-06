@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Text;
 using System.Text.Json;
 
 using PS5LM.Companion.Core.Abstractions;
@@ -188,7 +189,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
             Add(
                 "Autoload",
                 SetupStatus.Fail,
-                $"The autoload list is {list.Length} characters. Payload Manager accepts at most {AutoloadListBuilder.MaxListLength}, so it was not saved. Shorten the existing autoload list and run setup again.");
+                $"The autoload list is {Encoding.UTF8.GetByteCount(list)} bytes. Payload Manager accepts at most {AutoloadListBuilder.MaxListLength} bytes, so it was not saved. Shorten the existing autoload list and run setup again.");
             return;
         }
 

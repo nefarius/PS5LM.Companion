@@ -105,6 +105,15 @@ public sealed class SetupBuildersTests
     }
 
     [Fact]
+    public void Autoload_list_limit_counts_utf8_bytes()
+    {
+        var withinChars = new string('é', 3000);
+
+        Assert.True(withinChars.Length < AutoloadListBuilder.MaxListLength);
+        Assert.False(AutoloadListBuilder.Fits(withinChars));
+    }
+
+    [Fact]
     public void Autoload_list_is_stable_across_repeats()
     {
         (string, int)[] ours = [("a", 0), ("b", 3000)];
