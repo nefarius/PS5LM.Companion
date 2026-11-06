@@ -19,7 +19,7 @@ Opening a repository checks each top-level model file:
 - Weights plus 1 GiB over the budget are **Too big** without reading the file. The text is the one the app uses: the weights alone need more than is free.
 - Anything smaller gets a range request for the first 16 MiB. The companion reads the GGUF metadata and runs the planner. A fit shows the context and the cache type, for example `Fits - 64k, q4_0`. The tooltip is the planner's line (`64k context, q4_0 cache: 11.2 of 11.4 GiB`).
 - A header that cannot be read, or a packing llama.cpp refuses (PrismML PQ2_0 and PTQ1_0), is **Unknown**.
-- A split model (`name-00001-of-00003.gguf`) is judged from the sum of its parts, on the first part. The other parts have no verdict.
+- A split model (`name-00001-of-00003.gguf`) is judged from the sum of its parts, on the first part, when every part is listed. A missing part is **Unknown** unless the parts that are listed are already too big. The other parts have no verdict.
 
 Two files are checked at a time. A result is remembered by the file's SHA-256, or by the repository and name when the hub has no hash, together with the budget it was planned against.
 

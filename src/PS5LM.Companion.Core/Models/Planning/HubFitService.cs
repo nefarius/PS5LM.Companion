@@ -73,10 +73,16 @@ public sealed class HubFitService
                 continue;
             }
 
-            var bytes = SplitGguf.WeightBytes(file, loadable);
-            if (ModelPlanner.WeightsAloneExceed(bytes, budget.Gib))
+            var weight = SplitGguf.WeightBytes(file, loadable);
+            if (ModelPlanner.WeightsAloneExceed(weight.Bytes, budget.Gib))
             {
                 yield return HubFileFit.TooBig(file.Name, "too big: the weights alone need more than is free");
+                continue;
+            }
+
+            if (!weight.Complete)
+            {
+                yield return HubFileFit.Unknown(file.Name, "not all parts of this split model are listed");
                 continue;
             }
 
@@ -169,7 +175,13 @@ public sealed class HubFitService
         ModelBudget budget,
         CancellationToken cancellationToken)
     {
-        var bytes = SplitGguf.WeightBytes(file, files);
+        var weight = SplitGguf.WeightBytes(file, files);
+        if (!weight.Complete)
+        {
+            return HubFileFit.Unknown(file.Name, "not all parts of this split model are listed");
+        }
+
+        var bytes = weight.Bytes;
         var key = CacheKey(repo, file, bytes, budget);
         if (_cache.TryGetValue(key, out var cached))
         {

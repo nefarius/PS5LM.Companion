@@ -43,6 +43,37 @@ public sealed class HubFitServiceTests
     }
 
     [Fact]
+    public async Task A_split_model_with_a_missing_part_is_unknown_unless_the_listed_parts_are_already_too_big()
+    {
+        var hub = new HeaderHub();
+        var service = new HubFitService(hub);
+        var missing = new[]
+        {
+            new HubFile("model-00001-of-00003.gguf", 1L << 30, "a"),
+            new HubFile("model-00003-of-00003.gguf", 1L << 30, "c"),
+        };
+
+        var fits = await Collect(service.CheckAsync("acme/m", missing, ModelBudget.Assumed(11.38)));
+
+        var first = fits.Single(fit => fit.Name == "model-00001-of-00003.gguf");
+        Assert.Equal(HubFitKind.Unknown, first.Kind);
+        Assert.Equal("not all parts of this split model are listed", first.Detail);
+        Assert.Equal(HubFitKind.NotApplicable, fits.Single(fit => fit.Name == "model-00003-of-00003.gguf").Kind);
+        Assert.Equal(0, hub.Headers);
+
+        var heavy = new[]
+        {
+            new HubFile("model-00001-of-00003.gguf", 8L << 30, "a"),
+            new HubFile("model-00002-of-00003.gguf", 8L << 30, "b"),
+        };
+        var heavyFits = await Collect(service.CheckAsync("acme/m", heavy, ModelBudget.Assumed(11.38)));
+        var heavyFirst = heavyFits.Single(fit => fit.Name == "model-00001-of-00003.gguf");
+        Assert.Equal(HubFitKind.TooBig, heavyFirst.Kind);
+        Assert.Equal("too big: the weights alone need more than is free", heavyFirst.Detail);
+        Assert.Equal(0, hub.Headers);
+    }
+
+    [Fact]
     public async Task Two_header_checks_run_at_a_time_and_a_repeat_uses_the_hash()
     {
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
