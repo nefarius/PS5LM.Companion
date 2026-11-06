@@ -1,5 +1,7 @@
 using System.Text.Json.Serialization;
 
+using PS5LM.Companion.Core.Models.Planning;
+
 using Refit;
 
 namespace PS5LM.Companion.Infrastructure.Hub;
@@ -7,7 +9,7 @@ namespace PS5LM.Companion.Infrastructure.Hub;
 /// <summary>The parts of the Hugging Face HTTP API the companion needs.</summary>
 public interface IHuggingFaceApi
 {
-    [Get("/api/models")]
+    [Get("/api/models?expand=gguf&expand=downloads")]
     Task<IReadOnlyList<HfModelSummary>> SearchAsync(
         string search,
         string filter,
@@ -22,7 +24,14 @@ public interface IHuggingFaceApi
 
 public sealed record HfModelSummary(
     [property: JsonPropertyName("id")] string? Id,
-    [property: JsonPropertyName("downloads")] long Downloads);
+    [property: JsonPropertyName("downloads")] long Downloads,
+    [property: JsonPropertyName("gguf")] HfGguf? Gguf = null);
+
+/// <summary>The GGUF block Hugging Face adds when a search asks for <c>expand=gguf</c>. The chat template is ignored.</summary>
+public sealed record HfGguf(
+    [property: JsonPropertyName("total")] long? Total,
+    [property: JsonPropertyName("architecture")] string? Architecture,
+    [property: JsonPropertyName("context_length")] long? ContextLength);
 
 public sealed record HfTreeEntry(
     [property: JsonPropertyName("type")] string? Type,
@@ -43,4 +52,9 @@ public sealed class HuggingFaceOptions
     public string? Token { get; set; }
 
     public string BaseUrl { get; set; } = "https://huggingface.co";
+
+    /// <summary>
+    /// GiB assumed free when a console's <c>app.log</c> has no GPU line. 11.38 is the memory PS5LM's planner was calibrated at.
+    /// </summary>
+    public double DefaultBudgetGib { get; set; } = ModelBudget.CalibratedGib;
 }

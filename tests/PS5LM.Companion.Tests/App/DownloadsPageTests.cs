@@ -8,6 +8,7 @@ using PS5LM.Companion.App.Components.Pages;
 using PS5LM.Companion.Core.Consoles;
 using PS5LM.Companion.Core.Discovery;
 using PS5LM.Companion.Core.Domain;
+using PS5LM.Companion.Core.Models.Planning;
 using PS5LM.Companion.Core.Transfers;
 using PS5LM.Companion.Tests.Support;
 
@@ -149,6 +150,70 @@ public sealed class DownloadsPageTests
         });
     }
 
+    [Fact]
+    public async Task A_repository_chip_says_when_the_weights_cannot_fit()
+    {
+        await using var page = await OpenAsync(new ScriptedHub
+        {
+            Search = _ => Task.FromResult<IReadOnlyList<HubRepo>>([new HubRepo("acme/giant", 10, 200_000_000_000, "llama")]),
+        });
+
+        TypeQuery(page, "giant");
+        await SearchButton(page).ClickAsync();
+
+        page.WaitForAssertion(() => Assert.Contains("too big", page.Markup, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_file_that_is_too_big_stays_downloadable_and_the_assumed_budget_is_named()
+    {
+        await using var page = await OpenAsync(new ScriptedHub
+        {
+            Search = _ => Task.FromResult<IReadOnlyList<HubRepo>>([new HubRepo("acme/giant", 10)]),
+            Files = _ => Task.FromResult<IReadOnlyList<HubFile>>([new HubFile("huge.gguf", 20L << 30, null)]),
+        });
+
+        TypeQuery(page, "giant");
+        await SearchButton(page).ClickAsync();
+        await page.Cut.Find(".mud-list-item").ClickAsync();
+
+        page.WaitForAssertion(() =>
+        {
+            Assert.Contains("Too big", page.Markup, StringComparison.Ordinal);
+            Assert.Contains("assumed 11.4 GiB", page.Markup, StringComparison.Ordinal);
+        });
+        var download = page.Cut.FindAll("button").Single(button => button.TextContent.Contains("Download to console", StringComparison.Ordinal));
+        Assert.False(download.HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public async Task A_file_whose_header_fits_shows_the_context_it_would_get()
+    {
+        var header = new GgufBuilder()
+            .Kv("general.architecture", "llama")
+            .Kv("general.name", "Llama 3")
+            .Kv("llama.block_count", 4u)
+            .Kv("llama.attention.head_count", 4u)
+            .Kv("llama.attention.head_count_kv", 4u)
+            .Kv("llama.embedding_length", 128u)
+            .Kv("llama.context_length", 8192u)
+            .Bytes();
+        await using var page = await OpenAsync(new ScriptedHub
+        {
+            Search = _ => Task.FromResult<IReadOnlyList<HubRepo>>([new HubRepo("acme/llama", 10)]),
+            Files = _ => Task.FromResult<IReadOnlyList<HubFile>>([new HubFile("llama-3b.gguf", 100 * 1024 * 1024, "abc")]),
+            Header = (_, _, _) => Task.FromResult<Stream>(new MemoryStream(header)),
+        });
+
+        TypeQuery(page, "llama");
+        await SearchButton(page).ClickAsync();
+        await page.Cut.Find(".mud-list-item").ClickAsync();
+
+        page.WaitForAssertion(() => Assert.Contains("Fits - 8k, f16", page.Markup, StringComparison.Ordinal));
+        var download = page.Cut.FindAll("button").Single(button => button.TextContent.Contains("Download to console", StringComparison.Ordinal));
+        Assert.False(download.HasAttribute("disabled"));
+    }
+
     private static Task<OpenedPage> OpenAsync(ScriptedHub hub)
     {
         var runtime = new ConsoleRuntime(
@@ -162,6 +227,7 @@ public sealed class DownloadsPageTests
         ctx.JSInterop.Mode = JSRuntimeMode.Loose;
         ctx.Services.AddSingleton<IConsoleRegistry>(registry);
         ctx.Services.AddSingleton<IModelHub>(hub);
+        ctx.Services.AddSingleton(new HubFitService(hub));
         ctx.Services.AddSingleton(new TransferService(hub, registry, new MemoryTransferStore(), new TransferOptions(), TimeProvider.System));
         ctx.Services.AddMudServices();
 
@@ -203,6 +269,12 @@ public sealed class DownloadsPageTests
         public Task<IReadOnlyList<HubRepo>> SearchAsync(string query, CancellationToken cancellationToken) => Search(query);
 
         public Task<IReadOnlyList<HubFile>> ListFilesAsync(string repo, CancellationToken cancellationToken) => Files(repo);
+
+        public Func<string, string, CancellationToken, Task<Stream>> Header { get; init; } =
+            (_, _, _) => Task.FromResult<Stream>(new MemoryStream());
+
+        public Task<Stream> OpenHeaderAsync(string repo, string fileName, CancellationToken cancellationToken) =>
+            Header(repo, fileName, cancellationToken);
 
         public Task DownloadAsync(
             string repo,

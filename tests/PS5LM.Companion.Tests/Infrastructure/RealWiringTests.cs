@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 using PS5LM.Companion.Core.Consoles;
 using PS5LM.Companion.Core.Domain;
+using PS5LM.Companion.Core.Models.Planning;
 using PS5LM.Companion.Core.Status;
 using PS5LM.Companion.Core.Transfers;
 using PS5LM.Companion.Infrastructure;
@@ -62,6 +63,7 @@ public sealed class RealWiringTests
         await using var provider = Build();
 
         Assert.NotNull(provider.GetRequiredService<IModelHub>());
+        Assert.NotNull(provider.GetRequiredService<HubFitService>());
         Assert.NotNull(provider.GetRequiredService<ITransferStore>());
     }
 }

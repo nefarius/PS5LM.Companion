@@ -24,7 +24,9 @@ public sealed record HubFile(string Name, long SizeBytes, string? Sha256)
         && !Name.StartsWith("imatrix", StringComparison.OrdinalIgnoreCase);
 }
 
-public sealed record HubRepo(string Id, long Downloads);
+/// <param name="Parameters">Parameter count from the hub's GGUF metadata, when the search returned it.</param>
+/// <param name="Architecture">GGUF architecture from that metadata, when the search returned it.</param>
+public sealed record HubRepo(string Id, long Downloads, long? Parameters = null, string? Architecture = null);
 
 public sealed record TransferRequest(string ConsoleId, string Repo, string FileName, string? TargetRoot);
 
@@ -71,6 +73,13 @@ public interface IModelHub
     Task<IReadOnlyList<HubRepo>> SearchAsync(string query, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<HubFile>> ListFilesAsync(string repo, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The first bytes of a repository file, at most 16 MiB, enough for the GGUF metadata.
+    /// The caller disposes the stream, which stops the download. Throws <see cref="HubUnavailableException"/>
+    /// when the hub refuses or does not answer.
+    /// </summary>
+    Task<Stream> OpenHeaderAsync(string repo, string fileName, CancellationToken cancellationToken);
 
     /// <summary>
     /// Downloads to <paramref name="destinationPath"/>, resuming a partial file already there, and reports the

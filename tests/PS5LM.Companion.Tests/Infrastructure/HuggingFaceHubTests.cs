@@ -37,6 +37,20 @@ public sealed class HuggingFaceHubTests : IDisposable
         Assert.Contains("filter=gguf", query);
         Assert.Contains("sort=downloads", query);
         Assert.Contains("limit=30", query);
+        Assert.Contains("expand=gguf", query);
+        Assert.Contains("expand=downloads", query);
+    }
+
+    [Fact]
+    public async Task Search_keeps_the_parameter_count_and_architecture()
+    {
+        var handler = new StubHandler(_ => Json("""
+            [{"id":"a/b-GGUF","downloads":5,"gguf":{"total":1234,"architecture":"llama","context_length":8192,"chat_template":"ignored"}}]
+            """));
+
+        var repos = await Hub(handler).SearchAsync("qwen", CancellationToken.None);
+
+        Assert.Equal([new HubRepo("a/b-GGUF", 5, 1234, "llama")], repos);
     }
 
     [Theory]
@@ -209,6 +223,96 @@ public sealed class HuggingFaceHubTests : IDisposable
         await Hub(handler).DownloadAsync("a/b", "m.gguf", path, new Progress<long>(b => reported = b), CancellationToken.None);
 
         Assert.Equal(FakeHub.Content, await File.ReadAllBytesAsync(path));
+    }
+
+    [Fact]
+    public async Task A_header_request_asks_for_the_first_16_mib_and_stops_there()
+    {
+        var body = new EndlessStream();
+        var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.PartialContent)
+        {
+            Content = new StreamContent(body),
+        });
+
+        await using var stream = await Hub(handler).OpenHeaderAsync("a/b", "m.gguf", CancellationToken.None);
+        var buffer = new byte[64 * 1024];
+        long read = 0;
+        while (true)
+        {
+            var n = await stream.ReadAsync(buffer);
+            if (n == 0)
+            {
+                break;
+            }
+
+            read += n;
+        }
+
+        Assert.Equal(HuggingFaceHub.HeaderBytes, read);
+        Assert.Equal(HuggingFaceHub.HeaderBytes, body.Served);
+        Assert.Equal(new RangeHeaderValue(0, HuggingFaceHub.HeaderBytes - 1).ToString(), handler.Requests.Single().Headers.Range!.ToString());
+        Assert.Equal("/a/b/resolve/main/m.gguf", handler.Requests.Single().RequestUri!.AbsolutePath);
+    }
+
+    [Fact]
+    public async Task A_header_request_sends_the_token_for_a_gated_repository()
+    {
+        var inner = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.PartialContent) { Content = new ByteArrayContent([1, 2, 3]) });
+        var auth = new HuggingFaceAuthHandler(Microsoft.Extensions.Options.Options.Create(new HuggingFaceOptions { Token = "hf_secret" }))
+        {
+            InnerHandler = inner,
+        };
+        var hub = new HuggingFaceHub(
+            RestService.For<IHuggingFaceApi>(new HttpClient(inner) { BaseAddress = new Uri("https://hf.test") }),
+            new StubHttpClientFactory(auth));
+
+        await using var stream = await hub.OpenHeaderAsync("owner/gated", "m.gguf", CancellationToken.None);
+        Assert.Equal(3, stream.Read(new byte[8], 0, 8));
+
+        Assert.Equal("Bearer", inner.Requests.Single().Headers.Authorization?.Scheme);
+        Assert.Equal("hf_secret", inner.Requests.Single().Headers.Authorization?.Parameter);
+    }
+
+    [Fact]
+    public async Task A_refused_header_is_reported_as_unavailable()
+    {
+        var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized));
+
+        await Assert.ThrowsAsync<HubUnavailableException>(() => Hub(handler).OpenHeaderAsync("a/b", "m.gguf", CancellationToken.None));
+    }
+
+    private sealed class EndlessStream : Stream
+    {
+        public long Served { get; private set; }
+
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override int Read(byte[] buffer, int offset, int count) => ReadAsync(buffer.AsMemory(offset, count)).AsTask().GetAwaiter().GetResult();
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            var n = Math.Min(buffer.Length, 4096);
+            Served += n;
+            return new ValueTask<int>(n);
+        }
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     [Fact]

@@ -38,6 +38,9 @@ internal sealed class FakeHub : IModelHub
             ? throw new HubUnavailableException("hub down")
             : Task.FromResult<IReadOnlyList<HubFile>>(Files.TryGetValue(repo, out var files) ? files : []);
 
+    public Task<Stream> OpenHeaderAsync(string repo, string fileName, CancellationToken cancellationToken) =>
+        Task.FromResult<Stream>(new MemoryStream(ServedContent ?? Content, writable: false));
+
     public async Task DownloadAsync(string repo, string fileName, string destinationPath, IProgress<long>? progress, CancellationToken cancellationToken)
     {
         if (DownloadGate is { } gate)

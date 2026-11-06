@@ -36,7 +36,7 @@ works before any model exists. It needs no changes to either app.
 - Lifecycle-aware status: disconnected, app available without a model, loading, ready, generating.
 - Lists models on the console; loads and unloads a model through the apps' command files, and deletes one GGUF at a time.
 - Sets whether the app loads a model at launch, and which model (`auto_load` and `default_model` in `settings.json`). Every other setting is left as it is. The change applies the next time the app starts. See [docs/auto-load.md](docs/auto-load.md).
-- Downloads GGUF models from Hugging Face on the companion and uploads them to the console.
+- Downloads GGUF models from Hugging Face on the companion and uploads them to the console. The Downloads page estimates whether a result fits the console; see [docs/downloads.md](docs/downloads.md).
 - Optional inference gateway: one OpenAI/Anthropic-compatible endpoint that load-balances consoles running the same model.
 - Checks whether PS5LM or PS5LM Plus is installed and running, and launches it, through the required [nefarius/voidshell](https://github.com/nefarius/voidshell) fork.
 - Live telemetry from llama-server (port 8081) and ps5-exporter (port 9100) when they are available.
@@ -106,6 +106,7 @@ stored in `data/consoles.json` and apply without a restart. A stored console who
 | `Companion:AllowAnonymous` | false | Allow a network listener without a token (trusted networks only) |
 | `Companion:DataDirectory` | `data` | Download cache, transfer list and `consoles.json` (`/data` in the Docker image; mount a volume) |
 | `HuggingFace:Token` | none | Access token, only for gated or private repositories |
+| `HuggingFace:DefaultBudgetGib` | 11.38 | GiB assumed free when `app.log` has no GPU memory line. The fit check uses that line when the app wrote one; see [docs/downloads.md](docs/downloads.md) |
 | `Inference:Pools:{alias}:Model` / `Consoles:{n}` | none | Opt-in [inference gateway](#inference-gateway): the model and the consoles that serve it |
 | `Inference:Pools:{alias}:AlternateNames:{n}` | none | Extra `model` names (exact, or a prefix ending in `*`) that reach the pool |
 | `Inference:MaxConcurrentPerConsole` / `MaxQueuedRequests` / `QueueTimeoutSeconds` | 1 / 16 / 30 | Requests per console at once; waiting requests across all pools; how long a request waits (see [Inference gateway](#inference-gateway)) |
@@ -159,7 +160,7 @@ pages, and the top bar names the console the page shows. Every console keeps bei
 
 - **Status** (`/consoles/{id}`): lifecycle, loaded model, generation speed, sensors, drive space, and the payload dependencies. Launch sends an installed payload through Payload Manager. The result confirms the file was transferred. Whether kstuff-lite, etaHEN and ShadowMountPlus are running comes from the process list.
 - **Models** (`/consoles/{id}/models`): models on the console with Load, Unload and Delete. Delete removes the selected file; see [Deleting models](docs/model-deletion.md).
-- **Downloads** (`/consoles/{id}/downloads`): search Hugging Face, queue a file, watch download and upload progress, cancel.
+- **Downloads** (`/consoles/{id}/downloads`): search Hugging Face, see whether a repository and each file are likely to fit, queue a file, watch download and upload progress, cancel. See [Whether a model fits](docs/downloads.md).
 - **Inference** (`/inference`): add, edit, rename and delete pools, see which consoles can serve each, run the self-test and benchmark, and download a pool's model to consoles that lack it.
 - **Manage consoles** (`/settings/consoles`): add, edit, rename and remove consoles, scan the local network for them, and test settings before saving. A scan confirms over FTP, and through VoidShell on port 7007 when FTP is closed or the login fails (including a console that has neither app installed yet). When reverse DNS yields a name that points back at the address, that name is offered and the address can still be chosen.
 
