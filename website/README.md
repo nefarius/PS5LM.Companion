@@ -12,7 +12,8 @@ The verified environment is Debian 12 Linux (x86_64), with **Ruby 3.3.4** and
 build; on Windows, use Debian in WSL2. The repository does not separately pin a
 Ruby or Bundler version. `Gemfile` selects `github-pages ~> 232`; the verified
 image contains `github-pages 232` and Jekyll 3.10.0. The tracked `Gemfile.lock`
-locks the full dependency set for this Linux x86_64 environment.
+locks the full dependency set for this Linux x86_64 environment, with additional
+variants for Intel/Apple Silicon macOS and ARM64 Linux (glibc) local previews.
 
 For a native install, provide Ruby development headers matching your interpreter,
 GCC/G++, and Make (`build-essential` on Debian), plus `pkg-config`, `zlib1g-dev`,
