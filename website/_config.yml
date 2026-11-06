@@ -1,0 +1,16 @@
+title: PS5LM Companion
+description: Manage models, monitor your consoles, and serve local AI from a PS5 — all from your browser.
+url: https://nefarius.github.io
+baseurl: /PS5LM.Companion
+repository_url: https://github.com/nefarius/PS5LM.Companion
+markdown: kramdown
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge
+strict_front_matter: true
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - README.md
+  - vendor
+  - .bundle
