@@ -6,18 +6,34 @@ external fonts, or runtime service is required.
 
 ## Preview locally
 
-Install Ruby and Bundler (WSL is recommended on Windows), then from the repository root:
+The verified environment is Debian 12 Linux (x86_64), with **Ruby 3.3.4** and
+**Bundler 2.5.11**, as shipped in the CI image
+`ghcr.io/actions/jekyll-build-pages:v1.0.13`. Use these versions to reproduce the
+build; on Windows, use Debian in WSL2. The repository does not separately pin a
+Ruby or Bundler version. `Gemfile` selects `github-pages ~> 232`; the verified
+image contains `github-pages 232` and Jekyll 3.10.0.
+
+For a native install, provide Ruby development headers matching your interpreter,
+GCC/G++, and Make (`build-essential` on Debian), plus `pkg-config`, `zlib1g-dev`,
+`libffi-dev`, and `patch`. The gem set includes native extensions such as
+`commonmarker`, `eventmachine`, and `http_parser.rb`; Nokogiri and ffi may also
+need compilation when a prebuilt gem is unavailable. See the
+[Jekyll Linux prerequisites](https://jekyllrb.com/docs/installation/ubuntu/).
+
+After installing Ruby 3.3.4 and the build prerequisites, install Bundler and run
+these commands from the repository root:
 
 ```sh
 cd website
-bundle install
-bundle exec jekyll serve --host 127.0.0.1
+gem install bundler -v 2.5.11
+bundle _2.5.11_ install
+bundle _2.5.11_ exec jekyll serve --host 127.0.0.1
 ```
 
 Open <http://127.0.0.1:4000/PS5LM.Companion/>. For a production build:
 
 ```sh
-JEKYLL_ENV=production bundle exec jekyll build
+JEKYLL_ENV=production bundle _2.5.11_ exec jekyll build
 ```
 
 `github-pages` supplies the same Jekyll dependency set as the Pages build action.

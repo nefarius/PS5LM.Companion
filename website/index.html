@@ -12,11 +12,11 @@ layout: default
     <img src="{{ '/assets/images/overview.png' | relative_url }}" alt="Companion overview showing two consoles, their connection status, and loaded models" width="2549" height="1352" fetchpriority="high">
     <figcaption>One dashboard. Every console on your network.</figcaption>
   </figure>
-  <div class="platform-strip"><span>Built for your setup</span><span>Docker</span><span>Linux</span><span>Windows</span><span>macOS</span><span>Raspberry Pi</span></div>
+  <div class="platform-strip"><span>Built for your setup</span><span>Docker</span><span>Linux</span><span>Windows</span><span>macOS</span><span>Raspberry Pi (64-bit OS)</span></div>
 </section>
 
 <section class="section wrap" id="features" aria-labelledby="features-title">
-  <div class="section-heading"><p class="eyebrow">Less TV time. More control.</p><h2 id="features-title">Everything within reach.</h2><p>Run the companion on a PC, NAS, or Raspberry Pi. Open your browser and take it from there.</p></div>
+  <div class="section-heading"><p class="eyebrow">Less TV time. More control.</p><h2 id="features-title">Everything within reach.</h2><p>Run the companion on a PC, NAS, or Raspberry Pi with a 64-bit OS. Open your browser and take it from there.</p></div>
   <div class="feature-grid">
     <article><span class="feature-number">01 / CONSOLES</span><h3>One or a whole collection.</h3><p>Add consoles, discover them on your network, and see which ones are ready, loading, or generating. Each has its own settings and transfer queue.</p></article>
     <article><span class="feature-number">02 / MODELS</span><h3>Make room for the next idea.</h3><p>Load and unload models, delete individual GGUF files, and choose the model that loads when the app starts.</p></article>
@@ -37,6 +37,7 @@ layout: default
 <section class="start-section" id="start" aria-labelledby="start-title">
   <div class="wrap">
     <div class="section-heading"><p class="eyebrow">Bring your own console</p><h2 id="start-title">Up and running with Docker.</h2><p>You’ll need a jailbroken PS5 with PS5LM or PS5LM Plus, ftpsrv, and the pinned nefarius VoidShell fork. The setup guide covers preparing a fresh console.</p></div>
+    <p>The Docker image supports <code>linux/amd64</code> and <code>linux/arm64</code> only. On a Raspberry Pi, check your OS architecture before installing: a 64-bit OS is required; 32-bit ARM is not supported.</p>
     <div class="quickstart">
       <div><span class="step-label">01 / START THE COMPANION</span><h3>A small container.<br>A useful companion.</h3><p>Replace the IP address with your console’s address and <code>unique-secret</code> with your own access token. Keep the data volume for settings and downloads.</p><a class="text-link" href="https://hub.docker.com/r/containinger/ps5lm-companion">View on Docker Hub <span aria-hidden="true">↗</span></a></div>
       <div class="terminal"><div class="terminal-label">TERMINAL / DOCKER</div><pre><code>docker run -d --pull always \
@@ -47,7 +48,7 @@ layout: default
   containinger/ps5lm-companion</code></pre></div>
     </div>
     <div class="next-steps"><div><span class="step-label">02 / OPEN YOUR BROWSER</span><h3>Meet your dashboard.</h3><p>Open <code>http://localhost:8080</code> on the host, or use its network address from another device. Sign in with the access token you chose.</p></div><div><span class="step-label">03 / MAKE IT YOURS</span><h3>Add a model. Start exploring.</h3><p>Check console status, browse models, and queue your first transfer. Add more consoles from Manage consoles whenever you’re ready.</p></div></div>
-    <p class="network-note">Use a trusted network, or put the companion behind a TLS reverse proxy: the access token travels in clear text over plain HTTP.</p>
+    <p class="network-note">Use a trusted network, or put the companion behind a TLS reverse proxy: the access token travels in clear text over plain HTTP. With a reverse proxy, restrict direct access to port 8080 so clients must use HTTPS through the proxy. If the proxy can reach the host’s loopback interface, publish the port with <code>-p 127.0.0.1:8080:8080</code> instead; otherwise restrict port 8080 to the proxy using firewall or network rules.</p>
   </div>
 </section>
 
