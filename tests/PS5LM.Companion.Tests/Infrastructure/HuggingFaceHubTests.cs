@@ -226,6 +226,45 @@ public sealed class HuggingFaceHubTests : IDisposable
     }
 
     [Fact]
+    public async Task A_stalled_header_fails_with_an_io_error_instead_of_blocking_forever()
+    {
+        var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new StalledStream()) });
+        var hub = new HuggingFaceHub(RestService.For<IHuggingFaceApi>(new HttpClient(handler) { BaseAddress = new Uri("https://hf.test") }), new StubHttpClientFactory(handler))
+        {
+            IdleTimeout = TimeSpan.FromMilliseconds(100),
+        };
+
+        await using var stream = await hub.OpenHeaderAsync("a/b", "m.gguf", CancellationToken.None);
+        await Assert.ThrowsAsync<IOException>(async () =>
+        {
+            var buffer = new byte[16];
+            while (await stream.ReadAsync(buffer) > 0)
+            {
+            }
+        });
+    }
+
+    [Fact]
+    public async Task Caller_cancellation_of_a_stalled_header_is_still_cancellation()
+    {
+        var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new StalledStream()) });
+        var hub = new HuggingFaceHub(RestService.For<IHuggingFaceApi>(new HttpClient(handler) { BaseAddress = new Uri("https://hf.test") }), new StubHttpClientFactory(handler))
+        {
+            IdleTimeout = TimeSpan.FromSeconds(60),
+        };
+        await using var stream = await hub.OpenHeaderAsync("a/b", "m.gguf", CancellationToken.None);
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+        {
+            var buffer = new byte[16];
+            while (await stream.ReadAsync(buffer, cts.Token) > 0)
+            {
+            }
+        });
+    }
+
+    [Fact]
     public async Task A_header_request_asks_for_the_first_16_mib_and_stops_there()
     {
         var body = new EndlessStream();

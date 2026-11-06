@@ -67,7 +67,7 @@ public sealed class HuggingFaceHub(IHuggingFaceApi api, IHttpClientFactory httpC
         try
         {
             var body = await response.Content.ReadAsStreamAsync(cancellationToken);
-            return new BoundedResponseStream(http, response, body, HeaderBytes);
+            return new BoundedResponseStream(http, response, body, HeaderBytes, IdleTimeout);
         }
         catch
         {
@@ -183,9 +183,9 @@ public sealed class HuggingFaceHub(IHuggingFaceApi api, IHttpClientFactory httpC
 
     /// <summary>
     /// The response body, capped so a server that ignores <c>Range</c> cannot stream a whole model, and disposed
-    /// together with the client that owns the connection.
+    /// together with the client that owns the connection. Each read uses the same idle timeout as a download.
     /// </summary>
-    private sealed class BoundedResponseStream(HttpClient client, HttpResponseMessage response, Stream inner, long limit) : Stream
+    private sealed class BoundedResponseStream(HttpClient client, HttpResponseMessage response, Stream inner, long limit, TimeSpan idleTimeout) : Stream
     {
         private long _remaining = limit;
 
@@ -214,7 +214,18 @@ public sealed class HuggingFaceHub(IHuggingFaceApi api, IHttpClientFactory httpC
             }
 
             var slice = buffer[..(int)Math.Min(buffer.Length, _remaining)];
-            var read = await inner.ReadAsync(slice, cancellationToken);
+            using var idle = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            idle.CancelAfter(idleTimeout);
+            int read;
+            try
+            {
+                read = await inner.ReadAsync(slice, idle.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                throw new IOException($"The download stalled: no data for {idleTimeout.TotalSeconds:0} seconds.");
+            }
+
             _remaining -= read;
             return read;
         }
