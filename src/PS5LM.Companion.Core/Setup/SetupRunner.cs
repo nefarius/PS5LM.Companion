@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Text;
 using System.Text.Json;
 
 using PS5LM.Companion.Core.Abstractions;
@@ -178,11 +179,20 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         return resolved;
     }
 
-    // Step 4: autoload on, our payloads in order with pauses after the heavy ones.
+    // Step 4: autoload on, our payloads in order with a pause between every step.
     private async Task ConfigureAutoloadAsync(List<(ManifestPayload Payload, ManagedPayload Stored)> resolved, CancellationToken cancellationToken)
     {
         var current = await services.Manager.GetAutoloadAsync(cancellationToken);
         var list = AutoloadListBuilder.Build(resolved.Select(r => (r.Stored.LaunchTarget, r.Payload.DelayAfterMs)), current?.List);
+        if (!AutoloadListBuilder.Fits(list))
+        {
+            Add(
+                "Autoload",
+                SetupStatus.Fail,
+                $"The autoload list is {Encoding.UTF8.GetByteCount(list)} bytes. Payload Manager accepts at most {AutoloadListBuilder.MaxListLength} bytes, so it was not saved. Shorten the existing autoload list and run setup again.");
+            return;
+        }
+
         Ui.Info("Enabling autoload: " + list);
         await services.Manager.SetAutoloadAsync(true, list, cancellationToken);
         var check = await services.Manager.GetAutoloadAsync(cancellationToken);

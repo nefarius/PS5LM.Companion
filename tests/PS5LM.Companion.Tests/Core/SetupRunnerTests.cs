@@ -1,3 +1,5 @@
+using System.Text;
+
 using PS5LM.Companion.Core.Setup;
 using PS5LM.Companion.Tests.Support;
 
@@ -24,7 +26,7 @@ public sealed class SetupRunnerTests
 
         Assert.Equal(0, report.ExitCode);
         Assert.Equal(
-            "local/elfldr,local/kstuff-lite,!3000,local/onionhen,!3000,local/ftpsrv,local/shadowmountplus,local/voidshell,local/ps5-web-file-manager",
+            "local/elfldr,!3000,local/kstuff-lite,!3000,local/onionhen,!3000,local/ftpsrv,!3000,local/shadowmountplus,!3000,local/voidshell,!3000,local/ps5-web-file-manager",
             harness.Autoload.List);
         Assert.True(harness.Autoload.Enabled);
         Assert.Equal(
@@ -95,7 +97,45 @@ public sealed class SetupRunnerTests
 
         await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
 
-        Assert.EndsWith(",local/ps5-web-file-manager,local/mine", harness.Autoload.List);
+        Assert.EndsWith(",local/ps5-web-file-manager,!3000,local/mine", harness.Autoload.List);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Autoload_list_longer_than_payload_manager_accepts_is_not_saved(bool multibyte)
+    {
+        using var harness = Ready();
+        var existing = multibyte
+            ? MultibyteEntryOverTheByteLimit(harness)
+            : "local/" + new string('x', AutoloadListBuilder.MaxListLength);
+        harness.Autoload = new(false, existing);
+
+        var report = await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
+
+        Assert.Equal(existing, harness.Autoload.List);
+        Assert.False(harness.Autoload.Enabled);
+        var line = Assert.Single(report.Lines, l => l.Component == "Autoload" && l.Status == SetupStatus.Fail);
+        Assert.Contains($"{AutoloadListBuilder.MaxListLength} bytes", line.Message, StringComparison.Ordinal);
+        Assert.Contains("Shorten the existing autoload list", line.Message, StringComparison.Ordinal);
+        Assert.Equal(2, report.ExitCode);
+    }
+
+    /// <summary>
+    /// An existing entry whose finished list is still within <see cref="AutoloadListBuilder.MaxListLength"/> characters
+    /// and past it in UTF-8 bytes. A character-count check would save this list.
+    /// </summary>
+    private static string MultibyteEntryOverTheByteLimit(SetupHarness harness)
+    {
+        var ours = harness.Manifest.Payloads.Select(p => ($"local/{p.Id}", p.DelayAfterMs));
+        var prefix = AutoloadListBuilder.Build(ours, null);
+        var count = (AutoloadListBuilder.MaxListLength - Encoding.UTF8.GetByteCount(prefix) - 1) / 2 + 1;
+        var existing = new string('é', count);
+        var built = AutoloadListBuilder.Build(ours, existing);
+
+        Assert.True(built.Length <= AutoloadListBuilder.MaxListLength);
+        Assert.False(AutoloadListBuilder.Fits(built));
+        return existing;
     }
 
     [Fact]

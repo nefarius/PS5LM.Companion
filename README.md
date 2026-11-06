@@ -125,8 +125,8 @@ The companion refuses to start on a non-loopback address without `Companion:Acce
 
 `setup` is a one-shot command for a console that only runs [PS5 Payload Manager](https://github.com/itsPLK/ps5-payload-manager) on
 port 8084. It does not start the dashboard. It upgrades Payload Manager if needed, uploads the payloads (elfldr, kstuff-lite,
-OnionHEN, ftpsrv, ShadowMountPlus, VoidShell with its `index.html`, PS5 Web File Manager), enables autoload with a 3 s pause after
-kstuff-lite and after OnionHEN, launches them, installs PS5LM or PS5LM Plus for ShadowMountPlus, and prints a report. Downloads
+OnionHEN, ftpsrv, ShadowMountPlus, VoidShell with its `index.html`, PS5 Web File Manager), enables autoload with a 3 s pause between
+every payload, launches them, installs PS5LM or PS5LM Plus for ShadowMountPlus, and prints a report. Downloads
 come from a pinned manifest with SHA-256 checksums. Details: [docs/setup.md](docs/setup.md).
 
 ```sh
