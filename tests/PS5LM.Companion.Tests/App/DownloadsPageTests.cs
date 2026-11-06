@@ -1,6 +1,7 @@
 using Bunit;
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 
 using MudBlazor.Services;
 
@@ -214,26 +215,91 @@ public sealed class DownloadsPageTests
         Assert.False(download.HasAttribute("disabled"));
     }
 
-    private static Task<OpenedPage> OpenAsync(ScriptedHub hub)
+    [Fact]
+    public async Task A_changed_budget_is_reread_on_the_interval_and_replans_the_open_files()
     {
+        var files = ConsoleFixtures.PS5LMInstalled();
+        files.AddFile("/data/PS5LM/app.log", "device 1 Vulkan0 (AMD): 8.00 / 14.00 GiB free");
+        var time = new FakeTimeProvider(new DateTimeOffset(2026, 11, 6, 0, 0, 0, TimeSpan.Zero));
+        var header = new GgufBuilder()
+            .Kv("general.architecture", "llama")
+            .Kv("general.name", "Llama 3")
+            .Kv("llama.block_count", 4u)
+            .Kv("llama.attention.head_count", 4u)
+            .Kv("llama.attention.head_count_kv", 4u)
+            .Kv("llama.embedding_length", 128u)
+            .Kv("llama.context_length", 8192u)
+            .Bytes();
+        var headers = 0;
+        await using var page = await OpenAsync(
+            new ScriptedHub
+            {
+                Search = _ => Task.FromResult<IReadOnlyList<HubRepo>>([new HubRepo("acme/llama", 10)]),
+                Files = _ => Task.FromResult<IReadOnlyList<HubFile>>([new HubFile("llama-3b.gguf", 8L * 1024 * 1024 * 1024, "abc")]),
+                Header = (_, _, _) =>
+                {
+                    Interlocked.Increment(ref headers);
+                    return Task.FromResult<Stream>(new MemoryStream(header));
+                },
+            },
+            files,
+            time);
+
+        TypeQuery(page, "llama");
+        await SearchButton(page).ClickAsync();
+        await page.Cut.Find(".mud-list-item").ClickAsync();
+        page.WaitForAssertion(() =>
+        {
+            Assert.Contains("8.0 GiB free on this console, from app.log", page.Markup, StringComparison.Ordinal);
+            Assert.Contains("Too big", page.Markup, StringComparison.Ordinal);
+        });
+        Assert.Equal(0, headers);
+
+        files.AddFile("/data/PS5LM/app.log", "device 1 Vulkan0 (AMD): 11.38 / 14.00 GiB free");
+        page.Runtime.Store.Publish(page.Runtime.Store.Current);
+        await Task.Delay(TimeSpan.FromMilliseconds(500));
+        await page.Cut.InvokeAsync(() => { });
+        Assert.Contains("8.0 GiB free on this console, from app.log", page.Markup, StringComparison.Ordinal);
+        Assert.Contains("Too big", page.Markup, StringComparison.Ordinal);
+        Assert.Equal(0, headers);
+
+        time.Advance(Transfers.BudgetRefreshInterval);
+        page.Runtime.Store.Publish(page.Runtime.Store.Current);
+        page.WaitForAssertion(() =>
+        {
+            Assert.Contains("11.4 GiB free on this console, from app.log", page.Markup, StringComparison.Ordinal);
+            Assert.Contains("Fits - 8k, f16", page.Markup, StringComparison.Ordinal);
+        });
+        Assert.Equal(1, headers);
+    }
+
+    private static async Task<OpenedPage> OpenAsync(ScriptedHub hub, FakeFileSystem? files = null, TimeProvider? time = null)
+    {
+        var clock = time ?? TimeProvider.System;
         var runtime = new ConsoleRuntime(
             "ps5",
             new PS5Options { Host = "ps5", DisplayName = "Den" },
-            new FakeConsole(ConsoleFixtures.PS5LMInstalled()).ToConnectors(),
-            TimeProvider.System,
+            new FakeConsole(files ?? ConsoleFixtures.PS5LMInstalled()).ToConnectors(),
+            clock,
             ConsoleSource.User);
+        if (files is not null)
+        {
+            await runtime.Status.RefreshAsync(CancellationToken.None);
+        }
+
         var registry = new PageRegistry(runtime);
         var ctx = new BunitContext();
         ctx.JSInterop.Mode = JSRuntimeMode.Loose;
         ctx.Services.AddSingleton<IConsoleRegistry>(registry);
         ctx.Services.AddSingleton<IModelHub>(hub);
         ctx.Services.AddSingleton(new HubFitService(hub));
+        ctx.Services.AddSingleton(clock);
         ctx.Services.AddSingleton(new TransferService(hub, registry, new MemoryTransferStore(), new TransferOptions(), TimeProvider.System));
         ctx.Services.AddMudServices();
 
         var cut = ctx.Render<Transfers>(p => p.Add(c => c.ConsoleId, "ps5"));
         cut.WaitForAssertion(() => Assert.Contains("Find a model on Hugging Face", cut.Markup, StringComparison.Ordinal));
-        return Task.FromResult(new OpenedPage(ctx, cut));
+        return new OpenedPage(ctx, cut, runtime);
     }
 
     private static AngleSharp.Dom.IElement SearchButton(OpenedPage page) =>
@@ -247,9 +313,11 @@ public sealed class DownloadsPageTests
         input.Input(query);
     }
 
-    private sealed class OpenedPage(BunitContext context, IRenderedComponent<Transfers> cut) : IAsyncDisposable
+    private sealed class OpenedPage(BunitContext context, IRenderedComponent<Transfers> cut, ConsoleRuntime runtime) : IAsyncDisposable
     {
         public IRenderedComponent<Transfers> Cut { get; } = cut;
+
+        public ConsoleRuntime Runtime { get; } = runtime;
 
         public string Markup => Cut.Markup;
 

@@ -4,6 +4,7 @@
 @inject IModelHub Hub
 @inject HubFitService Fits
 @inject ISnackbar Snackbar
+@inject TimeProvider Time
 
 <AppPageTitle Page='@(Target is null ? "Console not found" : $"Downloads - {Target.Name}")' />
 
@@ -196,7 +197,13 @@ else
     private string? _loadingKey;
     private string? _budgetFor;
     private string? _budgetLoading;
+    private DateTimeOffset _budgetReadAt;
     private CancellationTokenSource? _fitsCancel;
+
+    /// <summary>
+    /// How often a live update may reread <c>app.log</c>. Status and transfer progress arrive much more often.
+    /// </summary>
+    internal static readonly TimeSpan BudgetRefreshInterval = TimeSpan.FromSeconds(30);
 
     protected override Task OnConsoleChangedAsync()
     {
@@ -212,6 +219,7 @@ else
         _budget = null;
         _fitBudget = null;
         _budgetFor = null;
+        _budgetReadAt = default;
         _requestVersion++;
         _enqueuing.Clear();
         CancelFits();
@@ -321,10 +329,12 @@ else
         {
             _budget = null;
             _budgetFor = null;
+            _budgetReadAt = default;
             return;
         }
 
-        if (key == _budgetFor || _budgetLoading == key)
+        // Progress wakes this page many times a second. The same console is reread on the interval above.
+        if (_budgetLoading == key || (key == _budgetFor && Time.GetUtcNow() - _budgetReadAt < BudgetRefreshInterval))
         {
             return;
         }
@@ -356,6 +366,7 @@ else
 
         _budget = budget;
         _budgetFor = key;
+        _budgetReadAt = Time.GetUtcNow();
         if (_files is not null && _selectedRepo is not null && _fitBudget is { } used && !SameBudget(used, budget))
         {
             _ = ShowFitsAsync(_requestVersion, _selectedRepo, _files);

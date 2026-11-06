@@ -33,4 +33,6 @@ device 1 Vulkan0 (AMD Radeon ...): 11.38 / 14.00 GiB free
 
 The last line that is not the CPU device is the free memory. `settings.json` supplies `ctx_cap` (default 65536) and `kv_type` (`auto`, `f16`, `q8_0` or `q4_0`). A missing file, a log with no GPU line, a log larger than 8 MiB, or a console that cannot be read, uses `HuggingFace:DefaultBudgetGib` (11.38, the memory PS5LM was calibrated at). The caption under the file list says which one was used.
 
+While the page stays open it rereads the log and the settings every 30 seconds, and replans the open repository when the free memory or those limits change.
+
 PS5LM Plus's planner omits the extra compute-buffer terms, about half a GiB at most for a vision or decision model. The companion uses the PS5LM formula for both apps, which is slightly conservative for Plus.
