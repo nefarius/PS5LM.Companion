@@ -16,7 +16,8 @@ namespace PS5LM.Companion.Infrastructure.Ftp;
 
 /// <summary>
 /// <see cref="IPS5FileSystem"/> over FluentFTP. ftpsrv is a small server, so every operation uses a short-lived
-/// connection and operations are serialised: that avoids stale control connections after the console sleeps.
+/// connection: that avoids a stale control connection after the console sleeps. A console has two lanes, so a long
+/// upload does not hold up listings and small reads and writes. Callers never write one path from both lanes at once.
 /// </summary>
 public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> logger) : IPS5FileSystem, IDisposable
 {
@@ -25,10 +26,14 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
     /// <summary>Waiting this long behind another operation is worth a log line.</summary>
     private static readonly TimeSpan SlowGateWait = TimeSpan.FromSeconds(1);
 
-    private readonly SemaphoreSlim _gate = new(1, 1);
-    private Holder? _holder;
+    private readonly LaneSlot _control = new();
+    private readonly LaneSlot _bulk = new();
 
-    public void Dispose() => _gate.Dispose();
+    public void Dispose()
+    {
+        _control.Gate.Dispose();
+        _bulk.Gate.Dispose();
+    }
 
     public Task<bool> DirectoryExistsAsync(string path, CancellationToken cancellationToken) =>
         RunAsync(async client => path == "/" || await FindAsync(client, path, cancellationToken) is { Type: FtpObjectType.Directory }, cancellationToken);
@@ -131,7 +136,8 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
 
                 return true;
             },
-            cancellationToken);
+            cancellationToken,
+            Lane.Bulk);
 
     public Task MoveAsync(string from, string to, CancellationToken cancellationToken) =>
         RunAsync(
@@ -316,20 +322,28 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
         }
     }
 
-    private async Task<T> RunAsync<T>(Func<AsyncFtpClient, Task<T>> operation, CancellationToken cancellationToken, [CallerMemberName] string name = "")
+    /// <summary>Uploads take the bulk lane; everything else takes the control lane. Each lane runs one operation at a time.</summary>
+    private enum Lane
     {
+        Control,
+        Bulk,
+    }
+
+    private async Task<T> RunAsync<T>(Func<AsyncFtpClient, Task<T>> operation, CancellationToken cancellationToken, Lane lane = Lane.Control, [CallerMemberName] string name = "")
+    {
+        var slot = lane == Lane.Bulk ? _bulk : _control;
         var queued = Stopwatch.GetTimestamp();
-        var initialHolder = _holder;
+        var initialHolder = slot.Holder;
         try
         {
-            await _gate.WaitAsync(cancellationToken);
+            await slot.Gate.WaitAsync(cancellationToken);
         }
         catch (OperationCanceledException)
         {
-            // The caller (for example the status refresh budget) gave up while another operation held the connection slot.
+            // The caller (for example the status refresh budget) gave up while another operation held this lane.
             logger.LogInformation(
-                "FTP {Operation} on {Host}:{Port} gave up after {WaitedMs} ms waiting behind {Holder}",
-                name, options.Host, options.FtpPort, (long)Stopwatch.GetElapsedTime(queued).TotalMilliseconds, Describe(_holder));
+                "FTP {Operation} on {Host}:{Port} gave up after {WaitedMs} ms waiting behind {Holder} on the {Lane} lane",
+                name, options.Host, options.FtpPort, (long)Stopwatch.GetElapsedTime(queued).TotalMilliseconds, Describe(slot.Holder), LaneName(lane));
             throw;
         }
 
@@ -337,12 +351,12 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
         if (waited >= SlowGateWait)
         {
             logger.LogInformation(
-                "FTP {Operation} on {Host}:{Port} waited {WaitedMs} ms (first behind {Holder})",
-                name, options.Host, options.FtpPort, (long)waited.TotalMilliseconds, initialHolder?.Name ?? "another operation");
+                "FTP {Operation} on {Host}:{Port} waited {WaitedMs} ms on the {Lane} lane (first behind {Holder})",
+                name, options.Host, options.FtpPort, (long)waited.TotalMilliseconds, LaneName(lane), initialHolder?.Name ?? "another operation");
         }
 
         var started = Stopwatch.GetTimestamp();
-        _holder = new Holder(name, started);
+        slot.Holder = new Holder(name, started);
         try
         {
             await using var client = new AsyncFtpClient(options.Host, "anonymous", "anonymous", options.FtpPort, CreateConfig());
@@ -377,14 +391,23 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
         }
         finally
         {
-            _holder = null;
-            _gate.Release();
+            slot.Holder = null;
+            slot.Gate.Release();
         }
     }
+
+    private static string LaneName(Lane lane) => lane == Lane.Bulk ? "bulk" : "control";
 
     /// <summary>The operation that held the slot when it was read. Only call this with the current holder: the running time is measured now.</summary>
     private static string Describe(Holder? holder) =>
         holder is null ? "another operation" : $"{holder.Name} (running for {(long)Stopwatch.GetElapsedTime(holder.Started).TotalMilliseconds} ms)";
+
+    private sealed class LaneSlot
+    {
+        public SemaphoreSlim Gate { get; } = new(1, 1);
+
+        public Holder? Holder;
+    }
 
     private sealed record Holder(string Name, long Started);
 
