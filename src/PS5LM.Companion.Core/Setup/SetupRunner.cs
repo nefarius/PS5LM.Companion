@@ -183,6 +183,15 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
     {
         var current = await services.Manager.GetAutoloadAsync(cancellationToken);
         var list = AutoloadListBuilder.Build(resolved.Select(r => (r.Stored.LaunchTarget, r.Payload.DelayAfterMs)), current?.List);
+        if (!AutoloadListBuilder.Fits(list))
+        {
+            Add(
+                "Autoload",
+                SetupStatus.Fail,
+                $"The autoload list is {list.Length} characters. Payload Manager accepts at most {AutoloadListBuilder.MaxListLength}, so it was not saved. Shorten the existing autoload list and run setup again.");
+            return;
+        }
+
         Ui.Info("Enabling autoload: " + list);
         await services.Manager.SetAutoloadAsync(true, list, cancellationToken);
         var check = await services.Manager.GetAutoloadAsync(cancellationToken);

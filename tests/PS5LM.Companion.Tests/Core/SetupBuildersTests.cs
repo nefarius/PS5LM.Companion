@@ -94,6 +94,17 @@ public sealed class SetupBuildersTests
     }
 
     [Fact]
+    public void Autoload_list_pauses_count_toward_the_payload_manager_limit()
+    {
+        var foreign = new string('n', AutoloadListBuilder.MaxListLength);
+        var list = AutoloadListBuilder.Build([("a", 0)], foreign);
+
+        Assert.True(list.Length > foreign.Length);
+        Assert.False(AutoloadListBuilder.Fits(list));
+        Assert.True(AutoloadListBuilder.Fits(new string('n', AutoloadListBuilder.MaxListLength)));
+    }
+
+    [Fact]
     public void Autoload_list_is_stable_across_repeats()
     {
         (string, int)[] ours = [("a", 0), ("b", 3000)];

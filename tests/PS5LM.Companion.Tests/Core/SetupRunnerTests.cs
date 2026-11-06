@@ -99,6 +99,22 @@ public sealed class SetupRunnerTests
     }
 
     [Fact]
+    public async Task Autoload_list_longer_than_payload_manager_accepts_is_not_saved()
+    {
+        using var harness = Ready();
+        var existing = "local/" + new string('x', AutoloadListBuilder.MaxListLength);
+        harness.Autoload = new(false, existing);
+
+        var report = await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
+
+        Assert.Equal(existing, harness.Autoload.List);
+        Assert.False(harness.Autoload.Enabled);
+        var line = Assert.Single(report.Lines, l => l.Component == "Autoload" && l.Status == SetupStatus.Fail);
+        Assert.Contains("Shorten the existing autoload list", line.Message, StringComparison.Ordinal);
+        Assert.Equal(2, report.ExitCode);
+    }
+
+    [Fact]
     public async Task Optional_voidshell_that_does_not_start_is_only_a_warning()
     {
         using var harness = Ready();

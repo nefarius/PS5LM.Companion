@@ -10,6 +10,14 @@ public static class AutoloadListBuilder
     public const int StepGapMs = 3000;
 
     /// <summary>
+    /// Longest <c>AUTOLOAD_LIST</c> Payload Manager 0.6.x will store. <c>LIST_CAPACITY</c> is 4096. The decoded CSV
+    /// must leave a NUL in that buffer, and <c>csv_lines</c> writes every entry plus a trailing newline into a second
+    /// buffer of the same size, which also keeps a NUL. A list from <see cref="Build"/> has no blank entries, so the
+    /// line form is one byte longer than the CSV and 4094 is the longest CSV that still fits.
+    /// </summary>
+    public const int MaxListLength = 4094;
+
+    /// <summary>
     /// Our slots in order, then any entries that were already configured and are not ours, with one pause between
     /// each pair. After one of our payloads the pause is the larger of its delay and <see cref="StepGapMs"/>; after a
     /// kept entry it is <see cref="StepGapMs"/>. The last entry has no trailing pause. Another slot of a payload we
@@ -61,6 +69,9 @@ public static class AutoloadListBuilder
 
         return string.Join(',', entries);
     }
+
+    /// <summary>False when <paramref name="list"/> is longer than <see cref="MaxListLength"/> and Payload Manager would reject the save.</summary>
+    public static bool Fits(string list) => list.Length <= MaxListLength;
 
     /// <summary><c>local/{id}</c> or <c>repo/{id}@{rev}</c>; null when the entry does not name a payload that way.</summary>
     private static string? PayloadId(string slot)
