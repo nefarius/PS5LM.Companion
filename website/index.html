@@ -1,0 +1,74 @@
+---
+layout: default
+---
+<section class="hero wrap">
+  <div class="eyebrow"><span class="status-dot" aria-hidden="true"></span> Your consoles. Your models. Your network.</div>
+  <h1>Your PS5.<br>A little more <em>intelligent.</em></h1>
+  <p class="hero-description">The browser dashboard for PS5LM and PS5LM Plus. Manage your models, keep an eye on your consoles, and put local AI to work.</p>
+  <div class="actions"><a class="button primary" href="#start">Get started <span aria-hidden="true">→</span></a><a class="button secondary" href="{{ site.repository_url }}">Explore the source <span aria-hidden="true">↗</span></a></div>
+  <p class="hero-note">Self-hosted · Multi-console · No changes to PS5LM required</p>
+  <figure class="hero-screen screenshot">
+    <div class="window-bar" aria-hidden="true"><span></span><span></span><span></span><div>PS5LM Companion / Overview</div></div>
+    <img src="{{ '/assets/images/overview.png' | relative_url }}" alt="Companion overview showing two consoles, their connection status, and loaded models" width="2549" height="1352" fetchpriority="high">
+    <figcaption>One dashboard. Every console on your network.</figcaption>
+  </figure>
+  <div class="platform-strip"><span>Built for your setup</span><span>Docker</span><span>Linux</span><span>Windows</span><span>macOS</span><span>Raspberry Pi (64-bit OS)</span></div>
+</section>
+
+<section class="section wrap" id="features" aria-labelledby="features-title">
+  <div class="section-heading"><p class="eyebrow">Less TV time. More control.</p><h2 id="features-title">Everything within reach.</h2><p>Run the companion on a PC, NAS, or Raspberry Pi with a 64-bit OS. Open your browser and take it from there.</p></div>
+  <div class="feature-grid">
+    <article><span class="feature-number">01 / CONSOLES</span><h3>One or a whole collection.</h3><p>Add consoles, discover them on your network, and see which ones are ready, loading, or generating. Each has its own settings and transfer queue.</p></article>
+    <article><span class="feature-number">02 / MODELS</span><h3>Make room for the next idea.</h3><p>Load and unload models, delete individual GGUF files, and choose the model that loads when the app starts.</p></article>
+    <article><span class="feature-number">03 / TELEMETRY</span><h3>See how things are running.</h3><p>Follow generation speed, sensors, storage, and payload status. Live telemetry appears when llama-server and ps5-exporter are available.</p></article>
+  </div>
+</section>
+
+<section class="spotlight wrap" aria-labelledby="downloads-title">
+  <div class="spotlight-copy"><p class="eyebrow">From discovery to disk</p><h2 id="downloads-title">Find a model.<br>Let it travel.</h2><p>Search Hugging Face, check the estimated fit, and queue a download. The companion downloads the GGUF and uploads it to your console, with progress along the way.</p><a class="text-link" href="{{ site.repository_url }}/blob/master/docs/downloads.md">How downloads work <span aria-hidden="true">→</span></a></div>
+  <figure class="screenshot"><img src="{{ '/assets/images/downloads.png' | relative_url }}" alt="Downloads page with Hugging Face model search and completed console transfers" loading="lazy" width="2549" height="1352"></figure>
+</section>
+
+<section class="spotlight reverse wrap" aria-labelledby="inference-title">
+  <div class="spotlight-copy"><p class="eyebrow">Local AI, a familiar API</p><h2 id="inference-title">Several consoles.<br>One endpoint.</h2><p>The optional inference gateway brings consoles running the same model into a pool. Connect through an OpenAI/Anthropic-compatible endpoint, with conversation affinity to help reuse the prompt cache.</p><a class="text-link" href="{{ site.repository_url }}/blob/master/README.md#inference-gateway">Explore the inference gateway <span aria-hidden="true">→</span></a></div>
+  <figure class="screenshot"><img src="{{ '/assets/images/inference.png' | relative_url }}" alt="Inference dashboard showing model pools and the consoles serving each alias" loading="lazy" width="2549" height="1352"></figure>
+</section>
+
+<section class="start-section" id="start" aria-labelledby="start-title">
+  <div class="wrap">
+    <div class="section-heading"><p class="eyebrow">Bring your own console</p><h2 id="start-title">Up and running with Docker.</h2><p>You’ll need a jailbroken PS5 with PS5LM or PS5LM Plus, ftpsrv, and the pinned nefarius VoidShell fork. The setup guide covers preparing a fresh console.</p></div>
+    <p>The Docker image supports <code>linux/amd64</code> and <code>linux/arm64</code> only. On a Raspberry Pi, check your OS architecture before installing: a 64-bit OS is required; 32-bit ARM is not supported.</p>
+    <div class="quickstart">
+      <div><span class="step-label">01 / START THE COMPANION</span><h3>A small container.<br>A useful companion.</h3><p>Replace the IP address with your console’s address and <code>unique-secret</code> with your own access token. Keep the data volume for settings and downloads.</p><a class="text-link" href="https://hub.docker.com/r/containinger/ps5lm-companion">View on Docker Hub <span aria-hidden="true">↗</span></a></div>
+      <div class="terminal"><div class="terminal-label">TERMINAL / DOCKER</div><pre><code>docker run -d --pull always \
+  -p 8080:8080 \
+  -v ps5lm-companion:/data \
+  -e PS5__Consoles__ps5__Host=192.168.1.50 \
+  -e Companion__AccessToken=unique-secret \
+  containinger/ps5lm-companion</code></pre></div>
+    </div>
+    <div class="next-steps"><div><span class="step-label">02 / OPEN YOUR BROWSER</span><h3>Meet your dashboard.</h3><p>Open <code>http://localhost:8080</code> on the host, or use its network address from another device. Sign in with the access token you chose.</p></div><div><span class="step-label">03 / MAKE IT YOURS</span><h3>Add a model. Start exploring.</h3><p>Check console status, browse models, and queue your first transfer. Add more consoles from Manage consoles whenever you’re ready.</p></div></div>
+    <p class="network-note">
+      Use a trusted network, or put the companion behind a TLS reverse proxy: the access token travels in clear text over plain HTTP.
+      Restrict direct access to port 8080 so clients must use HTTPS through the proxy. If the proxy can reach the host’s loopback interface,
+      publish the port with <code>-p 127.0.0.1:8080:8080</code> instead; otherwise restrict port 8080 to the proxy using Docker-aware firewall or network rules.
+      UFW alone may not restrict Docker-published ports, leaving port 8080 directly reachable; verify the restriction from another host.
+      Docker Engine versions before 28.0.0 may let hosts on the same local network reach loopback-published ports: upgrade to a current patched release
+      or restrict access with Docker-aware firewall or network rules.
+      If the proxy connects to the companion over a network, use a trusted network or encryption such as a VPN; firewall rules restrict access but do not encrypt traffic.
+      When the TLS proxy forwards HTTP, configure it to add <code>Secure</code> to the login cookie: the application sets that attribute only when it sees HTTPS.
+      See Docker’s <a href="https://docs.docker.com/engine/network/port-publishing/">port publishing</a> and
+      <a href="https://docs.docker.com/engine/network/packet-filtering-firewalls/#docker-and-ufw">UFW guidance</a>.
+    </p>
+  </div>
+</section>
+
+<section class="section wrap" aria-labelledby="guides-title">
+  <div class="section-heading"><p class="eyebrow">The next steps, documented</p><h2 id="guides-title">A guide for the details.</h2></div>
+  <div class="guide-grid">
+    <a href="{{ site.repository_url }}/blob/master/docs/setup.md"><span>01</span><h3>Prepare a console <span aria-hidden="true">↗</span></h3><p>Install pinned payloads and your chosen app with the setup command.</p></a>
+    <a href="{{ site.repository_url }}/blob/master/docs/update.md"><span>02</span><h3>Keep it current <span aria-hidden="true">↗</span></h3><p>Check installed components and update the ones that need it.</p></a>
+    <a href="{{ site.repository_url }}/blob/master/README.md"><span>03</span><h3>Go a little deeper <span aria-hidden="true">↗</span></h3><p>Configuration, REST API, inference pools, and building from source.</p></a>
+  </div>
+  <div class="community"><div><p class="eyebrow">Built in the open</p><h2>A companion to community projects.</h2><p>Works with <a href="https://github.com/cobanov/PS5LM">PS5LM</a> and <a href="https://github.com/abhi245y/PS5LM-Plus">PS5LM Plus</a>. Find a bug or have an idea? Join in.</p></div><a class="button secondary" href="{{ site.repository_url }}/issues">Start a conversation <span aria-hidden="true">↗</span></a></div>
+</section>
