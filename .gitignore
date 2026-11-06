@@ -452,5 +452,4 @@ src/PS5LM.Companion.App/data/
 /website/.sass-cache/
 /website/.bundle/
 /website/vendor/
-/website/Gemfile.lock
 /_site/

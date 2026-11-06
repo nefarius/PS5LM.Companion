@@ -48,7 +48,18 @@ layout: default
   containinger/ps5lm-companion</code></pre></div>
     </div>
     <div class="next-steps"><div><span class="step-label">02 / OPEN YOUR BROWSER</span><h3>Meet your dashboard.</h3><p>Open <code>http://localhost:8080</code> on the host, or use its network address from another device. Sign in with the access token you chose.</p></div><div><span class="step-label">03 / MAKE IT YOURS</span><h3>Add a model. Start exploring.</h3><p>Check console status, browse models, and queue your first transfer. Add more consoles from Manage consoles whenever you’re ready.</p></div></div>
-    <p class="network-note">Use a trusted network, or put the companion behind a TLS reverse proxy: the access token travels in clear text over plain HTTP. With a reverse proxy, restrict direct access to port 8080 so clients must use HTTPS through the proxy. If the proxy can reach the host’s loopback interface, publish the port with <code>-p 127.0.0.1:8080:8080</code> instead; otherwise restrict port 8080 to the proxy using firewall or network rules.</p>
+    <p class="network-note">
+      Use a trusted network, or put the companion behind a TLS reverse proxy: the access token travels in clear text over plain HTTP.
+      Restrict direct access to port 8080 so clients must use HTTPS through the proxy. If the proxy can reach the host’s loopback interface,
+      publish the port with <code>-p 127.0.0.1:8080:8080</code> instead; otherwise restrict port 8080 to the proxy using Docker-aware firewall or network rules.
+      UFW alone may not restrict Docker-published ports, leaving port 8080 directly reachable; verify the restriction from another host.
+      Docker Engine versions before 28.0.0 may let hosts on the same local network reach loopback-published ports: upgrade to a current patched release
+      or restrict access with Docker-aware firewall or network rules.
+      If the proxy connects to the companion over a network, use a trusted network or encryption such as a VPN; firewall rules restrict access but do not encrypt traffic.
+      When the TLS proxy forwards HTTP, configure it to add <code>Secure</code> to the login cookie: the application sets that attribute only when it sees HTTPS.
+      See Docker’s <a href="https://docs.docker.com/engine/network/port-publishing/">port publishing</a> and
+      <a href="https://docs.docker.com/engine/network/packet-filtering-firewalls/#docker-and-ufw">UFW guidance</a>.
+    </p>
   </div>
 </section>
 

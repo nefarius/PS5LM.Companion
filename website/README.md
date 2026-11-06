@@ -8,10 +8,11 @@ external fonts, or runtime service is required.
 
 The verified environment is Debian 12 Linux (x86_64), with **Ruby 3.3.4** and
 **Bundler 2.5.11**, as shipped in the CI image
-`ghcr.io/actions/jekyll-build-pages:v1.0.13`. Use these versions to reproduce the
+`ghcr.io/actions/jekyll-build-pages:v1.0.13` (pinned by digest in `pages.yml`). Use these versions to reproduce the
 build; on Windows, use Debian in WSL2. The repository does not separately pin a
 Ruby or Bundler version. `Gemfile` selects `github-pages ~> 232`; the verified
-image contains `github-pages 232` and Jekyll 3.10.0.
+image contains `github-pages 232` and Jekyll 3.10.0. The tracked `Gemfile.lock`
+locks the full dependency set for this Linux x86_64 environment.
 
 For a native install, provide Ruby development headers matching your interpreter,
 GCC/G++, and Make (`build-essential` on Debian), plus `pkg-config`, `zlib1g-dev`,
@@ -26,7 +27,7 @@ these commands from the repository root:
 ```sh
 cd website
 gem install bundler -v 2.5.11
-bundle _2.5.11_ install
+BUNDLE_FROZEN=true bundle _2.5.11_ install
 bundle _2.5.11_ exec jekyll serve --host 127.0.0.1
 ```
 
@@ -36,7 +37,13 @@ Open <http://127.0.0.1:4000/PS5LM.Companion/>. For a production build:
 JEKYLL_ENV=production bundle _2.5.11_ exec jekyll build
 ```
 
-`github-pages` supplies the same Jekyll dependency set as the Pages build action.
+CI uses the digest-pinned image as its Ruby runtime, then runs a frozen
+`bundle install --local` and `bundle exec jekyll build` against this repository’s
+lockfile. It does not invoke the Pages build action, which otherwise resolves
+its own gems independently. A missing or mismatched gem fails the build rather
+than silently changing versions. Update the image digest and lockfile together,
+and verify the frozen build whenever dependencies change. Native preview installs
+fetch the same locked versions from RubyGems.
 `_config.yml` holds the repository URL, public origin, and project `baseurl`.
 All local links and assets use Jekyll URL filters. Update these values if the
 repository is renamed, forked, or moved to a custom domain.
