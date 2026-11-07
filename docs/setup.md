@@ -43,6 +43,8 @@ In a container, mount `/data` so downloads are cached, and pass `--upgrade-paylo
 5. Launch them in that order, skipping any that already run, waiting for each one's port or process, then waiting out that
    payload's pause. Once ftpsrv is answering, and before OnionHEN is sent, bundled kstuff is switched off (step 7).
    If elfldr does not come up, launching stops before OnionHEN: Payload Manager sends everything through elfldr and cannot start it.
+   If kstuff-lite was launched ahead of OnionHEN and is not ready (the launch was refused, or it timed out), OnionHEN and
+   everything after it are not sent. Bundled kstuff stays off; setup does not turn it back on.
 6. Place extra files over FTP (VoidShell's `index.html` to `/data/voidshell/www/index.html`). Uploaded as `.part`, then renamed.
    Skipped when the size on the console matches (FTP cannot hash).
 7. Switch off OnionHEN's bundled kstuff, even with `--skip-app`, when the manifest includes kstuff-lite. When this run

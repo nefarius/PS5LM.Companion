@@ -68,7 +68,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
             if (chainContinues)
             {
                 await DisableBundledKstuffAsync(cancellationToken);
-                if (fromHen.Count > 0)
+                if (fromHen.Count > 0 && await KstuffReadyForHenAsync(beforeHen, fromHen, cancellationToken))
                 {
                     await LaunchPayloadsAsync(fromHen, cancellationToken);
                 }
@@ -231,6 +231,30 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         {
             Add("Autoload", SetupStatus.Warn, "Payload Manager did not report the saved autoload list back.");
         }
+    }
+
+    // False when kstuff-lite was launched before OnionHEN and is not ready. The bundled copy stays off.
+    private async Task<bool> KstuffReadyForHenAsync(
+        List<(ManifestPayload Payload, ManagedPayload Stored)> beforeHen,
+        List<(ManifestPayload Payload, ManagedPayload Stored)> fromHen,
+        CancellationToken cancellationToken)
+    {
+        var kstuff = beforeHen.FirstOrDefault(item => item.Payload.Id.Equals(KstuffPayloadId, StringComparison.OrdinalIgnoreCase)).Payload;
+        if (kstuff is null || await IsReadyAsync(kstuff, cancellationToken))
+        {
+            return true;
+        }
+
+        var why = _notes.GetValueOrDefault(KstuffPayloadId);
+        var detail = string.IsNullOrWhiteSpace(why) ? "kstuff-lite is not ready" : "kstuff-lite is not ready (" + why + ")";
+        Ui.Info(detail + "; OnionHEN and the payloads after it were not launched. Bundled kstuff stays off.");
+        Add("Launch", SetupStatus.Fail, detail + ", so OnionHEN and the payloads after it were not launched. Bundled kstuff stays off.");
+        foreach (var (payload, _) in fromHen)
+        {
+            _notes[payload.Id] = "Not launched because kstuff-lite is not ready.";
+        }
+
+        return false;
     }
 
     // Step 5: load in order, skipping what already runs. False when elfldr did not come up, so the caller does not send the rest.

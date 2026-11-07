@@ -403,6 +403,23 @@ public sealed class SetupRunnerTests
     }
 
     [Fact]
+    public async Task Unready_kstuff_skips_onionhen_and_leaves_bundled_kstuff_off()
+    {
+        using var harness = Ready();
+        harness.LoadFails.Add("kstuff-lite.elf");
+
+        var report = await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
+
+        Assert.DoesNotContain(harness.Events, e => e is "load:onionhen.elf" or "load:shadowmountplus.elf" or "load:ps5-web-file-manager.elf");
+        Assert.Contains("load:ftpsrv.elf", harness.Events);
+        Assert.Contains("[kstuff]\nautoload=false\n", harness.Files.Text("/data/OnionHEN/config.ini"));
+        var line = Assert.Single(report.Lines, l => l.Component == "Launch");
+        Assert.Equal(SetupStatus.Fail, line.Status);
+        Assert.Contains("Bundled kstuff stays off", line.Message, StringComparison.Ordinal);
+        Assert.Contains(report.Lines, l => l.Component == "OnionHEN" && l.Status == SetupStatus.Fail && l.Message.Contains("kstuff-lite is not ready", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Bundled_kstuff_is_not_edited_when_ftp_is_down()
     {
         using var harness = Ready();
