@@ -22,6 +22,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
     public const int MinimumAutoloadDelaySeconds = 10;
 
     private const string KstuffPayloadId = "kstuff-lite";
+    private const string OnionHenPayloadId = "onionhen";
     private const string OnionConfigPath = "/data/OnionHEN/config.ini";
     private const string NoKstuffPath = "/data/OnionHEN/no_kstuff";
     private const string ShadowMountLogPath = "/data/shadowmount/debug.log";
@@ -58,9 +59,26 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
 
             var resolved = await UploadPayloadsAsync(cancellationToken);
             await ConfigureAutoloadAsync(resolved, cancellationToken);
-            await LaunchPayloadsAsync(resolved, cancellationToken);
+            // OnionHEN reads [kstuff] autoload as it starts. Switch the bundled copy off once the payloads
+            // ahead of it (ftpsrv among them) are up, and before it is sent. A missing config stays a warning.
+            var onionAt = resolved.FindIndex(item => item.Payload.Id.Equals(OnionHenPayloadId, StringComparison.OrdinalIgnoreCase));
+            var beforeHen = onionAt < 0 ? resolved : resolved.Take(onionAt).ToList();
+            var fromHen = onionAt < 0 ? [] : resolved.Skip(onionAt).ToList();
+            var chainContinues = await LaunchPayloadsAsync(beforeHen, cancellationToken);
+            if (chainContinues)
+            {
+                await DisableBundledKstuffAsync(cancellationToken);
+                if (fromHen.Count > 0)
+                {
+                    await LaunchPayloadsAsync(fromHen, cancellationToken);
+                }
+            }
+
             await PlaceExtraFilesAsync(resolved, cancellationToken);
-            await DisableBundledKstuffAsync(cancellationToken);
+            if (!chainContinues)
+            {
+                await DisableBundledKstuffAsync(cancellationToken);
+            }
             if (app is not null)
             {
                 await AllowAppInOnionHenAsync(app, cancellationToken);
@@ -215,8 +233,8 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         }
     }
 
-    // Step 5: load in order, skipping what already runs.
-    internal async Task LaunchPayloadsAsync(List<(ManifestPayload Payload, ManagedPayload Stored)> resolved, CancellationToken cancellationToken)
+    // Step 5: load in order, skipping what already runs. False when elfldr did not come up, so the caller does not send the rest.
+    internal async Task<bool> LaunchPayloadsAsync(List<(ManifestPayload Payload, ManagedPayload Stored)> resolved, CancellationToken cancellationToken)
     {
         foreach (var (payload, stored) in resolved)
         {
@@ -237,7 +255,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
                 if (isElfldr)
                 {
                     Ui.Info("elfldr did not start; the other payloads cannot be launched without it.");
-                    return;
+                    return false;
                 }
 
                 continue;
@@ -249,7 +267,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
                 _notes[payload.Id] = $"Launched, but not ready after {payload.ReadyTimeoutSeconds} s.";
                 if (isElfldr)
                 {
-                    return;
+                    return false;
                 }
 
                 continue;
@@ -261,6 +279,8 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
                 await Task.Delay(options.Wait(TimeSpan.FromMilliseconds(payload.DelayAfterMs)), services.Time, cancellationToken);
             }
         }
+
+        return true;
     }
 
     // Step 5b: files that belong to a payload but travel over FTP.
@@ -316,6 +336,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
             return;
         }
 
+        Ui.Info("Checking OnionHEN's bundled kstuff.");
         var text = await services.Files.ReadTextAsync(OnionConfigPath, MaxTextBytes, cancellationToken);
         if (text is null)
         {

@@ -41,14 +41,17 @@ In a container, mount `/data` so downloads are cached, and pass `--upgrade-paylo
    pauses included, is left unchanged and the report says to shorten the existing entries. `update` does not rewrite this
    list or the countdown; re-run `setup` on a console that was already prepared.
 5. Launch them in that order, skipping any that already run, waiting for each one's port or process, then waiting out that
-   payload's pause. If elfldr does not come up, launching stops: Payload Manager sends everything through elfldr and cannot start it.
+   payload's pause. Once ftpsrv is answering, and before OnionHEN is sent, bundled kstuff is switched off (step 7).
+   If elfldr does not come up, launching stops before OnionHEN: Payload Manager sends everything through elfldr and cannot start it.
 6. Place extra files over FTP (VoidShell's `index.html` to `/data/voidshell/www/index.html`). Uploaded as `.part`, then renamed.
    Skipped when the size on the console matches (FTP cannot hash).
-7. Switch off OnionHEN's bundled kstuff, even with `--skip-app`, when the manifest includes kstuff-lite. Sets
-   `[kstuff] autoload=false` in `/data/OnionHEN/config.ini` (that is what v0.9.0 reads) and writes an empty
-   `/data/OnionHEN/no_kstuff`, which is what the Toolbox writes alongside the key. The first edit in the run saves
-   `config.ini.bak`; the allow-list edit below does not replace it. A missing file is only a warning: OnionHEN creates
-   the config when it first starts, and setup does not invent one. This step runs only when kstuff-lite is in the manifest.
+7. Switch off OnionHEN's bundled kstuff, even with `--skip-app`, when the manifest includes kstuff-lite. When this run
+   launches OnionHEN, the edit happens after ftpsrv is answering and before that launch. Sets `[kstuff] autoload=false`
+   in `/data/OnionHEN/config.ini` (that is what v0.9.0 reads) and writes an empty `/data/OnionHEN/no_kstuff`, which is
+   what the Toolbox writes alongside the key. The first edit in the run saves `config.ini.bak`; the allow-list edit
+   below does not replace it. A missing file is only a warning: OnionHEN creates the config when it first starts, setup
+   does not invent one, and the launch still goes ahead. Run setup again once that file exists. This step runs only
+   when kstuff-lite is in the manifest.
 8. Add the app's title ID to `exact_title_ids` in `[app_jailbreak]` of `/data/OnionHEN/config.ini`, after writing `config.ini.bak`
    when step 7 did not already. A missing file, section or key, or a bracketed list, is only a warning and nothing is changed.
 9. Install the app when it is not already there. A new install is uploaded to `/data/ps5lm-companion/staging/<title>` and renamed

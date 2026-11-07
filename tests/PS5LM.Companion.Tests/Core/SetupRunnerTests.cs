@@ -39,6 +39,9 @@ public sealed class SetupRunnerTests
         Assert.Contains("[kstuff]\nautoload=false\n", harness.Files.Text("/data/OnionHEN/config.ini"));
         Assert.Equal(string.Empty, harness.Files.Text("/data/OnionHEN/no_kstuff"));
         Assert.Equal(OnionConfig, harness.Files.Text("/data/OnionHEN/config.ini.bak"));
+        var kstuffCheck = harness.Messages.FindIndex(message => message.Contains("bundled kstuff", StringComparison.Ordinal));
+        var onionLaunch = harness.Messages.FindIndex(message => message.Equals("Launching OnionHEN", StringComparison.Ordinal));
+        Assert.True(kstuffCheck >= 0 && onionLaunch > kstuffCheck);
         Assert.Equal(SetupHarness.ParamV1, harness.Files.Text("/data/homebrew/PPSA99581/sce_sys/param.json"));
         Assert.Equal("PNG", harness.Files.Text("/data/homebrew/PPSA99581/assets/logo.png"));
         Assert.DoesNotContain(harness.Files.Files.Keys, key => key.StartsWith("/data/ps5lm-companion/staging", StringComparison.Ordinal));
@@ -394,6 +397,7 @@ public sealed class SetupRunnerTests
         var line = Assert.Single(report.Lines, l => l.Component == "OnionHEN kstuff");
         Assert.Equal(SetupStatus.Warn, line.Status);
         Assert.Contains("does not exist yet", line.Message, StringComparison.Ordinal);
+        Assert.Contains("load:onionhen.elf", harness.Events);
         Assert.Null(harness.Files.Text("/data/OnionHEN/config.ini"));
         Assert.Null(harness.Files.Text("/data/OnionHEN/no_kstuff"));
     }
