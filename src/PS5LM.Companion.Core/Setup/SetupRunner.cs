@@ -67,8 +67,12 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
             var chainContinues = await LaunchPayloadsAsync(beforeHen, cancellationToken);
             if (chainContinues)
             {
-                await DisableBundledKstuffAsync(cancellationToken);
-                if (fromHen.Count > 0 && await KstuffReadyForHenAsync(beforeHen, fromHen, cancellationToken))
+                var bundledOff = await DisableBundledKstuffAsync(cancellationToken);
+                if (fromHen.Count > 0 && !bundledOff)
+                {
+                    SkipAfterKstuff(fromHen, "OnionHEN's bundled kstuff is not confirmed off, so OnionHEN and the payloads after it were not launched.");
+                }
+                else if (fromHen.Count > 0 && await KstuffReadyForHenAsync(beforeHen, fromHen, cancellationToken))
                 {
                     await LaunchPayloadsAsync(fromHen, cancellationToken);
                 }
@@ -233,28 +237,46 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         }
     }
 
-    // False when kstuff-lite was launched before OnionHEN and is not ready. The bundled copy stays off.
+    // False when the manifest requires kstuff-lite and it did not resolve, or the resolved copy is not ready.
+    // A manifest without kstuff-lite is unaffected. The bundled copy stays off.
     private async Task<bool> KstuffReadyForHenAsync(
         List<(ManifestPayload Payload, ManagedPayload Stored)> beforeHen,
         List<(ManifestPayload Payload, ManagedPayload Stored)> fromHen,
         CancellationToken cancellationToken)
     {
-        var kstuff = beforeHen.FirstOrDefault(item => item.Payload.Id.Equals(KstuffPayloadId, StringComparison.OrdinalIgnoreCase)).Payload;
-        if (kstuff is null || await IsReadyAsync(kstuff, cancellationToken))
+        if (!manifest.Payloads.Any(payload => payload.Id.Equals(KstuffPayloadId, StringComparison.OrdinalIgnoreCase)))
         {
             return true;
         }
 
-        var why = _notes.GetValueOrDefault(KstuffPayloadId);
-        var detail = string.IsNullOrWhiteSpace(why) ? "kstuff-lite is not ready" : "kstuff-lite is not ready (" + why + ")";
-        Ui.Info(detail + "; OnionHEN and the payloads after it were not launched. Bundled kstuff stays off.");
-        Add("Launch", SetupStatus.Fail, detail + ", so OnionHEN and the payloads after it were not launched. Bundled kstuff stays off.");
-        foreach (var (payload, _) in fromHen)
+        var kstuff = beforeHen.Concat(fromHen).FirstOrDefault(item => item.Payload.Id.Equals(KstuffPayloadId, StringComparison.OrdinalIgnoreCase)).Payload;
+        if (kstuff is null)
         {
-            _notes[payload.Id] = "Not launched because kstuff-lite is not ready.";
+            var why = _notes.GetValueOrDefault(KstuffPayloadId);
+            var detail = string.IsNullOrWhiteSpace(why) ? "kstuff-lite did not resolve" : "kstuff-lite did not resolve (" + why + ")";
+            SkipAfterKstuff(fromHen, detail + ", so OnionHEN and the payloads after it were not launched. Bundled kstuff stays off.");
+            return false;
         }
 
+        if (await IsReadyAsync(kstuff, cancellationToken))
+        {
+            return true;
+        }
+
+        var reason = _notes.GetValueOrDefault(KstuffPayloadId);
+        var unready = string.IsNullOrWhiteSpace(reason) ? "kstuff-lite is not ready" : "kstuff-lite is not ready (" + reason + ")";
+        SkipAfterKstuff(fromHen, unready + ", so OnionHEN and the payloads after it were not launched. Bundled kstuff stays off.");
         return false;
+    }
+
+    private void SkipAfterKstuff(List<(ManifestPayload Payload, ManagedPayload Stored)> fromHen, string detail)
+    {
+        Ui.Info(detail);
+        Add("Launch", SetupStatus.Fail, detail);
+        foreach (var (payload, _) in fromHen)
+        {
+            _notes[payload.Id] = detail;
+        }
     }
 
     // Step 5: load in order, skipping what already runs. False when elfldr did not come up, so the caller does not send the rest.
@@ -347,25 +369,26 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
 
     // Step 6: one kstuff. OnionHEN v0.9.0 bundles the same kstuff-lite and loads it unless [kstuff] autoload is false.
     // The bootstrapper ignores /data/OnionHEN/no_kstuff; the Toolbox writes that file alongside the config key, so setup does too.
-    private async Task DisableBundledKstuffAsync(CancellationToken cancellationToken)
+    // True when bundled kstuff is confirmed off, or the manifest does not ship an external kstuff-lite.
+    private async Task<bool> DisableBundledKstuffAsync(CancellationToken cancellationToken)
     {
         if (!manifest.Payloads.Any(payload => payload.Id.Equals(KstuffPayloadId, StringComparison.OrdinalIgnoreCase)))
         {
-            return;
+            return true;
         }
 
         if (!await services.Probe.PortOpenAsync(options.FtpPort, cancellationToken))
         {
-            Add("OnionHEN kstuff", SetupStatus.Warn, $"ftpsrv is not answering, so {OnionConfigPath} was not checked.");
-            return;
+            Add("OnionHEN kstuff", SetupStatus.Warn, $"ftpsrv is not answering, so {OnionConfigPath} was not checked. Bundled kstuff is not confirmed off.");
+            return false;
         }
 
         Ui.Info("Checking OnionHEN's bundled kstuff.");
         var text = await services.Files.ReadTextAsync(OnionConfigPath, MaxTextBytes, cancellationToken);
         if (text is null)
         {
-            Add("OnionHEN kstuff", SetupStatus.Warn, $"{OnionConfigPath} does not exist yet. Run setup again once OnionHEN has started so its bundled kstuff can be switched off.");
-            return;
+            Add("OnionHEN kstuff", SetupStatus.Warn, $"{OnionConfigPath} does not exist yet, so bundled kstuff is not confirmed off. Run setup again once OnionHEN has created it.");
+            return false;
         }
 
         var edit = OnionHenConfigEditor.SetValue(text, OnionHenConfigEditor.KstuffSection, OnionHenConfigEditor.KstuffAutoloadKey, "false");
@@ -381,6 +404,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
             edit.Status == ConfigValueStatus.Unchanged
                 ? "Bundled kstuff is already off (/data/OnionHEN/no_kstuff)."
                 : "Set [kstuff] autoload=false and wrote /data/OnionHEN/no_kstuff (backup: config.ini.bak).");
+        return true;
     }
 
     // Step 7: let the app write /data/PS5LM when OnionHEN is the HEN.

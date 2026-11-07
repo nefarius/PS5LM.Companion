@@ -384,6 +384,7 @@ public sealed class SetupRunnerTests
         Assert.DoesNotContain("[kstuff]", harness.Files.Text("/data/OnionHEN/config.ini"));
         Assert.Null(harness.Files.Text("/data/OnionHEN/no_kstuff"));
         Assert.Contains("PPSA99581", harness.Files.Text("/data/OnionHEN/config.ini"));
+        Assert.Contains("load:onionhen.elf", harness.Events);
     }
 
     [Fact]
@@ -397,9 +398,13 @@ public sealed class SetupRunnerTests
         var line = Assert.Single(report.Lines, l => l.Component == "OnionHEN kstuff");
         Assert.Equal(SetupStatus.Warn, line.Status);
         Assert.Contains("does not exist yet", line.Message, StringComparison.Ordinal);
-        Assert.Contains("load:onionhen.elf", harness.Events);
+        Assert.Contains("not confirmed off", line.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("load:onionhen.elf", harness.Events);
         Assert.Null(harness.Files.Text("/data/OnionHEN/config.ini"));
         Assert.Null(harness.Files.Text("/data/OnionHEN/no_kstuff"));
+        var skipped = Assert.Single(report.Lines, l => l.Component == "Launch");
+        Assert.Equal(SetupStatus.Fail, skipped.Status);
+        Assert.Contains("not confirmed off", skipped.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -432,6 +437,26 @@ public sealed class SetupRunnerTests
         Assert.Contains("ftpsrv is not answering", line.Message, StringComparison.Ordinal);
         Assert.Equal(OnionConfig, harness.Files.Text("/data/OnionHEN/config.ini"));
         Assert.Null(harness.Files.Text("/data/OnionHEN/no_kstuff"));
+        Assert.DoesNotContain("load:onionhen.elf", harness.Events);
+        var skipped = Assert.Single(report.Lines, l => l.Component == "Launch");
+        Assert.Equal(SetupStatus.Fail, skipped.Status);
+        Assert.Contains("not confirmed off", skipped.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Unresolved_kstuff_is_a_launch_failure_and_skips_onionhen()
+    {
+        using var harness = Ready();
+        harness.UploadDropped.Add("kstuff-lite.elf");
+
+        var report = await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
+
+        Assert.DoesNotContain("load:onionhen.elf", harness.Events);
+        Assert.Contains("[kstuff]\nautoload=false\n", harness.Files.Text("/data/OnionHEN/config.ini"));
+        var line = Assert.Single(report.Lines, l => l.Component == "Launch");
+        Assert.Equal(SetupStatus.Fail, line.Status);
+        Assert.Contains("did not resolve", line.Message, StringComparison.Ordinal);
+        Assert.Contains("does not list it after the upload", line.Message, StringComparison.Ordinal);
     }
 
     [Fact]

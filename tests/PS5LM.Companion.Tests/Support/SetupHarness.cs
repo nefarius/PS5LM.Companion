@@ -82,6 +82,9 @@ internal sealed class SetupHarness : IDisposable
     /// <summary>Upload names Payload Manager refuses, as it does for a payload file that is in use.</summary>
     public HashSet<string> UploadFails { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Uploads the manager accepts but then does not list, so the payload never resolves.</summary>
+    public HashSet<string> UploadDropped { get; } = new(StringComparer.OrdinalIgnoreCase);
+
     public bool Consent { get; set; }
 
     public bool CanPrompt { get; set; }
@@ -138,6 +141,11 @@ internal sealed class SetupHarness : IDisposable
             using var buffer = new MemoryStream();
             await content.CopyToAsync(buffer, cancellationToken);
             owner.Events.Add("upload:" + fileName);
+            if (owner.UploadDropped.Contains(fileName))
+            {
+                return;
+            }
+
             owner.Stored.RemoveAll(p => p.FileName == fileName);
             if (!fileName.StartsWith("pldmgr", StringComparison.Ordinal))
             {
