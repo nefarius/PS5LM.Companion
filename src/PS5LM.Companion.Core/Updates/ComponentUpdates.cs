@@ -12,6 +12,9 @@ public sealed record ComponentUpdateSnapshot(
 {
     public IReadOnlyList<SettingDrift> Settings { get; init; } = [];
 
+    /// <summary>Boot-setting warnings that are not drift. Empty until a check that asked about them.</summary>
+    public IReadOnlyList<string> Warnings { get; init; } = [];
+
     public static ComponentUpdateSnapshot Empty { get; } = new([], null, false, null);
 }
 
@@ -89,6 +92,7 @@ public static class ComponentUpdates
         return new ComponentUpdateStatus([.. byId.Values], snapshot.CheckedAt, snapshot.Checking, snapshot.Failure)
         {
             Settings = snapshot.Settings,
+            Warnings = snapshot.Warnings,
         };
     }
 

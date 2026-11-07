@@ -106,4 +106,17 @@ public sealed class ComponentUpdatesTests
 
         Assert.Equal("autoload-delay", Assert.Single(merged.Settings).Id);
     }
+
+    [Fact]
+    public void Boot_setting_warnings_from_the_hash_snapshot_are_kept()
+    {
+        var hash = new ComponentUpdateSnapshot([], DateTimeOffset.UnixEpoch, false, null)
+        {
+            Warnings = ["bundled kstuff is not confirmed off."],
+        };
+
+        var merged = ComponentUpdates.Merge([], hash);
+
+        Assert.Equal("bundled kstuff is not confirmed off.", Assert.Single(merged.Warnings));
+    }
 }

@@ -146,15 +146,34 @@ public sealed class ComponentUpdateService
                 }
             }
             var status = await CheckCoreAsync(cancellationToken);
+            var warnings = Combine(lines, status.Warnings);
             var applyFailure = lines.FirstOrDefault(line => line.Status == SetupStatus.Fail)?.Message;
-            if (applyFailure is null)
+            if (applyFailure is null && warnings.SequenceEqual(status.Warnings))
             {
                 return status;
             }
 
-            SetSnapshot(current => current with { Checking = false, Failure = applyFailure });
+            SetSnapshot(current => applyFailure is null
+                ? current with { Warnings = warnings }
+                : current with { Checking = false, Failure = applyFailure, Warnings = warnings });
             return Publish();
         }, cancellationToken);
+
+    private static List<string> Combine(IReadOnlyList<ReportLine> lines, IReadOnlyList<string> checkWarnings)
+    {
+        var warnings = lines.Where(line => line.Status == SetupStatus.Warn).Select(line => line.Message).Distinct().ToList();
+        foreach (var warning in checkWarnings)
+        {
+            if (warnings.Any(existing => existing.Contains(warning, StringComparison.Ordinal) || warning.Contains(existing, StringComparison.Ordinal)))
+            {
+                continue;
+            }
+
+            warnings.Add(warning);
+        }
+
+        return warnings;
+    }
 
     private async Task<ComponentUpdateStatus> RunExclusiveAsync(Func<Task<ComponentUpdateStatus>> action, CancellationToken cancellationToken)
     {
@@ -198,7 +217,7 @@ public sealed class ComponentUpdateService
         var report = await new UpdateRunner(_manifest, options, _services).RunAsync(cancellationToken);
         var failure = report.Lines.FirstOrDefault(line => line.Status == SetupStatus.Fail)?.Message;
         SetSnapshot(current => failure is null
-            ? new ComponentUpdateSnapshot(report.Updates, _time.GetUtcNow(), false, null) { Settings = report.Settings }
+            ? new ComponentUpdateSnapshot(report.Updates, _time.GetUtcNow(), false, null) { Settings = report.Settings, Warnings = report.SettingWarnings }
             : current with { Checking = false, Failure = failure, CheckedAt = _time.GetUtcNow() });
         return Publish();
     }

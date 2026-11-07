@@ -90,7 +90,9 @@ SHA-256 with the pinned download, the same way `update --check` does: the compan
 not flagged. An older app, or one whose version cannot be read, is flagged when `param.json` differs.
 
 The same page shows a separate warning when `updates.settings` is not empty: boot settings differ from the recommendation,
-one line per finding, and the `update --host ... --settings` command. **Fix settings** asks for confirmation, then
+one line per finding, and the `update --host ... --settings` command. Warnings that are not drift, such as a duplicate
+list that was not saved or an OnionHEN config that is missing, are published on `updates.warnings` and shown beside that.
+A missing config stays "not confirmed", not a successful fix. **Fix settings** asks for confirmation, then
 `POST /api/consoles/{id}/boot-settings/apply` rewrites only that configuration. It takes effect at the next boot or
 autoload and does not restart a payload. The request answers 409 while a transfer or a model load is running, and 503
 when the pinned manifest is missing. The overview card adds "Boot settings out of date" beside "Updates available".

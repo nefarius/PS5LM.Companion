@@ -695,6 +695,28 @@ public sealed class DashboardTests
     }
 
     [Fact]
+    public async Task The_status_page_shows_a_boot_setting_warning_that_is_not_drift()
+    {
+        await using var factory = new CompanionFactory();
+        await factory.WaitForFirstCheckAsync();
+        factory.Registry.Find("ps5")!.Store.Publish(CompanionStatus.Initial with
+        {
+            UpdatedAt = DateTimeOffset.UtcNow,
+            Updates = new ComponentUpdateStatus([], DateTimeOffset.UtcNow, false, null)
+            {
+                Warnings = ["/data/OnionHEN/config.ini does not exist yet, so bundled kstuff is not confirmed off."],
+            },
+        });
+        using var client = factory.CreateClient();
+
+        var html = await client.GetStringAsync("/consoles/ps5");
+
+        Assert.Contains("bundled kstuff is not confirmed off", html);
+        Assert.DoesNotContain("The last file check failed", html);
+        Assert.DoesNotContain("Boot settings differ from the recommendation", html);
+    }
+
+    [Fact]
     public async Task The_dashboard_is_behind_the_access_token()
     {
         await using var factory = new CompanionFactory { AccessToken = "secret" };

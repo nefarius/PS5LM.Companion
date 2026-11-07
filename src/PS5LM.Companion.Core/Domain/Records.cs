@@ -170,6 +170,9 @@ public sealed record ComponentUpdateStatus(
     /// <summary>Boot settings that differ from the recommendation. Empty until a check that asked for them.</summary>
     public IReadOnlyList<SettingDrift> Settings { get; init; } = [];
 
+    /// <summary>Boot-setting warnings that are not drift, such as a list that was not saved or a switch that could not be confirmed.</summary>
+    public IReadOnlyList<string> Warnings { get; init; } = [];
+
     public static ComponentUpdateStatus Empty { get; } = new([], null, false, null);
 }
 

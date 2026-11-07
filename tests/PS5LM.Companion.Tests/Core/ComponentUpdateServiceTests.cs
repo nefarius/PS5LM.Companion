@@ -114,6 +114,39 @@ public sealed class ComponentUpdateServiceTests
         Assert.DoesNotContain(store.Current.Updates!.Settings, item => item.Id == "onionhen-kstuff");
     }
 
+    [Fact]
+    public async Task Fix_settings_keeps_a_duplicate_warning_beside_the_remaining_drift()
+    {
+        using var harness = await PreparedAsync();
+        harness.Autoload = new AutoloadConfig(true, harness.Autoload.List + ",!3000,local/kstuff", harness.Autoload.DelaySeconds, true);
+        var store = new CompanionStatusStore();
+        store.Publish(CompanionStatus.Initial with { UpdatedAt = DateTimeOffset.UtcNow });
+
+        var status = await Service(harness, store).ApplySettingsAsync(CancellationToken.None);
+
+        Assert.Null(status.Failure);
+        Assert.Contains(status.Warnings, warning => warning.Contains("Remove the extra entries", StringComparison.Ordinal));
+        Assert.Contains(status.Settings, item => item.Id == "autoload-duplicate");
+        Assert.Contains(store.Current.Updates!.Warnings, warning => warning.Contains("Remove the extra entries", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_missing_onionhen_config_stays_an_unconfirmed_warning()
+    {
+        using var harness = await PreparedAsync();
+        await harness.Files.DeleteAsync("/data/OnionHEN/config.ini", CancellationToken.None);
+        var store = new CompanionStatusStore();
+        store.Publish(CompanionStatus.Initial with { UpdatedAt = DateTimeOffset.UtcNow });
+        var service = Service(harness, store);
+
+        var status = await service.ApplySettingsAsync(CancellationToken.None);
+
+        Assert.Null(status.Failure);
+        Assert.DoesNotContain(status.Settings, item => item.Id == "onionhen-kstuff");
+        Assert.Contains(status.Warnings, warning => warning.Contains("not confirmed off", StringComparison.Ordinal));
+        Assert.Contains(store.Current.Updates!.Warnings, warning => warning.Contains("not confirmed off", StringComparison.Ordinal));
+    }
+
     private static async Task<SetupHarness> PreparedAsync()
     {
         var harness = new SetupHarness();

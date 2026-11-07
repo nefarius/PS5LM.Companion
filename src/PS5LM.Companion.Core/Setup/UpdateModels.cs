@@ -63,6 +63,9 @@ public sealed record UpdateReport(IReadOnlyList<ReportLine> Lines, bool CheckOnl
     /// <summary>Boot settings that differ from the recommendation. Empty when the run did not ask about them.</summary>
     public IReadOnlyList<SettingDrift> Settings { get; init; } = [];
 
+    /// <summary>Boot-setting warnings that are not drift, such as a switch that could not be confirmed.</summary>
+    public IReadOnlyList<string> SettingWarnings { get; init; } = [];
+
     public int ExitCode =>
         Lines.Any(line => line.Status == SetupStatus.Fail) ? 2
         : CheckOnly && Pending > 0 ? 3

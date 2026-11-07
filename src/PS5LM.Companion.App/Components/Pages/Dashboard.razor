@@ -95,6 +95,17 @@ else
                 </div>
             </MudAlert>
         }
+        @if (SettingWarnings is { Count: > 0 } settingWarnings)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mt-2">
+                <ul>
+                    @foreach (var warning in settingWarnings)
+                    {
+                        <li>@warning</li>
+                    }
+                </ul>
+            </MudAlert>
+        }
         @if (Status.Updates?.Failure is { Length: > 0 } failure)
         {
             <MudAlert Severity="Severity.Error" Class="mt-2">
@@ -450,6 +461,8 @@ else
 
     private IReadOnlyList<SettingDrift> SettingsDrift => Status.Updates?.Settings ?? [];
 
+    private IReadOnlyList<string> SettingWarnings => Status.Updates?.Warnings ?? [];
+
     private bool HasAppUpdate => Outdated.Any(update => ComponentUpdates.AppId(PS5Variant.PS5LM) == update.Id || ComponentUpdates.AppId(PS5Variant.PS5LMPlus) == update.Id);
 
     private string UpdateCheckCaption =>
@@ -513,6 +526,10 @@ else
             if (status.Failure is { Length: > 0 } failure)
             {
                 Snackbar.Add(failure, Severity.Error);
+            }
+            else if (status.Warnings.Count > 0)
+            {
+                Snackbar.Add(string.Join(" ", status.Warnings), Severity.Warning);
             }
             else if (status.Settings.Count > 0)
             {

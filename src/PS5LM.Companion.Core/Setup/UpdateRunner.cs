@@ -33,6 +33,7 @@ public sealed class UpdateRunner
     private readonly List<(ManifestPayload Payload, ManagedPayload Stored)> _stillOld = [];
     private readonly List<ComponentUpdate> _updates = [];
     private readonly List<SettingDrift> _settings = [];
+    private readonly List<string> _settingWarnings = [];
     private int _pending;
 
     public UpdateRunner(SetupManifest manifest, UpdateOptions options, SetupServices services)
@@ -78,7 +79,7 @@ public sealed class UpdateRunner
             Add("Update", SetupStatus.Fail, ex.Message);
         }
 
-        return new UpdateReport(_setup.Lines, _options.CheckOnly, _pending, _updates) { Settings = _settings };
+        return new UpdateReport(_setup.Lines, _options.CheckOnly, _pending, _updates) { Settings = _settings, SettingWarnings = _settingWarnings };
     }
 
     private async Task<bool> CheckPayloadManagerAsync(CancellationToken cancellationToken)
@@ -730,6 +731,10 @@ public sealed class UpdateRunner
             foreach (var line in outcome.Lines)
             {
                 Add(line.Component, line.Status, line.Message);
+                if (line.Status == SetupStatus.Warn)
+                {
+                    _settingWarnings.Add(line.Message);
+                }
             }
 
             foreach (var drift in outcome.Drift)
