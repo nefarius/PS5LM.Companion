@@ -10,12 +10,17 @@ public sealed class SetupBuildersTests
         var manifest = SetupManifest.LoadEmbedded();
 
         Assert.Equal(
-            ["elfldr", "kstuff-lite", "onionhen", "ftpsrv", "shadowmountplus", "voidshell", "ps5-web-file-manager"],
+            ["elfldr", "kstuff-lite", "ftpsrv", "voidshell", "onionhen", "shadowmountplus", "ps5-web-file-manager"],
             manifest.Payloads.Select(p => p.Id).ToArray());
         Assert.Equal(["ps5lm", "ps5lmplus"], manifest.Apps.Select(a => a.Id).ToArray());
         Assert.All(manifest.Artifacts(), a => Assert.StartsWith("https://github.com/", a.Url, StringComparison.Ordinal));
-        Assert.Equal(3000, manifest.Payloads.Single(p => p.Id == "kstuff-lite").DelayAfterMs);
-        Assert.Equal(3000, manifest.Payloads.Single(p => p.Id == "onionhen").DelayAfterMs);
+        Assert.Equal(6000, manifest.Payloads.Single(p => p.Id == "elfldr").DelayAfterMs);
+        Assert.Equal(8000, manifest.Payloads.Single(p => p.Id == "kstuff-lite").DelayAfterMs);
+        Assert.Equal(25000, manifest.Payloads.Single(p => p.Id == "onionhen").DelayAfterMs);
+        Assert.Equal(5000, manifest.Payloads.Single(p => p.Id == "shadowmountplus").DelayAfterMs);
+        Assert.Equal(
+            "local/elfldr,!6000,local/kstuff-lite,!8000,local/ftpsrv,!3000,local/voidshell,!3000,local/onionhen,!25000,local/shadowmountplus,!5000,local/ps5-web-file-manager",
+            AutoloadListBuilder.Build(manifest.Payloads.Select(p => ($"local/{p.Id}", p.DelayAfterMs)), null));
         var voidshell = manifest.Payloads.Single(p => p.Id == "voidshell");
         Assert.False(voidshell.Optional);
         Assert.Equal("v1.1.1-nefarius.4", voidshell.Version);
@@ -159,5 +164,35 @@ public sealed class SetupBuildersTests
 
         Assert.Equal(status, edit.Status);
         Assert.Equal(config, edit.Text);
+    }
+
+    [Fact]
+    public void Onion_editor_replaces_a_kstuff_value_and_keeps_the_comment_and_line_endings()
+    {
+        var edit = OnionHenConfigEditor.SetValue("[Kstuff]\r\nautoload = true ; note\r\n", OnionHenConfigEditor.KstuffSection, OnionHenConfigEditor.KstuffAutoloadKey, "false");
+
+        Assert.Equal(ConfigValueStatus.Updated, edit.Status);
+        Assert.Equal("[Kstuff]\r\nautoload = false ; note\r\n", edit.Text);
+    }
+
+    [Fact]
+    public void Onion_editor_adds_a_missing_kstuff_key_before_the_next_section()
+    {
+        var edit = OnionHenConfigEditor.SetValue("[kstuff]\n# keep\n[other]\nx=1\n", "kstuff", "autoload", "false");
+
+        Assert.Equal(ConfigValueStatus.Added, edit.Status);
+        Assert.Equal("[kstuff]\n# keep\nautoload=false\n[other]\nx=1\n", edit.Text);
+    }
+
+    [Fact]
+    public void Onion_editor_appends_a_missing_kstuff_section_and_leaves_an_existing_value()
+    {
+        var added = OnionHenConfigEditor.SetValue("[other]\nautoload=true\n", "kstuff", "autoload", "false");
+        var same = OnionHenConfigEditor.SetValue("[kstuff]\nautoload=False\n", "kstuff", "autoload", "false");
+
+        Assert.Equal(ConfigValueStatus.Added, added.Status);
+        Assert.Equal("[other]\nautoload=true\n[kstuff]\nautoload=false\n", added.Text);
+        Assert.Equal(ConfigValueStatus.Unchanged, same.Status);
+        Assert.Equal("[kstuff]\nautoload=False\n", same.Text);
     }
 }

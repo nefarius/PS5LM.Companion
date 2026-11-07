@@ -26,15 +26,18 @@ public sealed class SetupRunnerTests
 
         Assert.Equal(0, report.ExitCode);
         Assert.Equal(
-            "local/elfldr,!3000,local/kstuff-lite,!3000,local/onionhen,!3000,local/ftpsrv,!3000,local/shadowmountplus,!3000,local/voidshell,!3000,local/ps5-web-file-manager",
+            "local/elfldr,!6000,local/kstuff-lite,!8000,local/ftpsrv,!3000,local/voidshell,!3000,local/onionhen,!25000,local/shadowmountplus,!5000,local/ps5-web-file-manager",
             harness.Autoload.List);
         Assert.True(harness.Autoload.Enabled);
+        Assert.Equal(SetupRunner.MinimumAutoloadDelaySeconds, harness.Autoload.DelaySeconds);
         Assert.Equal(
-            ["elfldr", "kstuff-lite", "onionhen", "ftpsrv", "shadowmountplus", "voidshell", "ps5-web-file-manager"],
+            ["elfldr", "kstuff-lite", "ftpsrv", "voidshell", "onionhen", "shadowmountplus", "ps5-web-file-manager"],
             harness.Events.Where(e => e.StartsWith("load:", StringComparison.Ordinal)).Select(e => e[5..^4]).ToArray());
         Assert.Equal("<html>dashboard</html>", harness.Files.Text("/data/voidshell/www/index.html"));
         Assert.DoesNotContain("/data/voidshell/www/index.html.part", harness.Files.Files.Keys);
         Assert.Contains("PPSA00001,PPSA99581", harness.Files.Text("/data/OnionHEN/config.ini"));
+        Assert.Contains("[kstuff]\nautoload=false\n", harness.Files.Text("/data/OnionHEN/config.ini"));
+        Assert.Equal(string.Empty, harness.Files.Text("/data/OnionHEN/no_kstuff"));
         Assert.Equal(OnionConfig, harness.Files.Text("/data/OnionHEN/config.ini.bak"));
         Assert.Equal(SetupHarness.ParamV1, harness.Files.Text("/data/homebrew/PPSA99581/sce_sys/param.json"));
         Assert.Equal("PNG", harness.Files.Text("/data/homebrew/PPSA99581/assets/logo.png"));
@@ -338,15 +341,76 @@ public sealed class SetupRunnerTests
     }
 
     [Fact]
-    public async Task Skip_app_leaves_homebrew_and_onionhen_alone()
+    public async Task Skip_app_still_switches_off_bundled_kstuff_and_leaves_homebrew_alone()
     {
         using var harness = Ready();
 
         var report = await harness.Runner(SetupHarness.Options(app: null) with { SkipApp = true }).RunAsync(CancellationToken.None);
 
         Assert.Equal(0, report.ExitCode);
-        Assert.Equal(OnionConfig, harness.Files.Text("/data/OnionHEN/config.ini"));
+        Assert.Contains("[kstuff]\nautoload=false\n", harness.Files.Text("/data/OnionHEN/config.ini"));
+        Assert.DoesNotContain("PPSA99581", harness.Files.Text("/data/OnionHEN/config.ini"));
+        Assert.Equal(string.Empty, harness.Files.Text("/data/OnionHEN/no_kstuff"));
+        Assert.Equal(OnionConfig, harness.Files.Text("/data/OnionHEN/config.ini.bak"));
         Assert.DoesNotContain(harness.Files.Files.Keys, key => key.StartsWith("/data/homebrew", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_longer_autoload_countdown_is_kept()
+    {
+        using var harness = Ready();
+        harness.Autoload = new(false, "local/mine", 15);
+
+        await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
+
+        Assert.Equal(15, harness.Autoload.DelaySeconds);
+        Assert.Contains("local/mine", harness.Autoload.List, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Bundled_kstuff_is_left_alone_when_the_manifest_has_no_kstuff_lite()
+    {
+        using var harness = Ready();
+        harness.Manifest = harness.Manifest with
+        {
+            Payloads = harness.Manifest.Payloads.Where(payload => payload.Id != "kstuff-lite").ToList(),
+        };
+
+        await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
+
+        Assert.DoesNotContain("[kstuff]", harness.Files.Text("/data/OnionHEN/config.ini"));
+        Assert.Null(harness.Files.Text("/data/OnionHEN/no_kstuff"));
+        Assert.Contains("PPSA99581", harness.Files.Text("/data/OnionHEN/config.ini"));
+    }
+
+    [Fact]
+    public async Task Missing_onionhen_config_warns_and_does_not_invent_one()
+    {
+        using var harness = Ready();
+        await harness.Files.DeleteAsync("/data/OnionHEN/config.ini", CancellationToken.None);
+
+        var report = await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
+
+        var line = Assert.Single(report.Lines, l => l.Component == "OnionHEN kstuff");
+        Assert.Equal(SetupStatus.Warn, line.Status);
+        Assert.Contains("does not exist yet", line.Message, StringComparison.Ordinal);
+        Assert.Null(harness.Files.Text("/data/OnionHEN/config.ini"));
+        Assert.Null(harness.Files.Text("/data/OnionHEN/no_kstuff"));
+    }
+
+    [Fact]
+    public async Task Bundled_kstuff_is_not_edited_when_ftp_is_down()
+    {
+        using var harness = Ready();
+        harness.LoadFails.Add("ftpsrv.elf");
+
+        var report = await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
+
+        var line = Assert.Single(report.Lines, l => l.Component == "OnionHEN kstuff");
+        Assert.Equal(SetupStatus.Warn, line.Status);
+        Assert.Contains("ftpsrv is not answering", line.Message, StringComparison.Ordinal);
+        Assert.Equal(OnionConfig, harness.Files.Text("/data/OnionHEN/config.ini"));
+        Assert.Null(harness.Files.Text("/data/OnionHEN/no_kstuff"));
     }
 
     [Fact]

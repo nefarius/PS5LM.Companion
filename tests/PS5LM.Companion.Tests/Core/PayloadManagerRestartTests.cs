@@ -94,7 +94,7 @@ public sealed class PayloadManagerRestartTests
 
         public Task<AutoloadConfig?> GetAutoloadAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
 
-        public Task SetAutoloadAsync(bool enabled, string list, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task SetAutoloadAsync(bool enabled, string list, int delaySeconds, CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public Task<bool> HtmlAsync(int port, string path, CancellationToken cancellationToken) => throw new NotSupportedException();
 

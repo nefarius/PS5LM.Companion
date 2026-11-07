@@ -14,6 +14,7 @@
       "url": "https://github.com/ps5-payload-dev/elfldr/releases/download/v0.27/elfldr-ps5.elf",
       "sha256": "82f6227610172c98bad6efe68219fc93a10027035991f47eb4b75532d023407d",
       "ready": { "port": 9021 },
+      "delayAfterMs": 6000,
       "readyTimeoutSeconds": 20
     },
     {
@@ -23,18 +24,8 @@
       "url": "https://github.com/EchoStretch/kstuff-lite/releases/download/v1.11/kstuff.elf",
       "sha256": "ab9a6cb4d3b1daf139d4d646e402b1cf569071acd64599c936d7a3a6164dc779",
       "ready": { "processes": ["kstuff.elf", "kstuff-lite.elf"] },
-      "delayAfterMs": 3000,
+      "delayAfterMs": 8000,
       "readyTimeoutSeconds": 45
-    },
-    {
-      "id": "onionhen",
-      "name": "OnionHEN",
-      "version": "v0.9.0",
-      "url": "https://github.com/aydencharles/onionHEN/releases/download/v0.9.0/OnionHEN.elf",
-      "sha256": "1f1f7c883d5d998be1d95d7d80b718f85180f8156f257661b0f445a7c6b7c212",
-      "ready": { "processes": ["onion_daemon.elf", "onion_util.elf"] },
-      "delayAfterMs": 3000,
-      "readyTimeoutSeconds": 60
     },
     {
       "id": "ftpsrv",
@@ -46,16 +37,6 @@
       "readyTimeoutSeconds": 20,
       "selfReplacing": true,
       "handoffWhileTitleRuns": true
-    },
-    {
-      "id": "shadowmountplus",
-      "name": "ShadowMountPlus",
-      "version": "1.7beta11",
-      "url": "https://github.com/drakmor/ShadowMountPlus/releases/download/1.7beta11/shadowmountplus.elf",
-      "sha256": "08c843018750bef013fe3a4de5f80c5c9738c6c2dafa2406e6b6e68d7585f3da",
-      "ready": { "processes": ["shadowmountplus.elf"] },
-      "readyTimeoutSeconds": 30,
-      "selfReplacing": true
     },
     {
       "id": "voidshell",
@@ -73,6 +54,27 @@
           "target": "/data/voidshell/www/index.html"
         }
       ]
+    },
+    {
+      "id": "onionhen",
+      "name": "OnionHEN",
+      "version": "v0.9.0",
+      "url": "https://github.com/aydencharles/onionHEN/releases/download/v0.9.0/OnionHEN.elf",
+      "sha256": "1f1f7c883d5d998be1d95d7d80b718f85180f8156f257661b0f445a7c6b7c212",
+      "ready": { "processes": ["onion_daemon.elf", "onion_util.elf"] },
+      "delayAfterMs": 25000,
+      "readyTimeoutSeconds": 60
+    },
+    {
+      "id": "shadowmountplus",
+      "name": "ShadowMountPlus",
+      "version": "1.7beta11",
+      "url": "https://github.com/drakmor/ShadowMountPlus/releases/download/1.7beta11/shadowmountplus.elf",
+      "sha256": "08c843018750bef013fe3a4de5f80c5c9738c6c2dafa2406e6b6e68d7585f3da",
+      "ready": { "processes": ["shadowmountplus.elf"] },
+      "delayAfterMs": 5000,
+      "readyTimeoutSeconds": 30,
+      "selfReplacing": true
     },
     {
       "id": "ps5-web-file-manager",

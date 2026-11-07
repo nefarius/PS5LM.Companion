@@ -10,14 +10,20 @@ namespace PS5LM.Companion.Core.Setup;
 
 /// <summary>
 /// Brings a console that only runs Payload Manager to a working PS5LM host: upgrades the manager when asked,
-/// uploads and autoloads the pinned payloads, launches them, places their extra files, allow-lists the app in
-/// OnionHEN, installs PS5LM or PS5LM Plus for ShadowMountPlus, and finishes with a reachability report.
+/// uploads and autoloads the pinned payloads, launches them, places their extra files, switches off OnionHEN's
+/// bundled kstuff, allow-lists the app in OnionHEN, installs PS5LM or PS5LM Plus for ShadowMountPlus, and finishes
+/// with a reachability report.
 /// Every step is safe to repeat. An app that is already installed is kept, even when its build differs from the pin;
 /// <c>update --apps</c> is the upgrade. <see cref="SetupOptions.Force"/> still replaces it.
 /// </summary>
 public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, SetupServices services)
 {
+    /// <summary>Shortest Payload Manager countdown setup leaves in place. A longer one already set is kept.</summary>
+    public const int MinimumAutoloadDelaySeconds = 10;
+
+    private const string KstuffPayloadId = "kstuff-lite";
     private const string OnionConfigPath = "/data/OnionHEN/config.ini";
+    private const string NoKstuffPath = "/data/OnionHEN/no_kstuff";
     private const string ShadowMountLogPath = "/data/shadowmount/debug.log";
     private const string HomebrewRoot = "/data/homebrew";
     private const string StagingRoot = "/data/ps5lm-companion/staging";
@@ -25,6 +31,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
 
     private readonly List<ReportLine> _lines = [];
     private readonly Dictionary<string, string> _notes = new(StringComparer.OrdinalIgnoreCase);
+    private bool _onionConfigBackedUp;
     internal IReadOnlyList<ReportLine> Lines => _lines;
 
     private ISetupUi Ui => services.Ui;
@@ -53,6 +60,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
             await ConfigureAutoloadAsync(resolved, cancellationToken);
             await LaunchPayloadsAsync(resolved, cancellationToken);
             await PlaceExtraFilesAsync(resolved, cancellationToken);
+            await DisableBundledKstuffAsync(cancellationToken);
             if (app is not null)
             {
                 await AllowAppInOnionHenAsync(app, cancellationToken);
@@ -193,12 +201,13 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
             return;
         }
 
+        var delay = Math.Max(current?.DelaySeconds ?? 0, MinimumAutoloadDelaySeconds);
         Ui.Info("Enabling autoload: " + list);
-        await services.Manager.SetAutoloadAsync(true, list, cancellationToken);
+        await services.Manager.SetAutoloadAsync(true, list, delay, cancellationToken);
         var check = await services.Manager.GetAutoloadAsync(cancellationToken);
-        if (check is { Enabled: true } && check.List == list)
+        if (check is { Enabled: true } && check.List == list && check.DelaySeconds == delay)
         {
-            Add("Autoload", SetupStatus.Ok, "Enabled with " + resolved.Count + " payloads.");
+            Add("Autoload", SetupStatus.Ok, $"Enabled with {resolved.Count} payloads after a {delay} s countdown.");
         }
         else
         {
@@ -292,7 +301,44 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         }
     }
 
-    // Step 6: let the app write /data/PS5LM when OnionHEN is the HEN.
+    // Step 6: one kstuff. OnionHEN v0.9.0 bundles the same kstuff-lite and loads it unless [kstuff] autoload is false.
+    // The bootstrapper ignores /data/OnionHEN/no_kstuff; the Toolbox writes that file alongside the config key, so setup does too.
+    private async Task DisableBundledKstuffAsync(CancellationToken cancellationToken)
+    {
+        if (!manifest.Payloads.Any(payload => payload.Id.Equals(KstuffPayloadId, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        if (!await services.Probe.PortOpenAsync(options.FtpPort, cancellationToken))
+        {
+            Add("OnionHEN kstuff", SetupStatus.Warn, $"ftpsrv is not answering, so {OnionConfigPath} was not checked.");
+            return;
+        }
+
+        var text = await services.Files.ReadTextAsync(OnionConfigPath, MaxTextBytes, cancellationToken);
+        if (text is null)
+        {
+            Add("OnionHEN kstuff", SetupStatus.Warn, $"{OnionConfigPath} does not exist yet. Run setup again once OnionHEN has started so its bundled kstuff can be switched off.");
+            return;
+        }
+
+        var edit = OnionHenConfigEditor.SetValue(text, OnionHenConfigEditor.KstuffSection, OnionHenConfigEditor.KstuffAutoloadKey, "false");
+        if (edit.Status != ConfigValueStatus.Unchanged)
+        {
+            await WriteOnionConfigAsync(text, edit.Text, cancellationToken);
+        }
+
+        await services.Files.WriteTextAsync(NoKstuffPath, string.Empty, cancellationToken);
+        Add(
+            "OnionHEN kstuff",
+            SetupStatus.Ok,
+            edit.Status == ConfigValueStatus.Unchanged
+                ? "Bundled kstuff is already off (/data/OnionHEN/no_kstuff)."
+                : "Set [kstuff] autoload=false and wrote /data/OnionHEN/no_kstuff (backup: config.ini.bak).");
+    }
+
+    // Step 7: let the app write /data/PS5LM when OnionHEN is the HEN.
     private async Task AllowAppInOnionHenAsync(ManifestApp app, CancellationToken cancellationToken)
     {
         if (!await services.Probe.PortOpenAsync(options.FtpPort, cancellationToken))
@@ -312,8 +358,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         switch (edit.Status)
         {
             case AllowListStatus.Added:
-                await services.Files.WriteTextAsync(OnionConfigPath + ".bak", text, cancellationToken);
-                await services.Files.WriteTextAsync(OnionConfigPath, edit.Text, cancellationToken);
+                await WriteOnionConfigAsync(text, edit.Text, cancellationToken);
                 Add("OnionHEN allow-list", SetupStatus.Ok, $"Added {app.TitleId} to exact_title_ids (backup: config.ini.bak).");
                 break;
             case AllowListStatus.AlreadyPresent:
@@ -325,7 +370,19 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         }
     }
 
-    // Step 7: copy the app into the folder ShadowMountPlus scans.
+    /// <summary>The first edit in a run keeps the file as it was; a later edit does not replace that backup.</summary>
+    private async Task WriteOnionConfigAsync(string previous, string updated, CancellationToken cancellationToken)
+    {
+        if (!_onionConfigBackedUp)
+        {
+            await services.Files.WriteTextAsync(OnionConfigPath + ".bak", previous, cancellationToken);
+            _onionConfigBackedUp = true;
+        }
+
+        await services.Files.WriteTextAsync(OnionConfigPath, updated, cancellationToken);
+    }
+
+    // Step 8: copy the app into the folder ShadowMountPlus scans.
     internal async Task<AppInstall> InstallAppAsync(ManifestApp app, CancellationToken cancellationToken)
     {
         if (!await services.Probe.PortOpenAsync(options.FtpPort, cancellationToken))
@@ -456,7 +513,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         return $"Installed {installed}, pinned {pinnedTag}. Left in place; run update --apps to upgrade.";
     }
 
-    // Step 8: ShadowMountPlus scans on a timer; nothing can force it, so wait and look.
+    // Step 9: ShadowMountPlus scans on a timer; nothing can force it, so wait and look.
     internal async Task<bool> WaitForShadowMountAsync(ManifestApp app, CancellationToken cancellationToken)
     {
         Ui.Info($"Waiting for ShadowMountPlus to register {app.TitleId}");
