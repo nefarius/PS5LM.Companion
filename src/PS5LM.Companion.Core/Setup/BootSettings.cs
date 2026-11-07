@@ -233,7 +233,7 @@ public static class BootSettings
         return new BootSettingsOutcome(drift, lines);
     }
 
-    private static List<(ManifestPayload Payload, ManagedPayload Stored)> Resolve(SetupManifest manifest, IReadOnlyList<ManagedPayload> inventory)
+    internal static List<(ManifestPayload Payload, ManagedPayload Stored)> Resolve(SetupManifest manifest, IReadOnlyList<ManagedPayload> inventory)
     {
         var resolved = new List<(ManifestPayload, ManagedPayload)>();
         foreach (var payload in manifest.Payloads)

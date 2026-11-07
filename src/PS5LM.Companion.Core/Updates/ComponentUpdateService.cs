@@ -124,14 +124,7 @@ public sealed class ComponentUpdateService
         {
             var lines = new List<ReportLine>();
             var inventory = await _services.Manager.ListPayloadsAsync(cancellationToken);
-            var resolved = new List<(ManifestPayload Payload, ManagedPayload Stored)>();
-            foreach (var payload in _manifest.Payloads)
-            {
-                if (SetupRunner.FindStored(inventory, payload) is { } stored)
-                {
-                    resolved.Add((payload, stored));
-                }
-            }
+            var resolved = BootSettings.Resolve(_manifest, inventory);
 
             if (resolved.Count == 0)
             {
