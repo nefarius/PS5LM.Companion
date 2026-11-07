@@ -109,7 +109,7 @@ else
         @if (Status.Updates?.Failure is { Length: > 0 } failure)
         {
             <MudAlert Severity="Severity.Error" Class="mt-2">
-                The last file check failed: @failure
+                The last update check or boot-settings change failed: @failure
             </MudAlert>
         }
         @if (Target.Updates is not null)

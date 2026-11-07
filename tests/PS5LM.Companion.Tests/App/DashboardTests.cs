@@ -660,7 +660,7 @@ public sealed class DashboardTests
 
         var html = await client.GetStringAsync("/consoles/ps5");
 
-        Assert.Contains("The last file check failed: ftpsrv is not answering on port 2121.", html);
+        Assert.Contains("The last update check or boot-settings change failed: ftpsrv is not answering on port 2121.", html);
         Assert.DoesNotContain("differ from this companion's pinned versions", html);
     }
 
@@ -712,7 +712,7 @@ public sealed class DashboardTests
         var html = await client.GetStringAsync("/consoles/ps5");
 
         Assert.Contains("bundled kstuff is not confirmed off", html);
-        Assert.DoesNotContain("The last file check failed", html);
+        Assert.DoesNotContain("The last update check or boot-settings change failed", html);
         Assert.DoesNotContain("Boot settings differ from the recommendation", html);
     }
 
