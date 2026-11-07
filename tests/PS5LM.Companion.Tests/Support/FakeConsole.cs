@@ -1,6 +1,7 @@
 using PS5LM.Companion.Core.Abstractions;
 using PS5LM.Companion.Core.Consoles;
 using PS5LM.Companion.Core.Discovery;
+using PS5LM.Companion.Core.Setup;
 
 namespace PS5LM.Companion.Tests.Support;
 
@@ -21,7 +22,21 @@ internal sealed class FakeConsole(FakeFileSystem? fileSystem = null)
 
     public FakeAppProvider VoidShell { get; } = new(AppProviderKind.VoidShell);
 
-    public ConsoleConnectors ToConnectors() => new(FileSystem, Llama, Sensors, Payloads, Launcher, Elfldr, [VoidShell]);
+    /// <summary>When set with <see cref="Manifest"/>, the console can compare and apply boot settings.</summary>
+    public SetupServices? UpdateCheck { get; set; }
+
+    public SetupManifest? Manifest { get; set; }
+
+    public ConsoleConnectors ToConnectors() => new(
+        FileSystem,
+        Llama,
+        Sensors,
+        Payloads,
+        Launcher,
+        Elfldr,
+        [VoidShell],
+        UpdateCheck: UpdateCheck,
+        Manifest: Manifest);
 }
 
 /// <summary>Hands out fake connectors per console id, creating them on first use.</summary>

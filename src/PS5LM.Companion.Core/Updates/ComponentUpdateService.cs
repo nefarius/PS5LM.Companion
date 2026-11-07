@@ -112,30 +112,53 @@ public sealed class ComponentUpdateService
         }
     }
 
-    public async Task<ComponentUpdateStatus> CheckAsync(CancellationToken cancellationToken)
+    public Task<ComponentUpdateStatus> CheckAsync(CancellationToken cancellationToken) =>
+        RunExclusiveAsync(() => CheckCoreAsync(cancellationToken), cancellationToken);
+
+    /// <summary>
+    /// Rewrites the autoload list, countdown and bundled-kstuff switch, then refreshes the published comparison.
+    /// Payload and app files are not touched. Callers refuse this while <see cref="BootSettings.IsBusy"/> is true.
+    /// </summary>
+    public Task<ComponentUpdateStatus> ApplySettingsAsync(CancellationToken cancellationToken) =>
+        RunExclusiveAsync(async () =>
+        {
+            var lines = new List<ReportLine>();
+            var inventory = await _services.Manager.ListPayloadsAsync(cancellationToken);
+            var resolved = new List<(ManifestPayload Payload, ManagedPayload Stored)>();
+            foreach (var payload in _manifest.Payloads)
+            {
+                if (SetupRunner.FindStored(inventory, payload) is { } stored)
+                {
+                    resolved.Add((payload, stored));
+                }
+            }
+
+            await BootSettings.ApplyAutoloadAsync(resolved, _services, (component, status, message) => lines.Add(new ReportLine(component, status, message)), cancellationToken);
+            await BootSettings.ApplyKstuffAsync(
+                _manifest,
+                resolved,
+                _services,
+                _options.FtpPort,
+                new OnionConfigSession(),
+                (component, status, message) => lines.Add(new ReportLine(component, status, message)),
+                cancellationToken);
+            var status = await CheckCoreAsync(cancellationToken);
+            var applyFailure = lines.FirstOrDefault(line => line.Status == SetupStatus.Fail)?.Message;
+            if (applyFailure is null)
+            {
+                return status;
+            }
+
+            SetSnapshot(current => current with { Checking = false, Failure = applyFailure });
+            return Publish();
+        }, cancellationToken);
+
+    private async Task<ComponentUpdateStatus> RunExclusiveAsync(Func<Task<ComponentUpdateStatus>> action, CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            SetSnapshot(current => current with { Checking = true });
-            Publish();
-
-            var options = new UpdateOptions(_options.Host)
-            {
-                IncludeApps = true,
-                IncludeSettings = true,
-                CheckOnly = true,
-                FtpPort = _options.FtpPort,
-                ElfldrPort = _options.ElfldrPort,
-                PayloadManagerPort = _options.PayloadManagerBaseAddress().Port,
-                VoidShellPort = _options.VoidShellPort,
-            };
-            var report = await new UpdateRunner(_manifest, options, _services).RunAsync(cancellationToken);
-            var failure = report.Lines.FirstOrDefault(line => line.Status == SetupStatus.Fail)?.Message;
-            SetSnapshot(current => failure is null
-                ? new ComponentUpdateSnapshot(report.Updates, _time.GetUtcNow(), false, null) { Settings = report.Settings }
-                : current with { Checking = false, Failure = failure, CheckedAt = _time.GetUtcNow() });
-            return Publish();
+            return await action();
         }
         catch (OperationCanceledException)
         {
@@ -152,6 +175,29 @@ public sealed class ComponentUpdateService
         {
             _gate.Release();
         }
+    }
+
+    private async Task<ComponentUpdateStatus> CheckCoreAsync(CancellationToken cancellationToken)
+    {
+        SetSnapshot(current => current with { Checking = true });
+        Publish();
+
+        var options = new UpdateOptions(_options.Host)
+        {
+            IncludeApps = true,
+            IncludeSettings = true,
+            CheckOnly = true,
+            FtpPort = _options.FtpPort,
+            ElfldrPort = _options.ElfldrPort,
+            PayloadManagerPort = _options.PayloadManagerBaseAddress().Port,
+            VoidShellPort = _options.VoidShellPort,
+        };
+        var report = await new UpdateRunner(_manifest, options, _services).RunAsync(cancellationToken);
+        var failure = report.Lines.FirstOrDefault(line => line.Status == SetupStatus.Fail)?.Message;
+        SetSnapshot(current => failure is null
+            ? new ComponentUpdateSnapshot(report.Updates, _time.GetUtcNow(), false, null) { Settings = report.Settings }
+            : current with { Checking = false, Failure = failure, CheckedAt = _time.GetUtcNow() });
+        return Publish();
     }
 
     private void SetSnapshot(Func<ComponentUpdateSnapshot, ComponentUpdateSnapshot> update)

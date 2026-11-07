@@ -27,6 +27,13 @@ public static class BootSettings
     /// <summary>Payload Manager 0.6.0 is the first release whose <c>get_config</c> reports <c>AUTOLOAD_DELAY</c>.</summary>
     public static readonly Version AutoloadDelaySince = new(0, 6, 0);
 
+    /// <summary>Shown when a fix is refused because FTP is in use or a model load is in progress.</summary>
+    public const string BusyMessage = "A transfer or model load is running. Wait for it to finish before changing boot settings.";
+
+    /// <summary>True while a transfer is active or a model load is in progress. Boot settings are left alone then.</summary>
+    public static bool IsBusy(CompanionStatus status, bool transferActive) =>
+        transferActive || status.CommandPending || status.Lifecycle == CompanionLifecycle.Loading;
+
     private const int MaxTextBytes = 4 * 1024 * 1024;
 
     /// <summary>

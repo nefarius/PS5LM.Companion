@@ -547,7 +547,10 @@ public sealed class DashboardTests
                 [new ComponentUpdate("voidshell", "VoidShell", "v1.1.1-nefarius.4", "1.0.0 -> v1.1.1-nefarius.4")],
                 checkedAt,
                 false,
-                null),
+                null)
+            {
+                Settings = [new SettingDrift("autoload-delay", "Autoload countdown", "10 s", "The countdown is 3 s.")],
+            },
         });
         using var client = factory.CreateClient();
 
@@ -571,6 +574,7 @@ public sealed class DashboardTests
         Assert.Contains("Payload Manager unreachable", html);
         Assert.Contains("Required payloads missing", html);
         Assert.Contains("Updates available", html);
+        Assert.Contains("Boot settings out of date", html);
     }
 
     [Fact]
@@ -657,6 +661,36 @@ public sealed class DashboardTests
         var html = await client.GetStringAsync("/consoles/ps5");
 
         Assert.Contains("The last file check failed: ftpsrv is not answering on port 2121.", html);
+        Assert.DoesNotContain("differ from this companion's pinned versions", html);
+    }
+
+    [Fact]
+    public async Task The_status_page_flags_boot_settings_and_offers_the_fix_command()
+    {
+        await using var factory = new CompanionFactory();
+        await factory.WaitForFirstCheckAsync();
+        factory.Registry.Find("ps5")!.Store.Publish(CompanionStatus.Initial with
+        {
+            UpdatedAt = DateTimeOffset.UtcNow,
+            Updates = new ComponentUpdateStatus([], DateTimeOffset.UtcNow, false, null)
+            {
+                Settings =
+                [
+                    new SettingDrift("autoload-delay", "Autoload countdown", "10 s", "The countdown is 3 s. The recommendation is at least 10 s."),
+                    new SettingDrift("onionhen-kstuff", "OnionHEN bundled kstuff", "off", "OnionHEN still loads its bundled kstuff."),
+                ],
+            },
+        });
+        using var client = factory.CreateClient();
+
+        var html = await client.GetStringAsync("/consoles/ps5");
+
+        Assert.Contains("Boot settings differ from the recommendation", html);
+        Assert.Contains("does not restart any payload", html);
+        Assert.Contains("Autoload countdown: The countdown is 3 s.", html);
+        Assert.Contains("OnionHEN bundled kstuff:", html);
+        Assert.Contains("Fix settings", html);
+        Assert.Contains("update --host 127.0.0.1 --settings", html);
         Assert.DoesNotContain("differ from this companion's pinned versions", html);
     }
 

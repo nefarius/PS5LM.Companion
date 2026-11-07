@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 
 using PS5LM.Companion.Core.Domain;
+using PS5LM.Companion.Core.Setup;
 using PS5LM.Companion.Tests.Support;
 
 namespace PS5LM.Companion.Tests.App;
@@ -163,5 +164,90 @@ public sealed class EndpointTests
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Contains("manifest", body.GetProperty("message").GetString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Applying_boot_settings_without_a_manifest_is_unavailable()
+    {
+        await using var factory = new CompanionFactory();
+        using var client = factory.CreateClient();
+
+        using var response = await client.PostAsync($"{Base}/boot-settings/apply", null);
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Applying_boot_settings_while_a_model_loads_is_a_conflict()
+    {
+        using var harness = new SetupHarness();
+        await using var factory = new CompanionFactory
+        {
+            Settings = new Dictionary<string, string> { ["PS5:Consoles:ps5:UpdateCheckIntervalMinutes"] = "0" },
+        };
+        factory.Connectors["ps5"].UpdateCheck = UpdateServices(harness);
+        factory.Connectors["ps5"].Manifest = harness.Manifest;
+        await factory.WaitForFirstCheckAsync();
+        factory.Registry.Find("ps5")!.Store.Publish(CompanionStatus.Initial with
+        {
+            Lifecycle = CompanionLifecycle.Loading,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        });
+        using var client = factory.CreateClient();
+
+        using var response = await client.PostAsync($"{Base}/boot-settings/apply", null);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Contains("model load", body.GetProperty("message").GetString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Applying_boot_settings_raises_a_short_countdown()
+    {
+        using var harness = await PreparedConsoleAsync();
+        harness.Autoload = harness.Autoload with { DelaySeconds = 3, DelayReported = true };
+        await using var factory = new CompanionFactory
+        {
+            Settings = new Dictionary<string, string> { ["PS5:Consoles:ps5:UpdateCheckIntervalMinutes"] = "0" },
+        };
+        factory.Connectors["ps5"].UpdateCheck = UpdateServices(harness);
+        factory.Connectors["ps5"].Manifest = harness.Manifest;
+        using var client = factory.CreateClient();
+        await factory.WaitForFirstCheckAsync();
+
+        using var response = await client.PostAsync($"{Base}/boot-settings/apply", null);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(10, harness.Autoload.DelaySeconds);
+        Assert.Equal(0, body.GetProperty("settings").GetArrayLength());
+    }
+
+    private static SetupServices UpdateServices(SetupHarness harness) => new(
+        harness.Manager,
+        harness.Artifacts,
+        harness.Files,
+        harness.Probe,
+        harness.Elfldr,
+        harness.VoidShell,
+        new SetupHarness.FakeUi(harness),
+        TimeProvider.System);
+
+    private static async Task<SetupHarness> PreparedConsoleAsync()
+    {
+        var harness = new SetupHarness();
+        harness.VoidShell.SetUp([SetupHarness.TitleId]);
+        harness.Files.AddFile("/data/OnionHEN/config.ini", "[general]\nx=1\n[app_jailbreak]\nexact_title_ids = PPSA00001\n");
+        await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
+        foreach (var payload in harness.Manifest.Payloads)
+        {
+            var local = await harness.Artifacts.FetchAsync(payload.Url, payload.Sha256, CancellationToken.None);
+            var stored = harness.Stored.Single(item => item.FileName == payload.UploadName);
+            harness.Files.AddFile(stored.Path!, await File.ReadAllBytesAsync(local));
+        }
+
+        harness.Events.Clear();
+        return harness;
     }
 }

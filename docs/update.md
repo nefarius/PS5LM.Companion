@@ -89,6 +89,12 @@ SHA-256 with the pinned download, the same way `update --check` does: the compan
 `sce_sys/param.json` is compared with the `param.json` inside the pinned archive. A `contentVersion` newer than the pin is
 not flagged. An older app, or one whose version cannot be read, is flagged when `param.json` differs.
 
+The same page shows a separate warning when `updates.settings` is not empty: boot settings differ from the recommendation,
+one line per finding, and the `update --host ... --settings` command. **Fix settings** asks for confirmation, then
+`POST /api/consoles/{id}/boot-settings/apply` rewrites only that configuration. It takes effect at the next boot or
+autoload and does not restart a payload. The request answers 409 while a transfer or a model load is running, and 503
+when the pinned manifest is missing. The overview card adds "Boot settings out of date" beside "Updates available".
+
 A missing component is not reported as outdated; the existing "not installed" warnings already cover that. The first
 hash pass runs shortly after the console is reachable, then every `PS5:Consoles:{id}:UpdateCheckIntervalMinutes`
 (default 360). `0` disables the background pass; live version checks still run. The pass is deferred while the console

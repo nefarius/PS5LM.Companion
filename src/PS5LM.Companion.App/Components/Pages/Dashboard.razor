@@ -1,5 +1,6 @@
 @page "/consoles/{ConsoleId}"
 @inherits LiveComponent
+@using PS5LM.Companion.Core.Setup
 @inject ISnackbar Snackbar
 @inject IDialogService Dialogs
 
@@ -73,6 +74,25 @@ else
                 @Display.UpdateCommandGuidance(Target.Host, Target.Options, HasAppUpdate)
                 Add <code>--restart</code> to replace a differing stored VoidShell build by stopping and relaunching it, or ShadowMountPlus, which replaces its own running copy when launched again.
                 Stored files that already match the pin are skipped; a console reboot can recover a still-running older copy.
+            </MudAlert>
+        }
+        @if (SettingsDrift is { Count: > 0 } drift)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mt-2">
+                Boot settings differ from the recommendation. Fix settings only rewrites configuration. It takes effect at the next console boot or autoload and does not restart any payload.
+                <ul>
+                    @foreach (var item in drift)
+                    {
+                        <li>@item.Name: @item.Detail</li>
+                    }
+                </ul>
+                @Display.UpdateCommandGuidance(Target.Host, Target.Options, false, true)
+                <div class="mt-2">
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@(_fixing || Status.Updates?.Checking == true)"
+                               OnClick="FixSettingsAsync">
+                        @(_fixing ? "Fixing..." : "Fix settings")
+                    </MudButton>
+                </div>
             </MudAlert>
         }
         @if (Status.Updates?.Failure is { Length: > 0 } failure)
@@ -295,6 +315,7 @@ else
     private bool _launchingApp;
     private bool _restarting;
     private bool _checking;
+    private bool _fixing;
 
     private static string RunText(AppRunState state) => state switch
     {
@@ -317,6 +338,7 @@ else
         _launchingApp = false;
         _restarting = false;
         _checking = false;
+        _fixing = false;
         return Task.CompletedTask;
     }
 
@@ -426,6 +448,8 @@ else
 
     private IReadOnlyList<ComponentUpdate> Outdated => Status.Updates?.Outdated ?? [];
 
+    private IReadOnlyList<SettingDrift> SettingsDrift => Status.Updates?.Settings ?? [];
+
     private bool HasAppUpdate => Outdated.Any(update => ComponentUpdates.AppId(PS5Variant.PS5LM) == update.Id || ComponentUpdates.AppId(PS5Variant.PS5LMPlus) == update.Id);
 
     private string UpdateCheckCaption =>
@@ -451,6 +475,57 @@ else
         finally
         {
             _checking = false;
+        }
+    }
+
+    private async Task FixSettingsAsync()
+    {
+        var console = Target;
+        if (console?.Updates is null || _fixing)
+        {
+            return;
+        }
+
+        if (BootSettings.IsBusy(console.Store.Current, Transfers.HasActive(console.Id)))
+        {
+            Snackbar.Add(BootSettings.BusyMessage, Severity.Warning);
+            return;
+        }
+
+        _fixing = true;
+        try
+        {
+            if (!await Confirm.AskAsync(Dialogs, $"Fix boot settings on {console.Name}",
+                    $"Rewrite the autoload list, countdown and OnionHEN bundled-kstuff switch on {Confirm.On(console)}? This only changes configuration. It takes effect at the next boot or autoload and does not restart any payload.",
+                    "Fix settings")
+                || !ReferenceEquals(console, Target))
+            {
+                return;
+            }
+
+            if (BootSettings.IsBusy(console.Store.Current, Transfers.HasActive(console.Id)))
+            {
+                Snackbar.Add(BootSettings.BusyMessage, Severity.Warning);
+                return;
+            }
+
+            var status = await console.Updates.ApplySettingsAsync(CancellationToken.None);
+            if (status.Failure is { Length: > 0 } failure)
+            {
+                Snackbar.Add(failure, Severity.Error);
+            }
+            else if (status.Settings.Count > 0)
+            {
+                Snackbar.Add("Some boot settings still differ from the recommendation.", Severity.Warning);
+            }
+            else
+            {
+                Snackbar.Add("Boot settings were updated. They take effect at the next boot or autoload.", Severity.Success);
+            }
+        }
+        finally
+        {
+            _fixing = false;
         }
     }
 

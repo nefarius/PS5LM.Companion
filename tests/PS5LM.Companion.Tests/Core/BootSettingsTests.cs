@@ -1,3 +1,4 @@
+using PS5LM.Companion.Core.Domain;
 using PS5LM.Companion.Core.Setup;
 using PS5LM.Companion.Tests.Support;
 
@@ -162,6 +163,22 @@ public sealed class BootSettingsTests
         Assert.Equal(list, harness.Autoload.List);
         Assert.Equal(bak, harness.Files.Text("/data/OnionHEN/config.ini.bak"));
         Assert.Contains("[kstuff]\nautoload=false\n", harness.Files.Text(ConfigPath));
+    }
+
+    [Theory]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(false, false, true)]
+    public void A_transfer_or_a_model_load_blocks_a_fix(bool transfer, bool loading, bool command)
+    {
+        var status = CompanionStatus.Initial with
+        {
+            Lifecycle = loading ? CompanionLifecycle.Loading : CompanionLifecycle.Ready,
+            CommandPending = command,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        };
+
+        Assert.Equal(transfer || loading || command, BootSettings.IsBusy(status, transfer));
     }
 
     private static async Task<SetupHarness> PreparedAsync()
