@@ -121,17 +121,21 @@ public sealed class PayloadManagerAdminClientTests
             .GetAutoloadAsync(CancellationToken.None);
         Assert.Equal(new PS5LM.Companion.Core.Setup.AutoloadConfig(true, "a,!3000,b"), read);
 
+        Assert.Equal(12, (await Client(new StubHandler(_ => Text("""{"AUTOLOAD_ENABLED":true,"AUTOLOAD_LIST":"a","AUTOLOAD_DELAY":"12"}"""))).GetAutoloadAsync(CancellationToken.None))!.DelaySeconds);
+        Assert.Equal(15, (await Client(new StubHandler(_ => Text("""{"AUTOLOAD_DELAY":15}"""))).GetAutoloadAsync(CancellationToken.None))!.DelaySeconds);
+        Assert.Equal(0, (await Client(new StubHandler(_ => Text("""{"AUTOLOAD_DELAY":3601}"""))).GetAutoloadAsync(CancellationToken.None))!.DelaySeconds);
+
         string? body = null;
         var handler = new StubHandler(r =>
         {
             body = r.Content!.ReadAsStringAsync().Result;
             return Text("OK");
         });
-        await Client(handler).SetAutoloadAsync(true, "a,!3000", CancellationToken.None);
+        await Client(handler).SetAutoloadAsync(true, "a,!3000", 15, CancellationToken.None);
         var request = handler.Requests.Single();
         Assert.Equal("/set_config", request.RequestUri!.AbsolutePath);
         Assert.Equal("1", request.Headers.GetValues("X-PLDMGR-Request").Single());
-        Assert.Equal("""{"AUTOLOAD_ENABLED":true,"AUTOLOAD_LIST":"a,!3000"}""", body);
+        Assert.Equal("""{"AUTOLOAD_ENABLED":true,"AUTOLOAD_LIST":"a,!3000","AUTOLOAD_DELAY":15}""", body);
     }
 
     [Fact]

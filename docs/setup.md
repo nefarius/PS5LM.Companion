@@ -34,24 +34,57 @@ In a container, mount `/data` so downloads are cached, and pass `--upgrade-paylo
 1. Payload Manager must answer on port 8084 and be 0.6.0 or newer. An older one is upgraded (below), after consent.
 2. List what Payload Manager stores and compare it with the manifest.
 3. Download missing payloads, verify the SHA-256, upload each as `<id>.elf` (slot `local/<id>`).
-4. Enable autoload with the payloads in order and a 3 s pause between every step, including entries you already had:
-   elfldr, kstuff-lite, OnionHEN, ftpsrv, ShadowMountPlus, VoidShell, PS5 Web File Manager. A longer pause on a payload in
-   the manifest is kept. Payload Manager accepts at most 4094 bytes. A longer list, pauses included, is left unchanged
-   and the report says to shorten the existing entries. `update` does not rewrite this list; re-run `setup` on a console
-   that was already prepared.
-5. Launch them in that order, skipping any that already run, waiting for each one's port or process. If elfldr does not come up,
-   launching stops: Payload Manager sends everything through elfldr and cannot start it.
+4. Enable autoload with the payloads in order and at least a 3 s pause between every step, including entries you already had:
+   elfldr (6 s), kstuff-lite (8 s), ftpsrv, VoidShell, OnionHEN (25 s), ShadowMountPlus (5 s), PS5 Web File Manager.
+   A longer pause on a payload in the manifest is kept. Payload Manager's own countdown (`AUTOLOAD_DELAY`) is raised to
+   10 s when it is shorter; a longer countdown is left as it is. Payload Manager accepts at most 4094 bytes. A longer list,
+   pauses included, is left unchanged and the report says to shorten the existing entries. `update` does not rewrite this
+   list or the countdown; re-run `setup` on a console that was already prepared.
+5. Launch them in that order, skipping any that already run, waiting for each one's port or process, then waiting out that
+   payload's pause. Once ftpsrv is answering, and before OnionHEN is sent, bundled kstuff is switched off (step 7).
+   If elfldr does not come up, launching stops before OnionHEN: Payload Manager sends everything through elfldr and cannot start it.
+   If the manifest includes kstuff-lite and that payload did not resolve, or the resolved copy is not ready, OnionHEN and
+   everything after it are not sent. Bundled kstuff stays off; setup does not turn it back on. A manifest without
+   kstuff-lite does not wait for it.
 6. Place extra files over FTP (VoidShell's `index.html` to `/data/voidshell/www/index.html`). Uploaded as `.part`, then renamed.
    Skipped when the size on the console matches (FTP cannot hash).
-7. Add the app's title ID to `exact_title_ids` in `[app_jailbreak]` of `/data/OnionHEN/config.ini`, after writing `config.ini.bak`.
-   A missing file, section or key, or a bracketed list, is only a warning and nothing is changed.
-8. Install the app when it is not already there. A new install is uploaded to `/data/ps5lm-companion/staging/<title>` and renamed
+7. Switch off OnionHEN's bundled kstuff, even with `--skip-app`, when the manifest includes kstuff-lite. When this run
+   launches OnionHEN, the edit happens after ftpsrv is answering and before that launch. Sets `[kstuff] autoload=false`
+   in `/data/OnionHEN/config.ini` (that is what v0.9.0 reads) and writes an empty `/data/OnionHEN/no_kstuff`, which is
+   what the Toolbox writes alongside the key. The first edit in the run saves `config.ini.bak`; the allow-list edit
+   below does not replace it. A missing file, or ftpsrv not answering, means the switch is not confirmed off. Setup does
+   not invent a config and does not send OnionHEN. Run setup again once OnionHEN has created the file. This step runs
+   only when kstuff-lite is in the manifest.
+8. Add the app's title ID to `exact_title_ids` in `[app_jailbreak]` of `/data/OnionHEN/config.ini`, after writing `config.ini.bak`
+   when step 7 did not already. A missing file, section or key, or a bracketed list, is only a warning and nothing is changed.
+9. Install the app when it is not already there. A new install is uploaded to `/data/ps5lm-companion/staging/<title>` and renamed
    into `/data/homebrew/<title>`, so ShadowMountPlus never scans a half-copied app. An app that is already installed is left in
    place, including when its `param.json` differs from the pin, and the report points at [`update --apps`](update.md).
    `setup --force` overwrites that app in place with `param.json` last; nothing is deleted, so models in the folder stay.
-9. Wait up to 3 minutes for ShadowMountPlus to register the title (VoidShell's library, else its log
-   `/data/shadowmount/debug.log`). Nothing can force a scan; ShadowMountPlus pauses while a game runs.
-10. Report: Payload Manager, autoload, each payload (port or process), the VoidShell dashboard page.
+10. Wait up to 3 minutes for ShadowMountPlus to register the title (VoidShell's library, else its log
+    `/data/shadowmount/debug.log`). Nothing can force a scan; ShadowMountPlus pauses while a game runs.
+11. Report: Payload Manager, autoload, each payload (port or process), the VoidShell dashboard page.
+
+## Boot timing
+
+Payload Manager does not wait for a payload to become ready. It sends the ELF to `127.0.0.1:9021` and then waits 500 ms plus the
+`!ms` pause in the list (`src/autoload.c` and `src/ps5_launcher.c` in itsPLK/ps5-payload-manager v0.6.3). A closed port fails the
+launch immediately, with no retry. The pauses below are what give each step time to finish before the next ELF is sent. From
+Payload Manager's own 10 s countdown, the chain is about a minute.
+
+| After | Pause | Why |
+|---|---|---|
+| elfldr | 6 s | The new elfldr kills the old one (1 s per attempt) and retries a failed bind of port 9021 every 3 s (`socksrv.c` in ps5-payload-dev/elfldr v0.27). The Y2JB autoloader asks for 4 s after a replacement elfldr. 3 s was short enough for kstuff-lite to hit a closed port and be skipped. |
+| kstuff-lite | 8 s | Kernel patching. ShadowMountPlus needs kstuff already active, and OnionHEN gives its own copy up to 15 s before it gives up. |
+| ftpsrv, VoidShell | 3 s | Light services. They do not touch ShellUI, and they are up before OnionHEN, so FTP and the shell still answer if OnionHEN freezes the home screen. The OnionHEN log is `/data/OnionHEN/OnionHEN.log`. |
+| OnionHEN | 25 s | Startup is sequential: private loader on 9020 (up to 10 s), a fixed 3 s sleep, util (up to 15 s), kstuff, daemon (up to 20 s), then the ShellUI injection (`launch_pipeline.c` in aydencharles/onionHEN v0.9.0). A log on [onionHEN#119](https://github.com/aydencharles/onionHEN/issues/119) shows about 13 s from "Activating toolbox" to a ShellUI crash. The owner of [onionHEN#92](https://github.com/aydencharles/onionHEN/issues/92) asks for a delay before OnionHEN and no controller input while it loads. ShadowMountPlus, which starts scanning disks immediately, waits until that window has passed. |
+| ShadowMountPlus | 5 s | Its first scan and mounts are disk-heavy, so they come after OnionHEN has injected. |
+
+One kstuff only. OnionHEN v0.9.0 bundles kstuff-lite 1.11, the same build this manifest pins, and loads it unless `[kstuff] autoload`
+is false or `/mnt/usb0/no_kstuff` exists. A `/data/OnionHEN/no_kstuff` file on its own does nothing; the Toolbox writes it when it
+flips the config key, which is why setup writes both. A second kstuff is a reported cause of kernel panics
+([PS5 JB Guide](https://ps5-jb-guide.vercel.app/en/erros/duplicate-hen-kstuff-autoload),
+[onionHEN#109](https://github.com/aydencharles/onionHEN/issues/109)). Setup keeps the external kstuff-lite and turns the bundled copy off.
 
 ## Payload Manager upgrade
 
@@ -150,6 +183,6 @@ The inference gateway does not route by app version, so a mixed pool keeps worki
 ## Not automated
 
 - Running the jailbreak itself, or getting Payload Manager and elfldr onto a console that has neither.
-- Changing OnionHEN or ShadowMountPlus settings beyond the title allow-list.
+- Changing OnionHEN or ShadowMountPlus settings beyond the title allow-list and the bundled kstuff switch.
 - Verifying the OnionHEN `config.ini` layout on a real console: the editor handles comma or semicolon separated values and warns
   on anything else.

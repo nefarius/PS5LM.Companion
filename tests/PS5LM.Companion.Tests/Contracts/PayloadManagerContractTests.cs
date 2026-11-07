@@ -40,9 +40,11 @@ public sealed class PayloadManagerContractTests
         Assert.NotNull(config);
         Assert.True(config.Enabled);
         Assert.Contains("local/elfldr", config.List, StringComparison.Ordinal);
+        Assert.Equal(5, config.DelaySeconds);
 
-        await admin.SetAutoloadAsync(true, config.List, CancellationToken.None);
+        await admin.SetAutoloadAsync(true, config.List, config.DelaySeconds, CancellationToken.None);
         Assert.Contains("local/elfldr", posted, StringComparison.Ordinal);
+        Assert.Contains("\"AUTOLOAD_DELAY\":5", posted, StringComparison.Ordinal);
 
         var processes = await admin.GetProcessesAsync(CancellationToken.None);
         Assert.Contains("kstuff.elf", processes!);

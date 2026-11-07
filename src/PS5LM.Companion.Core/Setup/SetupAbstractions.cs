@@ -15,7 +15,8 @@ public sealed record ManagedPayload(string Slot, string? Id, string FileName, st
 }
 
 /// <summary>The autoload settings Payload Manager keeps.</summary>
-public sealed record AutoloadConfig(bool Enabled, string List);
+/// <param name="DelaySeconds">Countdown before the list runs. 0 when the manager did not report one.</param>
+public sealed record AutoloadConfig(bool Enabled, string List, int DelaySeconds = 0);
 
 /// <summary>Payload Manager's administration surface, in the forms that 0.5.x and 0.6.x share and the 0.6.x extras.</summary>
 public interface IPayloadManagerAdmin
@@ -41,7 +42,8 @@ public interface IPayloadManagerAdmin
 
     Task<AutoloadConfig?> GetAutoloadAsync(CancellationToken cancellationToken);
 
-    Task SetAutoloadAsync(bool enabled, string list, CancellationToken cancellationToken);
+    /// <param name="delaySeconds">Countdown before the list runs, in seconds. Payload Manager stores 0 through 3600.</param>
+    Task SetAutoloadAsync(bool enabled, string list, int delaySeconds, CancellationToken cancellationToken);
 
     /// <summary>Asks the running manager to exit.</summary>
     Task ShutdownAsync(CancellationToken cancellationToken);

@@ -208,7 +208,7 @@ public sealed class PayloadManagerAdminClient(HttpClient http) : IPayloadManager
             var root = document.RootElement;
             var enabled = root.TryGetProperty("AUTOLOAD_ENABLED", out var flag)
                 && (flag.ValueKind == JsonValueKind.True || (flag.ValueKind == JsonValueKind.String && flag.GetString() == "true"));
-            return new AutoloadConfig(enabled, Text(root, "AUTOLOAD_LIST") ?? string.Empty);
+            return new AutoloadConfig(enabled, Text(root, "AUTOLOAD_LIST") ?? string.Empty, Delay(root));
         }
         catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
         {
@@ -216,11 +216,16 @@ public sealed class PayloadManagerAdminClient(HttpClient http) : IPayloadManager
         }
     }
 
-    public async Task SetAutoloadAsync(bool enabled, string list, CancellationToken cancellationToken)
+    public async Task SetAutoloadAsync(bool enabled, string list, int delaySeconds, CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, "set_config")
         {
-            Content = JsonContent.Create(new Dictionary<string, object> { ["AUTOLOAD_ENABLED"] = enabled, ["AUTOLOAD_LIST"] = list }),
+            Content = JsonContent.Create(new Dictionary<string, object>
+            {
+                ["AUTOLOAD_ENABLED"] = enabled,
+                ["AUTOLOAD_LIST"] = list,
+                ["AUTOLOAD_DELAY"] = delaySeconds,
+            }),
         };
         request.Headers.Add(Marker, "1");
         using var response = await http.SendAsync(request, cancellationToken);
@@ -247,6 +252,38 @@ public sealed class PayloadManagerAdminClient(HttpClient http) : IPayloadManager
             // The manager can drop the connection while it exits, and a stuck one trips the client's timeout
             // (Polly's TimeoutRejectedException). The caller waits for the port to close either way.
         }
+    }
+
+    /// <summary>0 through 3600, the range Payload Manager stores. Anything else counts as unreported.</summary>
+    private static int Delay(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("AUTOLOAD_DELAY", out var value))
+        {
+            return 0;
+        }
+
+        if (!TryDelay(value, out var delay) || delay is < 0 or > 3600)
+        {
+            return 0;
+        }
+
+        return delay;
+    }
+
+    private static bool TryDelay(JsonElement value, out int delay)
+    {
+        if (value.ValueKind == JsonValueKind.Number)
+        {
+            return value.TryGetInt32(out delay);
+        }
+
+        if (value.ValueKind == JsonValueKind.String)
+        {
+            return int.TryParse(value.GetString(), System.Globalization.CultureInfo.InvariantCulture, out delay);
+        }
+
+        delay = 0;
+        return false;
     }
 
     private static string? Text(JsonElement element, string name) =>
