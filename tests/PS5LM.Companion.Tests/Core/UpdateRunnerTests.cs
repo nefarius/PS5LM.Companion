@@ -855,6 +855,51 @@ public sealed class UpdateRunnerTests
     }
 
     [Fact]
+    public async Task Settings_apply_leaves_bundled_kstuff_when_kstuff_lite_is_not_stored()
+    {
+        using var harness = await PreparedAsync();
+        harness.Stored.RemoveAll(item => item.FileName == "kstuff-lite.elf");
+        var config = harness.Files.Text("/data/OnionHEN/config.ini")!.Replace("autoload=false", "autoload=true", StringComparison.Ordinal);
+        harness.Files.AddFile("/data/OnionHEN/config.ini", config);
+        await harness.Files.DeleteAsync("/data/OnionHEN/no_kstuff", CancellationToken.None);
+
+        var report = await Runner(harness, settings: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal(0, report.ExitCode);
+        Assert.Equal(config, harness.Files.Text("/data/OnionHEN/config.ini"));
+        Assert.Null(harness.Files.Text("/data/OnionHEN/no_kstuff"));
+    }
+
+    [Fact]
+    public async Task Settings_apply_changes_nothing_when_no_pinned_payload_is_stored()
+    {
+        using var harness = await PreparedAsync();
+        harness.Stored.Clear();
+        var list = harness.Autoload.List;
+        var config = harness.Files.Text("/data/OnionHEN/config.ini");
+
+        var report = await Runner(harness, settings: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal(0, report.ExitCode);
+        Assert.Equal(list, harness.Autoload.List);
+        Assert.Equal(config, harness.Files.Text("/data/OnionHEN/config.ini"));
+        Assert.Contains(report.Lines, line => line.Status == SetupStatus.Warn && line.Message.Contains("were not changed", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Settings_check_ignores_bundled_kstuff_when_kstuff_lite_is_not_stored()
+    {
+        using var harness = await PreparedAsync();
+        harness.Stored.RemoveAll(item => item.FileName == "kstuff-lite.elf");
+        harness.Files.AddFile("/data/OnionHEN/config.ini", harness.Files.Text("/data/OnionHEN/config.ini")!.Replace("autoload=false", "autoload=true", StringComparison.Ordinal));
+
+        var report = await Runner(harness, check: true, settings: true).RunAsync(CancellationToken.None);
+
+        Assert.DoesNotContain(report.Settings, item => item.Id == "onionhen-kstuff");
+        Assert.Equal(0, report.ExitCode);
+    }
+
+    [Fact]
     public async Task Settings_apply_on_a_current_console_is_idempotent()
     {
         using var harness = await PreparedAsync();

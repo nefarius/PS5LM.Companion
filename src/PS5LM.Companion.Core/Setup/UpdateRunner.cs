@@ -752,8 +752,17 @@ public sealed class UpdateRunner
             }
         }
 
+        if (resolved.Count == 0)
+        {
+            Add("Autoload", SetupStatus.Warn, "No pinned payloads are stored, so boot settings were not changed. Run setup to install them.");
+            return;
+        }
+
         await BootSettings.ApplyAutoloadAsync(resolved, _services, Add, cancellationToken);
-        await BootSettings.ApplyKstuffAsync(_manifest, resolved, _services, _options.FtpPort, new OnionConfigSession(), Add, cancellationToken);
+        if (resolved.Any(item => item.Payload.Id.Equals(BootSettings.KstuffPayloadId, StringComparison.OrdinalIgnoreCase)))
+        {
+            await BootSettings.ApplyKstuffAsync(_manifest, resolved, _services, _options.FtpPort, new OnionConfigSession(), Add, cancellationToken);
+        }
     }
 
     private void Pending(string id, string name, string pinned, string detail)

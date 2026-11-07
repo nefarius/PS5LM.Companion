@@ -65,10 +65,10 @@ that are not pinned payloads are kept. The check flags only the pinned entries:
 
 - Their order differs from the manifest, or a stored pinned payload is missing from the list.
 - The pause after one of them is shorter than its manifest pause, or shorter than 3 s.
-- A payload id is listed twice, or more than one kstuff is listed.
+- A payload id is listed twice, or more than one kstuff is listed. `--settings` does not save that list; remove the extra entry and run it again.
 - Autoload is off.
 - `AUTOLOAD_DELAY` is reported and is under 10 s. A manager that does not report the countdown is not flagged.
-- OnionHEN's `[kstuff] autoload` is not `false` while kstuff-lite is pinned.
+- OnionHEN's `[kstuff] autoload` is not `false` while kstuff-lite is stored. A console that does not have it is not flagged, and its bundled kstuff is left as it is.
 
 Payload Manager older than 0.6.0 does not store `AUTOLOAD_DELAY` (`get_config` arrived in 0.6.0). Those consoles are not flagged
 and the list is not written. An OnionHEN slot that names a build older than 0.9.0 (`repo/onionhen@v0.0.13`) does not read

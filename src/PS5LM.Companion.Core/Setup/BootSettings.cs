@@ -98,6 +98,15 @@ public static class BootSettings
             return;
         }
 
+        if (DuplicateDetail(Parse(list)) is { } duplicates)
+        {
+            report(
+                "Autoload",
+                SetupStatus.Warn,
+                "The autoload list still has duplicates: " + duplicates + " Remove the extra entries by hand and run again. The list was not saved.");
+            return;
+        }
+
         var delay = Math.Max(current?.DelaySeconds ?? 0, MinimumAutoloadDelaySeconds);
         if (current is { Enabled: true } && current.List == list && current.DelaySeconds == delay)
         {
@@ -311,7 +320,7 @@ public static class BootSettings
         string? onionConfig,
         List<ReportLine> lines)
     {
-        if (!manifest.Payloads.Any(payload => payload.Id.Equals(KstuffPayloadId, StringComparison.OrdinalIgnoreCase)))
+        if (!resolved.Any(item => item.Payload.Id.Equals(KstuffPayloadId, StringComparison.OrdinalIgnoreCase)))
         {
             yield break;
         }

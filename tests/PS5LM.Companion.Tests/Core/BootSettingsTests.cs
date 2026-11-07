@@ -165,6 +165,34 @@ public sealed class BootSettingsTests
         Assert.Contains("[kstuff]\nautoload=false\n", harness.Files.Text(ConfigPath));
     }
 
+    [Fact]
+    public async Task Apply_does_not_save_a_list_that_still_names_two_kstuffs()
+    {
+        using var harness = await PreparedAsync();
+        var list = harness.Autoload.List + ",!3000,local/kstuff";
+        harness.Autoload = new AutoloadConfig(true, list, 4, true);
+        var lines = new List<(string Component, SetupStatus Status, string Message)>();
+
+        await BootSettings.ApplyAutoloadAsync(Resolved(harness), Services(harness), (component, status, message) => lines.Add((component, status, message)), CancellationToken.None);
+
+        Assert.Equal(list, harness.Autoload.List);
+        Assert.Equal(4, harness.Autoload.DelaySeconds);
+        Assert.Contains(lines, line => line.Status == SetupStatus.Warn && line.Message.Contains("Remove the extra entries", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Check_does_not_flag_bundled_kstuff_when_kstuff_lite_is_not_stored()
+    {
+        using var harness = await PreparedAsync();
+        harness.Stored.RemoveAll(item => item.FileName == "kstuff-lite.elf");
+        harness.Files.AddFile(ConfigPath, harness.Files.Text(ConfigPath)!.Replace("autoload=false", "autoload=true", StringComparison.Ordinal));
+
+        var outcome = await Check(harness);
+
+        Assert.DoesNotContain(outcome.Drift, item => item.Id == "onionhen-kstuff");
+        Assert.DoesNotContain(outcome.Lines, line => line.Message.Contains("bundled kstuff", StringComparison.OrdinalIgnoreCase));
+    }
+
     [Theory]
     [InlineData(true, false, false)]
     [InlineData(false, true, false)]

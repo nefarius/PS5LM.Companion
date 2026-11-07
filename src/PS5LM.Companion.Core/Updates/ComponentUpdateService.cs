@@ -133,15 +133,25 @@ public sealed class ComponentUpdateService
                 }
             }
 
-            await BootSettings.ApplyAutoloadAsync(resolved, _services, (component, status, message) => lines.Add(new ReportLine(component, status, message)), cancellationToken);
-            await BootSettings.ApplyKstuffAsync(
-                _manifest,
-                resolved,
-                _services,
-                _options.FtpPort,
-                new OnionConfigSession(),
-                (component, status, message) => lines.Add(new ReportLine(component, status, message)),
-                cancellationToken);
+            if (resolved.Count == 0)
+            {
+                lines.Add(new ReportLine("Autoload", SetupStatus.Warn, "No pinned payloads are stored, so boot settings were not changed. Run setup to install them."));
+            }
+            else
+            {
+                await BootSettings.ApplyAutoloadAsync(resolved, _services, (component, status, message) => lines.Add(new ReportLine(component, status, message)), cancellationToken);
+                if (resolved.Any(item => item.Payload.Id.Equals(BootSettings.KstuffPayloadId, StringComparison.OrdinalIgnoreCase)))
+                {
+                    await BootSettings.ApplyKstuffAsync(
+                        _manifest,
+                        resolved,
+                        _services,
+                        _options.FtpPort,
+                        new OnionConfigSession(),
+                        (component, status, message) => lines.Add(new ReportLine(component, status, message)),
+                        cancellationToken);
+                }
+            }
             var status = await CheckCoreAsync(cancellationToken);
             var applyFailure = lines.FirstOrDefault(line => line.Status == SetupStatus.Fail)?.Message;
             if (applyFailure is null)

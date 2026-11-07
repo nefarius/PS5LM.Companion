@@ -96,6 +96,24 @@ public sealed class ComponentUpdateServiceTests
         Assert.Equal("autoload-delay", Assert.Single(store.Current.Updates!.Settings).Id);
     }
 
+    [Fact]
+    public async Task Fix_settings_leaves_bundled_kstuff_when_kstuff_lite_is_not_stored()
+    {
+        using var harness = await PreparedAsync();
+        harness.Stored.RemoveAll(item => item.FileName == "kstuff-lite.elf");
+        var config = harness.Files.Text("/data/OnionHEN/config.ini")!.Replace("autoload=false", "autoload=true", StringComparison.Ordinal);
+        harness.Files.AddFile("/data/OnionHEN/config.ini", config);
+        await harness.Files.DeleteAsync("/data/OnionHEN/no_kstuff", CancellationToken.None);
+        var store = new CompanionStatusStore();
+        store.Publish(CompanionStatus.Initial with { UpdatedAt = DateTimeOffset.UtcNow });
+
+        await Service(harness, store).ApplySettingsAsync(CancellationToken.None);
+
+        Assert.Equal(config, harness.Files.Text("/data/OnionHEN/config.ini"));
+        Assert.Null(harness.Files.Text("/data/OnionHEN/no_kstuff"));
+        Assert.DoesNotContain(store.Current.Updates!.Settings, item => item.Id == "onionhen-kstuff");
+    }
+
     private static async Task<SetupHarness> PreparedAsync()
     {
         var harness = new SetupHarness();
