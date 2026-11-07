@@ -56,6 +56,21 @@ internal static class Ansi
     }
 }
 
+/// <summary>Parsed command line. <see cref="Repeated"/> keeps every value of a repeatable option, in order.</summary>
+internal sealed class ParsedArgs
+{
+    public Dictionary<string, string?> Values { get; } = new(StringComparer.Ordinal);
+
+    public Dictionary<string, List<string>> Repeated { get; } = new(StringComparer.Ordinal);
+
+    public bool Has(string name) => Values.ContainsKey(name);
+
+    public string? Get(string name) => Values.GetValueOrDefault(name);
+
+    public IReadOnlyList<string> Repeat(string name) =>
+        Repeated.TryGetValue(name, out var values) ? values : [];
+}
+
 /// <summary>Argument parsing and report printing shared by <c>setup</c> and <c>update</c>.</summary>
 internal static class CommandSupport
 {
@@ -83,6 +98,51 @@ internal static class CommandSupport
                 }
 
                 result[name] = args[++i];
+            }
+            else
+            {
+                throw new ArgumentException($"Unknown option '{arg}'.");
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>Like <see cref="Parse"/>, and collects every value of a key that may be passed more than once.</summary>
+    public static ParsedArgs ParseWithRepeated(string[] args, string[] flags, string[] valued, string[] repeated)
+    {
+        var result = new ParsedArgs();
+        for (var i = 0; i < args.Length; i++)
+        {
+            var arg = args[i];
+            if (!arg.StartsWith("--", StringComparison.Ordinal))
+            {
+                throw new ArgumentException($"Unexpected argument '{arg}'.");
+            }
+
+            var name = arg[2..];
+            if (flags.Contains(name))
+            {
+                result.Values[name] = null;
+            }
+            else if (valued.Contains(name) || repeated.Contains(name))
+            {
+                if (i + 1 >= args.Length || args[i + 1].StartsWith("--", StringComparison.Ordinal))
+                {
+                    throw new ArgumentException($"--{name} needs a value.");
+                }
+
+                var value = args[++i];
+                result.Values[name] = value;
+                if (repeated.Contains(name))
+                {
+                    if (!result.Repeated.TryGetValue(name, out var values))
+                    {
+                        result.Repeated[name] = values = [];
+                    }
+
+                    values.Add(value);
+                }
             }
             else
             {

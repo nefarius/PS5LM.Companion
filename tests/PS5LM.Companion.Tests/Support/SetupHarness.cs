@@ -222,7 +222,7 @@ internal sealed class SetupHarness : IDisposable
 
         public Task SetAutoloadAsync(bool enabled, string list, int delaySeconds, CancellationToken cancellationToken)
         {
-            owner.Autoload = new AutoloadConfig(enabled, list, delaySeconds);
+            owner.Autoload = new AutoloadConfig(enabled, list, delaySeconds, DelayReported: true);
             return Task.CompletedTask;
         }
 

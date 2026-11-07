@@ -77,7 +77,23 @@ public sealed class ComponentUpdateServiceTests
         var status = await service.CheckAsync(CancellationToken.None);
 
         Assert.Empty(status.Outdated);
+        Assert.Empty(status.Settings);
         Assert.Empty(store.Current.Updates!.Outdated);
+    }
+
+    [Fact]
+    public async Task A_short_countdown_is_published_as_settings_drift()
+    {
+        using var harness = await PreparedAsync();
+        harness.Autoload = harness.Autoload with { DelaySeconds = 3, DelayReported = true };
+        var store = new CompanionStatusStore();
+        store.Publish(CompanionStatus.Initial with { UpdatedAt = DateTimeOffset.UtcNow });
+
+        var status = await Service(harness, store).CheckAsync(CancellationToken.None);
+
+        Assert.Equal("autoload-delay", Assert.Single(status.Settings).Id);
+        Assert.Equal(3, harness.Autoload.DelaySeconds);
+        Assert.Equal("autoload-delay", Assert.Single(store.Current.Updates!.Settings).Id);
     }
 
     private static async Task<SetupHarness> PreparedAsync()

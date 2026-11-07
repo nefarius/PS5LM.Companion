@@ -11,6 +11,9 @@ public sealed class DisplayTests
         Assert.Equal(
             "update --host 10.0.0.8 --apps",
             Display.UpdateCommand("10.0.0.8", new PS5Options { Host = "10.0.0.8" }, apps: true));
+        Assert.Equal(
+            "update --host 10.0.0.8 --apps --settings",
+            Display.UpdateCommand("10.0.0.8", new PS5Options { Host = "10.0.0.8" }, apps: true, settings: true));
     }
 
     [Fact]

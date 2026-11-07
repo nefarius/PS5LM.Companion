@@ -153,7 +153,7 @@ docker run -it --rm --pull always -v ps5lm-companion:/data containinger/ps5lm-co
   update --host 192.168.1.50 --restart
 ```
 
-`--check` reports what is out of date and changes nothing. `--restart` stops a running VoidShell and launches the uploaded build, and relaunches ShadowMountPlus so the new copy replaces the running one. Add `--apps` to update an installed PS5LM or PS5LM Plus app, and `--variant ps5lm` or `--variant ps5lmplus` to limit that to one title.
+`--check` reports what is out of date and changes nothing. `--restart` stops a running VoidShell and launches the uploaded build, and relaunches ShadowMountPlus so the new copy replaces the running one. Add `--apps` to update an installed PS5LM or PS5LM Plus app, and `--variant ps5lm` or `--variant ps5lmplus` to limit that to one title. `--settings` rewrites the autoload order, pauses, countdown and OnionHEN bundled-kstuff switch; repeat `--host` or pass `--all-consoles` to do that for a fleet. The new boot configuration takes effect at the next boot.
 
 ## Dashboard
 

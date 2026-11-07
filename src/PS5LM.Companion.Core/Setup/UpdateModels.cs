@@ -10,6 +10,12 @@ public sealed record UpdateOptions(string Host, string? AppId = null)
     /// <summary>Also update the installed PS5LM / PS5LM Plus app.</summary>
     public bool IncludeApps { get; init; }
 
+    /// <summary>
+    /// Compare the autoload list, countdown and OnionHEN bundled-kstuff switch with the recommendation, and
+    /// rewrite them unless <see cref="CheckOnly"/> is set.
+    /// </summary>
+    public bool IncludeSettings { get; init; }
+
     /// <summary>Report what is out of date and change nothing.</summary>
     public bool CheckOnly { get; init; }
 
@@ -54,6 +60,9 @@ public sealed record UpdateOptions(string Host, string? AppId = null)
 /// </summary>
 public sealed record UpdateReport(IReadOnlyList<ReportLine> Lines, bool CheckOnly, int Pending, IReadOnlyList<ComponentUpdate> Updates)
 {
+    /// <summary>Boot settings that differ from the recommendation. Empty when the run did not ask about them.</summary>
+    public IReadOnlyList<SettingDrift> Settings { get; init; } = [];
+
     public int ExitCode =>
         Lines.Any(line => line.Status == SetupStatus.Fail) ? 2
         : CheckOnly && Pending > 0 ? 3

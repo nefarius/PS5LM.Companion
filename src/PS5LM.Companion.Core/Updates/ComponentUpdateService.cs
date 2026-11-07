@@ -123,6 +123,7 @@ public sealed class ComponentUpdateService
             var options = new UpdateOptions(_options.Host)
             {
                 IncludeApps = true,
+                IncludeSettings = true,
                 CheckOnly = true,
                 FtpPort = _options.FtpPort,
                 ElfldrPort = _options.ElfldrPort,
@@ -132,7 +133,7 @@ public sealed class ComponentUpdateService
             var report = await new UpdateRunner(_manifest, options, _services).RunAsync(cancellationToken);
             var failure = report.Lines.FirstOrDefault(line => line.Status == SetupStatus.Fail)?.Message;
             SetSnapshot(current => failure is null
-                ? new ComponentUpdateSnapshot(report.Updates, _time.GetUtcNow(), false, null)
+                ? new ComponentUpdateSnapshot(report.Updates, _time.GetUtcNow(), false, null) { Settings = report.Settings }
                 : current with { Checking = false, Failure = failure, CheckedAt = _time.GetUtcNow() });
             return Publish();
         }

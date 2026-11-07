@@ -118,18 +118,18 @@ internal static class Display
     /// The <c>update</c> command for this console. Payload Manager URL and FTP port are added only when they
     /// differ from the CLI defaults (empty URL, port 2121).
     /// </summary>
-    public static string UpdateCommand(string host, PS5Options options, bool apps) =>
-        TryUpdateCommand(host, options, apps, CommandShell.Posix)
+    public static string UpdateCommand(string host, PS5Options options, bool apps, bool settings = false) =>
+        TryUpdateCommand(host, options, apps, CommandShell.Posix, settings)
         ?? throw new ArgumentException("The host or Payload Manager URL cannot be represented in a POSIX shell.");
 
     /// <summary>
     /// Labeled <c>update</c> commands for each shell that can represent the host and Payload Manager URL.
     /// Identical POSIX and cmd.exe lines are shown once.
     /// </summary>
-    internal static IReadOnlyList<ShellCommand> UpdateCommandLines(string host, PS5Options options, bool apps)
+    internal static IReadOnlyList<ShellCommand> UpdateCommandLines(string host, PS5Options options, bool apps, bool settings = false)
     {
-        var posix = TryUpdateCommand(host, options, apps, CommandShell.Posix);
-        var cmd = TryUpdateCommand(host, options, apps, CommandShell.Cmd);
+        var posix = TryUpdateCommand(host, options, apps, CommandShell.Posix, settings);
+        var cmd = TryUpdateCommand(host, options, apps, CommandShell.Cmd, settings);
         if (posix is not null && posix == cmd)
         {
             return [new ShellCommand(posix, "POSIX or cmd.exe")];
@@ -150,9 +150,9 @@ internal static class Display
     }
 
     /// <summary>Dashboard sentence that labels each copy-paste <c>update</c> command with its target shell.</summary>
-    internal static MarkupString UpdateCommandGuidance(string host, PS5Options options, bool apps)
+    internal static MarkupString UpdateCommandGuidance(string host, PS5Options options, bool apps, bool settings = false)
     {
-        var lines = UpdateCommandLines(host, options, apps);
+        var lines = UpdateCommandLines(host, options, apps, settings);
         if (lines.Count == 0)
         {
             return new MarkupString();
@@ -169,7 +169,7 @@ internal static class Display
 
     private static string Html(string value) => HtmlEncoder.Default.Encode(value);
 
-    internal static string? TryUpdateCommand(string host, PS5Options options, bool apps, CommandShell shell)
+    internal static string? TryUpdateCommand(string host, PS5Options options, bool apps, CommandShell shell, bool settings = false)
     {
         var quotedHost = QuoteForShell(host, shell);
         if (quotedHost is null)
@@ -181,6 +181,11 @@ internal static class Display
         if (apps)
         {
             command += " --apps";
+        }
+
+        if (settings)
+        {
+            command += " --settings";
         }
 
         if (!string.IsNullOrWhiteSpace(options.PayloadManagerUrl))

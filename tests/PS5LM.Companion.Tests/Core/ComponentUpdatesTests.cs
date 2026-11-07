@@ -93,4 +93,17 @@ public sealed class ComponentUpdatesTests
 
         Assert.Equal(PayloadDependencies.ManagerId, Assert.Single(merged.Outdated).Id);
     }
+
+    [Fact]
+    public void Boot_settings_from_the_hash_snapshot_are_kept()
+    {
+        var hash = new ComponentUpdateSnapshot([], DateTimeOffset.UnixEpoch, false, null)
+        {
+            Settings = [new SettingDrift("autoload-delay", "Autoload countdown", "10 s", "The countdown is 3 s.")],
+        };
+
+        var merged = ComponentUpdates.Merge([], hash);
+
+        Assert.Equal("autoload-delay", Assert.Single(merged.Settings).Id);
+    }
 }
