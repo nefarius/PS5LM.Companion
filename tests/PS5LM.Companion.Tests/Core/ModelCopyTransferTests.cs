@@ -301,28 +301,37 @@ public sealed class ModelCopyTransferTests
     public void Renaming_a_console_called_copies_leaves_staged_copies_in_place()
     {
         var cache = Path.Combine(Path.GetTempPath(), "ps5lm-tests", Guid.NewGuid().ToString("N"));
-        using var registry = new ConsoleRegistry(new ConsolesOptions(), new FakeConnectorFactory(), TimeProvider.System);
-        var service = new TransferService(new FakeHub(), registry, new MemoryTransferStore(), new TransferOptions
+        try
         {
-            CacheDirectory = cache,
-            StateFile = Path.Combine(cache, "transfers.json"),
-        }, TimeProvider.System);
-        Assert.True(registry.Add("copies", new PS5Options { Host = "10.0.0.8" }).Succeeded);
-        var staged = Path.Combine(cache, ".copies", "item", "model.gguf");
-        var hub = Path.Combine(cache, "copies", "acme", "model.gguf.part");
-        Directory.CreateDirectory(Path.GetDirectoryName(staged)!);
-        Directory.CreateDirectory(Path.GetDirectoryName(hub)!);
-        File.WriteAllBytes(staged, [1, 2, 3]);
-        File.WriteAllBytes(hub, [4]);
+            using var registry = new ConsoleRegistry(new ConsolesOptions(), new FakeConnectorFactory(), TimeProvider.System);
+            var service = new TransferService(new FakeHub(), registry, new MemoryTransferStore(), new TransferOptions
+            {
+                CacheDirectory = cache,
+                StateFile = Path.Combine(cache, "transfers.json"),
+            }, TimeProvider.System);
+            Assert.True(registry.Add("copies", new PS5Options { Host = "10.0.0.8" }).Succeeded);
+            var staged = Path.Combine(cache, ".copies", "item", "model.gguf");
+            var hub = Path.Combine(cache, "copies", "acme", "model.gguf.part");
+            Directory.CreateDirectory(Path.GetDirectoryName(staged)!);
+            Directory.CreateDirectory(Path.GetDirectoryName(hub)!);
+            File.WriteAllBytes(staged, [1, 2, 3]);
+            File.WriteAllBytes(hub, [4]);
 
-        var renamed = registry.Update("copies", new PS5Options { Host = "10.0.0.8" }, "living-room");
+            var renamed = registry.Update("copies", new PS5Options { Host = "10.0.0.8" }, "living-room");
 
-        Assert.True(renamed.Succeeded);
-        Assert.Equal(new byte[] { 1, 2, 3 }, File.ReadAllBytes(staged));
-        Assert.Equal(new byte[] { 4 }, File.ReadAllBytes(Path.Combine(cache, "living-room", "acme", "model.gguf.part")));
-        Assert.False(Directory.Exists(Path.Combine(cache, "copies")));
-        GC.KeepAlive(service);
-        Directory.Delete(cache, recursive: true);
+            Assert.True(renamed.Succeeded);
+            Assert.Equal(new byte[] { 1, 2, 3 }, File.ReadAllBytes(staged));
+            Assert.Equal(new byte[] { 4 }, File.ReadAllBytes(Path.Combine(cache, "living-room", "acme", "model.gguf.part")));
+            Assert.False(Directory.Exists(Path.Combine(cache, "copies")));
+            GC.KeepAlive(service);
+        }
+        finally
+        {
+            if (Directory.Exists(cache))
+            {
+                Directory.Delete(cache, recursive: true);
+            }
+        }
     }
 
     [Fact]
