@@ -30,9 +30,9 @@ public sealed class UpdateRunnerTests
         return harness;
     }
 
-    private static UpdateRunner Runner(SetupHarness h, bool apps = false, bool check = false, string? variant = null, bool restart = false, bool force = false) => new(
+    private static UpdateRunner Runner(SetupHarness h, bool apps = false, bool check = false, string? variant = null, bool restart = false, bool force = false, bool settings = false) => new(
         h.Manifest,
-        new UpdateOptions("ps5.test", variant) { IncludeApps = apps, CheckOnly = check, Restart = restart, Force = force, WaitOverride = TimeSpan.FromMilliseconds(2) },
+        new UpdateOptions("ps5.test", variant) { IncludeApps = apps, CheckOnly = check, Restart = restart, Force = force, IncludeSettings = settings, WaitOverride = TimeSpan.FromMilliseconds(2) },
         new SetupServices(h.Manager, h.Artifacts, h.Files, h.Probe, h.Elfldr, h.VoidShell, new SetupHarness.FakeUi(h), TimeProvider.System));
 
     private static void Stale(SetupHarness h, string fileName) =>
@@ -820,5 +820,99 @@ public sealed class UpdateRunnerTests
 
         Assert.Equal(2, report.ExitCode);
         Assert.Contains(report.Lines, l => l.Message.Contains("run setup", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task Settings_check_reports_drift_and_changes_nothing()
+    {
+        using var harness = await PreparedAsync();
+        var list = harness.Autoload.List;
+        harness.Autoload = harness.Autoload with { DelaySeconds = 3, DelayReported = true };
+
+        var report = await Runner(harness, check: true, settings: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal(3, report.ExitCode);
+        Assert.Equal("autoload-delay", Assert.Single(report.Settings).Id);
+        Assert.Equal(3, harness.Autoload.DelaySeconds);
+        Assert.Equal(list, harness.Autoload.List);
+    }
+
+    [Fact]
+    public async Task Settings_apply_raises_the_countdown_and_keeps_a_foreign_entry()
+    {
+        using var harness = await PreparedAsync();
+        var bak = harness.Files.Text("/data/OnionHEN/config.ini.bak");
+        harness.Autoload = new AutoloadConfig(true, harness.Autoload.List.Replace("!8000", "!1000", StringComparison.Ordinal) + ",!3000,local/mine", 3, true);
+
+        var report = await Runner(harness, settings: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal(0, report.ExitCode);
+        Assert.Equal(10, harness.Autoload.DelaySeconds);
+        Assert.Contains("!8000", harness.Autoload.List, StringComparison.Ordinal);
+        Assert.Contains("local/mine", harness.Autoload.List, StringComparison.Ordinal);
+        Assert.DoesNotContain("!1000", harness.Autoload.List, StringComparison.Ordinal);
+        Assert.Equal(bak, harness.Files.Text("/data/OnionHEN/config.ini.bak"));
+    }
+
+    [Fact]
+    public async Task Settings_apply_leaves_bundled_kstuff_when_kstuff_lite_is_not_stored()
+    {
+        using var harness = await PreparedAsync();
+        harness.Stored.RemoveAll(item => item.FileName == "kstuff-lite.elf");
+        var config = harness.Files.Text("/data/OnionHEN/config.ini")!.Replace("autoload=false", "autoload=true", StringComparison.Ordinal);
+        harness.Files.AddFile("/data/OnionHEN/config.ini", config);
+        await harness.Files.DeleteAsync("/data/OnionHEN/no_kstuff", CancellationToken.None);
+
+        var report = await Runner(harness, settings: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal(0, report.ExitCode);
+        Assert.Equal(config, harness.Files.Text("/data/OnionHEN/config.ini"));
+        Assert.Null(harness.Files.Text("/data/OnionHEN/no_kstuff"));
+    }
+
+    [Fact]
+    public async Task Settings_apply_changes_nothing_when_no_pinned_payload_is_stored()
+    {
+        using var harness = await PreparedAsync();
+        harness.Stored.Clear();
+        var list = harness.Autoload.List;
+        var config = harness.Files.Text("/data/OnionHEN/config.ini");
+
+        var report = await Runner(harness, settings: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal(0, report.ExitCode);
+        Assert.Equal(list, harness.Autoload.List);
+        Assert.Equal(config, harness.Files.Text("/data/OnionHEN/config.ini"));
+        Assert.Contains(report.Lines, line => line.Status == SetupStatus.Warn && line.Message.Contains("were not changed", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Settings_check_ignores_bundled_kstuff_when_kstuff_lite_is_not_stored()
+    {
+        using var harness = await PreparedAsync();
+        harness.Stored.RemoveAll(item => item.FileName == "kstuff-lite.elf");
+        harness.Files.AddFile("/data/OnionHEN/config.ini", harness.Files.Text("/data/OnionHEN/config.ini")!.Replace("autoload=false", "autoload=true", StringComparison.Ordinal));
+
+        var report = await Runner(harness, check: true, settings: true).RunAsync(CancellationToken.None);
+
+        Assert.DoesNotContain(report.Settings, item => item.Id == "onionhen-kstuff");
+        Assert.Equal(0, report.ExitCode);
+    }
+
+    [Fact]
+    public async Task Settings_apply_on_a_current_console_is_idempotent()
+    {
+        using var harness = await PreparedAsync();
+        var list = harness.Autoload.List;
+        var config = harness.Files.Text("/data/OnionHEN/config.ini");
+        var bak = harness.Files.Text("/data/OnionHEN/config.ini.bak");
+
+        var report = await Runner(harness, settings: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal(0, report.ExitCode);
+        Assert.Equal(list, harness.Autoload.List);
+        Assert.Equal(config, harness.Files.Text("/data/OnionHEN/config.ini"));
+        Assert.Equal(bak, harness.Files.Text("/data/OnionHEN/config.ini.bak"));
+        Assert.Empty(report.Settings);
     }
 }

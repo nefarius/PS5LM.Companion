@@ -107,6 +107,11 @@
             parts.Add("Updates available");
         }
 
+        if (status.Updates is { Settings.Count: > 0 })
+        {
+            parts.Add("Boot settings out of date");
+        }
+
         return parts.Count == 0 ? null : string.Join(". ", parts) + ".";
     }
 

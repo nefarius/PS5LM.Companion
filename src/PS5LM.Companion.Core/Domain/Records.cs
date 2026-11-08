@@ -149,6 +149,13 @@ public sealed record CompanionStatus(
 /// <param name="Detail">Why the companion concluded it differs from the pin.</param>
 public sealed record ComponentUpdate(string Id, string Name, string Pinned, string Detail);
 
+/// <summary>One boot setting that is off the recommendation this companion writes during setup.</summary>
+/// <param name="Id">Stable id, for example <c>autoload-delay</c> or <c>onionhen-kstuff</c>.</param>
+/// <param name="Name">Text shown to the user.</param>
+/// <param name="Recommended">The value setup would leave in place.</param>
+/// <param name="Detail">Why the companion concluded the console is off that recommendation.</param>
+public sealed record SettingDrift(string Id, string Name, string Recommended, string Detail);
+
 /// <summary>Live version checks plus the last comparison of stored files with the pinned manifest.</summary>
 /// <param name="Outdated">Components that differ from the pin, one row per id.</param>
 /// <param name="HashCheckedAt">When stored files were last compared by hash, or null before the first pass.</param>
@@ -160,6 +167,12 @@ public sealed record ComponentUpdateStatus(
     bool Checking,
     string? Failure)
 {
+    /// <summary>Boot settings that differ from the recommendation. Empty until a check that asked for them.</summary>
+    public IReadOnlyList<SettingDrift> Settings { get; init; } = [];
+
+    /// <summary>Boot-setting warnings that are not drift, such as a list that was not saved or a switch that could not be confirmed.</summary>
+    public IReadOnlyList<string> Warnings { get; init; } = [];
+
     public static ComponentUpdateStatus Empty { get; } = new([], null, false, null);
 }
 

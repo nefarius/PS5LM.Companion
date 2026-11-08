@@ -15,8 +15,9 @@ public sealed record ManagedPayload(string Slot, string? Id, string FileName, st
 }
 
 /// <summary>The autoload settings Payload Manager keeps.</summary>
-/// <param name="DelaySeconds">Countdown before the list runs. 0 when the manager did not report one.</param>
-public sealed record AutoloadConfig(bool Enabled, string List, int DelaySeconds = 0);
+/// <param name="DelaySeconds">Countdown before the list runs. 0 when it was not reported or was outside 0 through 3600.</param>
+/// <param name="DelayReported">False when <c>AUTOLOAD_DELAY</c> was absent or outside the range Payload Manager stores.</param>
+public sealed record AutoloadConfig(bool Enabled, string List, int DelaySeconds = 0, bool DelayReported = false);
 
 /// <summary>Payload Manager's administration surface, in the forms that 0.5.x and 0.6.x share and the 0.6.x extras.</summary>
 public interface IPayloadManagerAdmin

@@ -38,8 +38,9 @@ In a container, mount `/data` so downloads are cached, and pass `--upgrade-paylo
    elfldr (6 s), kstuff-lite (8 s), ftpsrv, VoidShell, OnionHEN (25 s), ShadowMountPlus (5 s), PS5 Web File Manager.
    A longer pause on a payload in the manifest is kept. Payload Manager's own countdown (`AUTOLOAD_DELAY`) is raised to
    10 s when it is shorter; a longer countdown is left as it is. Payload Manager accepts at most 4094 bytes. A longer list,
-   pauses included, is left unchanged and the report says to shorten the existing entries. `update` does not rewrite this
-   list or the countdown; re-run `setup` on a console that was already prepared.
+   pauses included, is left unchanged and the report says to shorten the existing entries. Plain `update` does not rewrite this
+   list or the countdown. [`update --settings`](update.md#boot-settings) does, on one console or a whole fleet, and leaves a
+   payload that is already running until the next boot.
 5. Launch them in that order, skipping any that already run, waiting for each one's port or process, then waiting out that
    payload's pause. Once ftpsrv is answering, and before OnionHEN is sent, bundled kstuff is switched off (step 7).
    If elfldr does not come up, launching stops before OnionHEN: Payload Manager sends everything through elfldr and cannot start it.
@@ -79,6 +80,10 @@ Payload Manager's own 10 s countdown, the chain is about a minute.
 | ftpsrv, VoidShell | 3 s | Light services. They do not touch ShellUI, and they are up before OnionHEN, so FTP and the shell still answer if OnionHEN freezes the home screen. The OnionHEN log is `/data/OnionHEN/OnionHEN.log`. |
 | OnionHEN | 25 s | Startup is sequential: private loader on 9020 (up to 10 s), a fixed 3 s sleep, util (up to 15 s), kstuff, daemon (up to 20 s), then the ShellUI injection (`launch_pipeline.c` in aydencharles/onionHEN v0.9.0). A log on [onionHEN#119](https://github.com/aydencharles/onionHEN/issues/119) shows about 13 s from "Activating toolbox" to a ShellUI crash. The owner of [onionHEN#92](https://github.com/aydencharles/onionHEN/issues/92) asks for a delay before OnionHEN and no controller input while it loads. ShadowMountPlus, which starts scanning disks immediately, waits until that window has passed. |
 | ShadowMountPlus | 5 s | Its first scan and mounts are disk-heavy, so they come after OnionHEN has injected. |
+
+Payload Manager 0.6.0 is the oldest build whose `get_config` reports `AUTOLOAD_DELAY`. An older manager is not given a new list.
+OnionHEN 0.9.0 is the oldest build that reads `[kstuff] autoload`. A stored slot that names an older build is left unchanged.
+A slot with no revision is treated as current.
 
 One kstuff only. OnionHEN v0.9.0 bundles kstuff-lite 1.11, the same build this manifest pins, and loads it unless `[kstuff] autoload`
 is false or `/mnt/usb0/no_kstuff` exists. A `/data/OnionHEN/no_kstuff` file on its own does nothing; the Toolbox writes it when it

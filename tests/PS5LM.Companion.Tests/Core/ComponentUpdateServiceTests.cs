@@ -77,7 +77,74 @@ public sealed class ComponentUpdateServiceTests
         var status = await service.CheckAsync(CancellationToken.None);
 
         Assert.Empty(status.Outdated);
+        Assert.Empty(status.Settings);
         Assert.Empty(store.Current.Updates!.Outdated);
+    }
+
+    [Fact]
+    public async Task A_short_countdown_is_published_as_settings_drift()
+    {
+        using var harness = await PreparedAsync();
+        harness.Autoload = harness.Autoload with { DelaySeconds = 3, DelayReported = true };
+        var store = new CompanionStatusStore();
+        store.Publish(CompanionStatus.Initial with { UpdatedAt = DateTimeOffset.UtcNow });
+
+        var status = await Service(harness, store).CheckAsync(CancellationToken.None);
+
+        Assert.Equal("autoload-delay", Assert.Single(status.Settings).Id);
+        Assert.Equal(3, harness.Autoload.DelaySeconds);
+        Assert.Equal("autoload-delay", Assert.Single(store.Current.Updates!.Settings).Id);
+    }
+
+    [Fact]
+    public async Task Fix_settings_leaves_bundled_kstuff_when_kstuff_lite_is_not_stored()
+    {
+        using var harness = await PreparedAsync();
+        harness.Stored.RemoveAll(item => item.FileName == "kstuff-lite.elf");
+        var config = harness.Files.Text("/data/OnionHEN/config.ini")!.Replace("autoload=false", "autoload=true", StringComparison.Ordinal);
+        harness.Files.AddFile("/data/OnionHEN/config.ini", config);
+        await harness.Files.DeleteAsync("/data/OnionHEN/no_kstuff", CancellationToken.None);
+        var store = new CompanionStatusStore();
+        store.Publish(CompanionStatus.Initial with { UpdatedAt = DateTimeOffset.UtcNow });
+
+        await Service(harness, store).ApplySettingsAsync(CancellationToken.None);
+
+        Assert.Equal(config, harness.Files.Text("/data/OnionHEN/config.ini"));
+        Assert.Null(harness.Files.Text("/data/OnionHEN/no_kstuff"));
+        Assert.DoesNotContain(store.Current.Updates!.Settings, item => item.Id == "onionhen-kstuff");
+    }
+
+    [Fact]
+    public async Task Fix_settings_keeps_a_duplicate_warning_beside_the_remaining_drift()
+    {
+        using var harness = await PreparedAsync();
+        harness.Autoload = new AutoloadConfig(true, harness.Autoload.List + ",!3000,local/kstuff", harness.Autoload.DelaySeconds, true);
+        var store = new CompanionStatusStore();
+        store.Publish(CompanionStatus.Initial with { UpdatedAt = DateTimeOffset.UtcNow });
+
+        var status = await Service(harness, store).ApplySettingsAsync(CancellationToken.None);
+
+        Assert.Null(status.Failure);
+        Assert.Contains(status.Warnings, warning => warning.Contains("Remove the extra entries", StringComparison.Ordinal));
+        Assert.Contains(status.Settings, item => item.Id == "autoload-duplicate");
+        Assert.Contains(store.Current.Updates!.Warnings, warning => warning.Contains("Remove the extra entries", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_missing_onionhen_config_stays_an_unconfirmed_warning()
+    {
+        using var harness = await PreparedAsync();
+        await harness.Files.DeleteAsync("/data/OnionHEN/config.ini", CancellationToken.None);
+        var store = new CompanionStatusStore();
+        store.Publish(CompanionStatus.Initial with { UpdatedAt = DateTimeOffset.UtcNow });
+        var service = Service(harness, store);
+
+        var status = await service.ApplySettingsAsync(CancellationToken.None);
+
+        Assert.Null(status.Failure);
+        Assert.DoesNotContain(status.Settings, item => item.Id == "onionhen-kstuff");
+        Assert.Contains(status.Warnings, warning => warning.Contains("not confirmed off", StringComparison.Ordinal));
+        Assert.Contains(store.Current.Updates!.Warnings, warning => warning.Contains("not confirmed off", StringComparison.Ordinal));
     }
 
     private static async Task<SetupHarness> PreparedAsync()

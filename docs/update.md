@@ -4,17 +4,19 @@
 newer upstream releases; those arrive by [bumping a pin](setup.md#bumping-a-pin).
 
 ```sh
-dotnet PS5LM.Companion.App.dll update --host <console> [--apps] [--variant ps5lm|ps5lmplus] [--check] [--force] [options]
+dotnet PS5LM.Companion.App.dll update (--host <console>)... | --all-consoles [--apps] [--settings] [--variant ps5lm|ps5lmplus] [--check] [--force] [options]
 docker run -it --rm --pull always -v ps5lm-companion:/data containinger/ps5lm-companion \
-  update --host <console> [--apps] [--variant ps5lm|ps5lmplus] [--check] [--force] [--restart] [options]
+  update --host <console> [--apps] [--settings] [--variant ps5lm|ps5lmplus] [--check] [--force] [--restart] [options]
 ```
 
 The `docker` line uses the published [`containinger/ps5lm-companion`](https://hub.docker.com/r/containinger/ps5lm-companion) image. `-it` keeps the coloured report. `--pull always` fetches the current `:latest` before the command runs, so the pins compared against the console are the ones in the current release. Mount `/data` so downloads are cached. The `dotnet` line is for a build from source.
 
 | Option | Purpose |
 |---|---|
-| `--host` | Console IP or host name (required) |
+| `--host` | Console IP or host name. Repeat the option to visit more than one console |
+| `--all-consoles` | Every console in `PS5:Consoles` and in `{Companion__DataDirectory}/consoles.json`. A stored console whose id is already configured is skipped. Cannot be combined with `--host` |
 | `--apps` | Also update the installed PS5LM / PS5LM Plus app |
+| `--settings` | Rewrite the autoload list, the Payload Manager countdown and OnionHEN's bundled-kstuff switch. With `--check`, only report them |
 | `--variant` | With `--apps`: only that variant (an explicit variant that is not installed is a warning) |
 | `--restart` | Stop and relaunch an updated payload that is still running (VoidShell by its pid file, ShadowMountPlus by launching the new copy; see below) |
 | `--check` | Report what is out of date and change nothing |
@@ -22,13 +24,14 @@ The `docker` line uses the published [`containinger/ps5lm-companion`](https://hu
 | `--upgrade-payload-manager` | Upgrade an older Payload Manager without a prompt |
 | `--payload-manager-url`, `--ftp-port`, `--manifest`, `--cache` | As for `setup` |
 
-Exit codes: 0 current or updated, 1 bad arguments, 2 something failed, 3 `--check` found updates, 130 cancelled with Ctrl+C.
+Exit codes: 0 current or updated, 1 bad arguments, 2 something failed, 3 `--check` found updates, 130 cancelled with Ctrl+C. A run over several consoles prints a one-line summary per console and returns the worst of those codes (2, then 1, then 3, then 0).
 
 ## What it does
 
 1. Payload Manager must answer on its port (otherwise run `setup`); an older one is upgraded as in `setup`.
 2. Each pinned payload's stored file is read back over FTP and compared by SHA-256 with the pinned download. A different file is
-   uploaded through Payload Manager into the same slot, so autoload stays valid and is not rewritten. A payload that is not stored
+   uploaded through Payload Manager into the same slot, so autoload stays valid. The list itself is rewritten only with
+   `--settings`. A payload that is not stored
    is reported ("run setup") and not installed.
 3. A payload that was not running is launched. One that is running keeps the old build until the next autoload or console
    reboot; this is a warning. Launching it again does not help when the new copy cannot bind the port the old one holds.
@@ -51,6 +54,30 @@ Exit codes: 0 current or updated, 1 bad arguments, 2 something failed, 3 `--chec
    place (a warning, not an update) unless `--force`. An app that is not installed is never installed. A running app
    (`running_app` from that fork) is skipped with a warning, and so is one whose running state the fork cannot report.
 
+## Boot settings
+
+`--settings` brings the boot configuration in line with what `setup` would write. It does not restart a payload. The new list,
+countdown and bundled-kstuff switch take effect at the next autoload or console boot. `--check --settings` reports the same
+differences and changes nothing (exit code 3 when it finds any). Without `--settings`, `update` leaves the list and the countdown alone.
+
+A console that has none of the pinned payloads stored is left alone; run `setup` for that one. Entries already in the autoload list
+that are not pinned payloads are kept. The check flags only the pinned entries:
+
+- Their order differs from the manifest, or a stored pinned payload is missing from the list.
+- The pause after one of them is shorter than its manifest pause, or shorter than 3 s.
+- A payload id is listed twice, or more than one kstuff is listed. `--settings` does not save that list; remove the extra entry and run it again.
+- Autoload is off.
+- `AUTOLOAD_DELAY` is reported and is under 10 s. A manager that does not report the countdown is not flagged.
+- OnionHEN's `[kstuff] autoload` is not `false` while kstuff-lite is stored. A console that does not have it is not flagged, and its bundled kstuff is left as it is.
+
+Payload Manager older than 0.6.0 does not store `AUTOLOAD_DELAY` (`get_config` arrived in 0.6.0). Those consoles are not flagged
+and the list is not written. An OnionHEN slot that names a build older than 0.9.0 (`repo/onionhen@v0.0.13`) does not read
+`[kstuff] autoload`, so that switch is not flagged and not written. A `local/onionhen` slot has no revision and is treated as
+current. A missing `/data/OnionHEN/config.ini`, or FTP not answering, is reported as not confirmed and is not drift.
+
+The background file check records these findings on `updates.settings` next to the outdated payloads. `POST /api/consoles/{id}/updates/check`
+refreshes both.
+
 ## Dashboard indication
 
 The console status page (and the overview card) flag a component when it is out of sync with this companion's pinned
@@ -61,6 +88,14 @@ SHA-256 with the pinned download, the same way `update --check` does: the compan
 `setup-cache` and reads the stored file over FTP. The installed PS5LM / PS5LM Plus app is not hashed as a whole; its
 `sce_sys/param.json` is compared with the `param.json` inside the pinned archive. A `contentVersion` newer than the pin is
 not flagged. An older app, or one whose version cannot be read, is flagged when `param.json` differs.
+
+The same page shows a separate warning when `updates.settings` is not empty: boot settings differ from the recommendation,
+one line per finding, and the `update --host ... --settings` command. Warnings that are not drift, such as a duplicate
+list that was not saved or an OnionHEN config that is missing, are published on `updates.warnings` and shown beside that.
+A missing config stays "not confirmed", not a successful fix. **Fix settings** asks for confirmation, then
+`POST /api/consoles/{id}/boot-settings/apply` rewrites only that configuration. It takes effect at the next boot or
+autoload and does not restart a payload. The request answers 409 while a transfer or a model load is running, and 503
+when the pinned manifest is missing. The overview card adds "Boot settings out of date" beside "Updates available".
 
 A missing component is not reported as outdated; the existing "not installed" warnings already cover that. The first
 hash pass runs shortly after the console is reachable, then every `PS5:Consoles:{id}:UpdateCheckIntervalMinutes`

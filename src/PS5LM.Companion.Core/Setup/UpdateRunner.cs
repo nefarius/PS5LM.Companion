@@ -12,8 +12,9 @@ namespace PS5LM.Companion.Core.Setup;
 /// Brings an already prepared console up to the pinned manifest: replaces payloads and extra files whose bytes differ
 /// from the pin, and with <see cref="UpdateOptions.IncludeApps"/> an installed PS5LM / PS5LM Plus app that is older
 /// than the pin or whose version cannot be read. An app whose content version is newer than the pin is left in place
-/// unless <see cref="UpdateOptions.Force"/>. It never installs something that is absent (that is <c>setup</c>'s job)
-/// and never rewrites the autoload list.
+/// unless <see cref="UpdateOptions.Force"/>. It never installs something that is absent (that is <c>setup</c>'s job).
+/// With <see cref="UpdateOptions.IncludeSettings"/> it also rewrites the autoload list, the countdown and OnionHEN's
+/// bundled-kstuff switch. Without that option the autoload list is left as it is.
 /// </summary>
 public sealed class UpdateRunner
 {
@@ -31,6 +32,8 @@ public sealed class UpdateRunner
     private readonly SetupRunner _setup;
     private readonly List<(ManifestPayload Payload, ManagedPayload Stored)> _stillOld = [];
     private readonly List<ComponentUpdate> _updates = [];
+    private readonly List<SettingDrift> _settings = [];
+    private readonly List<string> _settingWarnings = [];
     private int _pending;
 
     public UpdateRunner(SetupManifest manifest, UpdateOptions options, SetupServices services)
@@ -58,6 +61,11 @@ public sealed class UpdateRunner
                     await UpdateAppsAsync(cancellationToken);
                 }
 
+                if (_options.IncludeSettings)
+                {
+                    await UpdateSettingsAsync(cancellationToken);
+                }
+
                 // Last: replacing ftpsrv or VoidShell drops connections the steps above still use.
                 await RestartOrWarnAsync(cancellationToken);
             }
@@ -71,7 +79,7 @@ public sealed class UpdateRunner
             Add("Update", SetupStatus.Fail, ex.Message);
         }
 
-        return new UpdateReport(_setup.Lines, _options.CheckOnly, _pending, _updates);
+        return new UpdateReport(_setup.Lines, _options.CheckOnly, _pending, _updates) { Settings = _settings, SettingWarnings = _settingWarnings };
     }
 
     private async Task<bool> CheckPayloadManagerAsync(CancellationToken cancellationToken)
@@ -713,6 +721,53 @@ public sealed class UpdateRunner
     {
         using var stream = File.OpenRead(localPath);
         return SHA256.HashData(stream).AsSpan().SequenceEqual(SHA256.HashData(remote));
+    }
+
+    private async Task UpdateSettingsAsync(CancellationToken cancellationToken)
+    {
+        if (_options.CheckOnly)
+        {
+            var outcome = await BootSettings.CheckAsync(_manifest, _services, _options.FtpPort, cancellationToken);
+            foreach (var line in outcome.Lines)
+            {
+                Add(line.Component, line.Status, line.Message);
+                if (line.Status == SetupStatus.Warn)
+                {
+                    _settingWarnings.Add(line.Message);
+                }
+            }
+
+            foreach (var drift in outcome.Drift)
+            {
+                _settings.Add(drift);
+                _pending++;
+                Add(drift.Name, SetupStatus.Warn, drift.Detail);
+            }
+
+            return;
+        }
+
+        var inventory = await _services.Manager.ListPayloadsAsync(cancellationToken);
+        var resolved = new List<(ManifestPayload Payload, ManagedPayload Stored)>();
+        foreach (var payload in _manifest.Payloads)
+        {
+            if (SetupRunner.FindStored(inventory, payload) is { } stored)
+            {
+                resolved.Add((payload, stored));
+            }
+        }
+
+        if (resolved.Count == 0)
+        {
+            Add("Autoload", SetupStatus.Warn, "No pinned payloads are stored, so boot settings were not changed. Run setup to install them.");
+            return;
+        }
+
+        await BootSettings.ApplyAutoloadAsync(resolved, _services, Add, cancellationToken);
+        if (resolved.Any(item => item.Payload.Id.Equals(BootSettings.KstuffPayloadId, StringComparison.OrdinalIgnoreCase)))
+        {
+            await BootSettings.ApplyKstuffAsync(_manifest, resolved, _services, _options.FtpPort, new OnionConfigSession(), Add, cancellationToken);
+        }
     }
 
     private void Pending(string id, string name, string pinned, string detail)

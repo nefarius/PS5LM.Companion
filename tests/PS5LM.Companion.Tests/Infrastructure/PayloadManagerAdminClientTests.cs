@@ -120,10 +120,20 @@ public sealed class PayloadManagerAdminClientTests
         var read = await Client(new StubHandler(_ => Text("""{"AUTOLOAD_ENABLED":true,"AUTOLOAD_LIST":"a,!3000,b"}""")))
             .GetAutoloadAsync(CancellationToken.None);
         Assert.Equal(new PS5LM.Companion.Core.Setup.AutoloadConfig(true, "a,!3000,b"), read);
+        Assert.False(read!.DelayReported);
 
-        Assert.Equal(12, (await Client(new StubHandler(_ => Text("""{"AUTOLOAD_ENABLED":true,"AUTOLOAD_LIST":"a","AUTOLOAD_DELAY":"12"}"""))).GetAutoloadAsync(CancellationToken.None))!.DelaySeconds);
-        Assert.Equal(15, (await Client(new StubHandler(_ => Text("""{"AUTOLOAD_DELAY":15}"""))).GetAutoloadAsync(CancellationToken.None))!.DelaySeconds);
-        Assert.Equal(0, (await Client(new StubHandler(_ => Text("""{"AUTOLOAD_DELAY":3601}"""))).GetAutoloadAsync(CancellationToken.None))!.DelaySeconds);
+        var reported = await Client(new StubHandler(_ => Text("""{"AUTOLOAD_ENABLED":true,"AUTOLOAD_LIST":"a","AUTOLOAD_DELAY":"12"}"""))).GetAutoloadAsync(CancellationToken.None);
+        Assert.Equal(12, reported!.DelaySeconds);
+        Assert.True(reported.DelayReported);
+        var numeric = await Client(new StubHandler(_ => Text("""{"AUTOLOAD_DELAY":15}"""))).GetAutoloadAsync(CancellationToken.None);
+        Assert.Equal(15, numeric!.DelaySeconds);
+        Assert.True(numeric.DelayReported);
+        var zero = await Client(new StubHandler(_ => Text("""{"AUTOLOAD_DELAY":0}"""))).GetAutoloadAsync(CancellationToken.None);
+        Assert.Equal(0, zero!.DelaySeconds);
+        Assert.True(zero.DelayReported);
+        var outOfRange = await Client(new StubHandler(_ => Text("""{"AUTOLOAD_DELAY":3601}"""))).GetAutoloadAsync(CancellationToken.None);
+        Assert.Equal(0, outOfRange!.DelaySeconds);
+        Assert.False(outOfRange.DelayReported);
 
         string? body = null;
         var handler = new StubHandler(r =>

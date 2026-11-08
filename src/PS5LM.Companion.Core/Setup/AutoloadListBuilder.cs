@@ -79,7 +79,7 @@ public static class AutoloadListBuilder
     public static bool Fits(string list) => Encoding.UTF8.GetByteCount(list) <= MaxListLength;
 
     /// <summary><c>local/{id}</c> or <c>repo/{id}@{rev}</c>; null when the entry does not name a payload that way.</summary>
-    private static string? PayloadId(string slot)
+    internal static string? PayloadId(string slot)
     {
         var id = slot.StartsWith("local/", StringComparison.Ordinal) ? slot["local/".Length..]
             : slot.StartsWith("repo/", StringComparison.Ordinal) ? slot["repo/".Length..]

@@ -10,6 +10,11 @@ public sealed record ComponentUpdateSnapshot(
     bool Checking,
     string? Failure)
 {
+    public IReadOnlyList<SettingDrift> Settings { get; init; } = [];
+
+    /// <summary>Boot-setting warnings that are not drift. Empty until a check that asked about them.</summary>
+    public IReadOnlyList<string> Warnings { get; init; } = [];
+
     public static ComponentUpdateSnapshot Empty { get; } = new([], null, false, null);
 }
 
@@ -84,7 +89,11 @@ public static class ComponentUpdates
             byId[item.Id] = item;
         }
 
-        return new ComponentUpdateStatus([.. byId.Values], snapshot.CheckedAt, snapshot.Checking, snapshot.Failure);
+        return new ComponentUpdateStatus([.. byId.Values], snapshot.CheckedAt, snapshot.Checking, snapshot.Failure)
+        {
+            Settings = snapshot.Settings,
+            Warnings = snapshot.Warnings,
+        };
     }
 
     /// <summary>The manifest app id for a PS5LM variant, or null when the variant is unknown.</summary>

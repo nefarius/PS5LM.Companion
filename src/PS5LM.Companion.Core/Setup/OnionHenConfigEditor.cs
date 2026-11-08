@@ -170,6 +170,33 @@ public static class OnionHenConfigEditor
         return new ConfigValueEdit(ConfigValueStatus.Added, string.Join('\n', lines));
     }
 
+    /// <summary>The trimmed value of <paramref name="key"/> in <paramref name="section"/>, without a trailing comment.</summary>
+    public static bool TryGetValue(string config, string section, string key, out string value)
+    {
+        value = string.Empty;
+        var inSection = false;
+        foreach (var raw in config.Split('\n'))
+        {
+            var line = raw.TrimEnd('\r');
+            var trimmed = line.Trim();
+            if (trimmed.StartsWith('[') && trimmed.EndsWith(']'))
+            {
+                inSection = trimmed[1..^1].Trim().Equals(section, StringComparison.OrdinalIgnoreCase);
+                continue;
+            }
+
+            if (!inSection || !TryKey(line, key, out _, out var body, out _))
+            {
+                continue;
+            }
+
+            value = body;
+            return true;
+        }
+
+        return false;
+    }
+
     /// <summary>The value body and any <c>;</c> or <c>#</c> tail of a <paramref name="key"/> line.</summary>
     private static bool TryKey(string line, string key, out int equals, out string body, out string tail)
     {

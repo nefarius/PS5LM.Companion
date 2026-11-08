@@ -208,7 +208,8 @@ public sealed class PayloadManagerAdminClient(HttpClient http) : IPayloadManager
             var root = document.RootElement;
             var enabled = root.TryGetProperty("AUTOLOAD_ENABLED", out var flag)
                 && (flag.ValueKind == JsonValueKind.True || (flag.ValueKind == JsonValueKind.String && flag.GetString() == "true"));
-            return new AutoloadConfig(enabled, Text(root, "AUTOLOAD_LIST") ?? string.Empty, Delay(root));
+            var delayReported = TryDelay(root, out var delay);
+            return new AutoloadConfig(enabled, Text(root, "AUTOLOAD_LIST") ?? string.Empty, delay, delayReported);
         }
         catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
         {
@@ -255,22 +256,24 @@ public sealed class PayloadManagerAdminClient(HttpClient http) : IPayloadManager
     }
 
     /// <summary>0 through 3600, the range Payload Manager stores. Anything else counts as unreported.</summary>
-    private static int Delay(JsonElement root)
+    private static bool TryDelay(JsonElement root, out int delay)
     {
+        delay = 0;
         if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("AUTOLOAD_DELAY", out var value))
         {
-            return 0;
+            return false;
         }
 
-        if (!TryDelay(value, out var delay) || delay is < 0 or > 3600)
+        if (!TryDelayValue(value, out delay) || delay is < 0 or > 3600)
         {
-            return 0;
+            delay = 0;
+            return false;
         }
 
-        return delay;
+        return true;
     }
 
-    private static bool TryDelay(JsonElement value, out int delay)
+    private static bool TryDelayValue(JsonElement value, out int delay)
     {
         if (value.ValueKind == JsonValueKind.Number)
         {
