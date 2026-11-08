@@ -235,6 +235,10 @@ public sealed class PayloadManagerAdminClient(HttpClient http) : IPayloadManager
             }
 
             var state = Text(root, "state");
+            if (string.IsNullOrWhiteSpace(state))
+            {
+                state = null;
+            }
             var seconds = 0;
             var countdownKnown = root.TryGetProperty("remaining", out var remaining) && TryDelayValue(remaining, out seconds);
             var knownState = AutoloadRun.IsKnownState(state);

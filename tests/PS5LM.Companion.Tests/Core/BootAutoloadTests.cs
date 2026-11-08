@@ -116,4 +116,18 @@ public sealed class BootAutoloadTests
         Assert.Contains("load:kstuff-lite.elf", harness.Events);
         Assert.Contains(harness.Messages, message => message.Contains("state 'paused'", StringComparison.Ordinal) && message.Contains("will not wait", StringComparison.Ordinal));
     }
+
+    [Fact]
+    public async Task A_countdown_without_a_state_is_waited_out_and_its_kstuff_is_not_sent_again()
+    {
+        using var harness = Ready();
+        harness.AutoloadRuns.Enqueue(new AutoloadRun(null, 5, null, 0, 0));
+        harness.AutoloadRuns.Enqueue(new AutoloadRun("done", 0, "", 1, 1));
+        harness.OnAutoloadFinished = harness.FinishBootAutoload;
+
+        await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
+
+        Assert.Contains(harness.Messages, message => message.Contains("countdown 5 s", StringComparison.Ordinal));
+        Assert.DoesNotContain("load:kstuff-lite.elf", harness.Events);
+    }
 }

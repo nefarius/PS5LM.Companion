@@ -193,5 +193,11 @@ public sealed class PayloadManagerAdminClientTests
         var empty = await Client(new StubHandler(_ => Text("{}"))).GetAutoloadRunAsync(CancellationToken.None);
         Assert.False(empty!.Understood);
         Assert.False(empty.InProgress);
+
+        var blank = await Client(new StubHandler(_ => Text("""{"state":" ","remaining":5}"""))).GetAutoloadRunAsync(CancellationToken.None);
+        Assert.Null(blank!.State);
+        Assert.Equal(5, blank.RemainingSeconds);
+        Assert.True(blank.Understood);
+        Assert.True(blank.InProgress);
     }
 }
