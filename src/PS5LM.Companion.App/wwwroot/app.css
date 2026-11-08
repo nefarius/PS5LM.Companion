@@ -71,3 +71,13 @@
     color: #fff;
     margin-left: 0.5rem;
 }
+
+/* A link from the overview card scrolls here; keep the text below the fixed app bar and show focus. */
+.warning-anchor {
+    scroll-margin-top: calc(var(--mud-appbar-height, 64px) + 1rem);
+}
+
+.warning-anchor:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+}

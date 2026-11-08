@@ -691,7 +691,7 @@ public sealed class DashboardTests
         Assert.Contains("Autoload countdown: The countdown is 3 s.", html);
         Assert.Contains("OnionHEN bundled kstuff:", html);
         Assert.Contains("Fix settings", html);
-        Assert.Contains("id=\"boot-settings\"", html);
+        Assert.Contains("id=\"boot-settings\" tabindex=\"-1\"", html);
         Assert.Contains("update --host 127.0.0.1 --settings", html);
         Assert.DoesNotContain("differ from this companion's pinned versions", html);
     }
