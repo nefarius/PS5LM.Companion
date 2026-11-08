@@ -804,18 +804,19 @@ public sealed partial class TransferService
             }
 
             var children = ChildrenLocked(itemId);
+            if (children.Count > 0
+                && children.All(transfer => transfer.State == TransferState.Cancelled)
+                && item.State is CopyItemState.Queued or CopyItemState.Staging or CopyItemState.Verifying
+                && _staging.TryGetValue(itemId, out var staging))
+            {
+                // The source read is still going. Stop it and let that cancellation settle the item and delete the stage file.
+                _userCancelledItems.Add(itemId);
+                staging.Cancel();
+                return;
+            }
+
             if (children.Any(transfer => transfer.IsActive))
             {
-                if (item.State is CopyItemState.Queued or CopyItemState.Staging or CopyItemState.Verifying
-                    && children.All(transfer => transfer.State == TransferState.Cancelled))
-                {
-                    if (_staging.TryGetValue(itemId, out var staging))
-                    {
-                        _userCancelledItems.Add(itemId);
-                        staging.Cancel();
-                    }
-                }
-
                 return;
             }
 

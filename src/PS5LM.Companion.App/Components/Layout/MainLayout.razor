@@ -151,7 +151,8 @@
     private readonly HashSet<string> _chosen = new(StringComparer.Ordinal);
 
     // Last seen transfer activity per console, so progress ticks do not re-render the drawer.
-    private readonly Dictionary<string, (bool Running, int Queued)> _transfers = new(StringComparer.Ordinal);
+    // Staging is separate: a source read has no transfer on that console, so the running/queued pair stays unchanged.
+    private readonly Dictionary<string, (bool Running, int Queued, bool Staging)> _transfers = new(StringComparer.Ordinal);
     private VersionCheckStatus _versionStatus = new(null, null, false, null);
     private ConsoleRuntime? _current;
     private bool _drawerOpen = true;
@@ -327,7 +328,8 @@
         foreach (var console in Registry.All)
         {
             seen.Add(console.Id);
-            var activity = Display.TransferActivity(Transfers.Snapshot(console.Id));
+            var (running, queued) = Display.TransferActivity(Transfers.Snapshot(console.Id));
+            var activity = (running, queued, Transfers.IsStaging(console.Id));
             if (!_transfers.TryGetValue(console.Id, out var previous) || previous != activity)
             {
                 _transfers[console.Id] = activity;

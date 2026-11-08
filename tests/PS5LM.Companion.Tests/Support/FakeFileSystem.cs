@@ -146,7 +146,12 @@ internal sealed class FakeFileSystem : IPS5FileSystem
     /// <summary>How many times <see cref="DownloadToAsync"/> started.</summary>
     public int Downloads => _downloads;
 
+    /// <summary>Downloads that have started and not yet returned, including one waiting on <see cref="DownloadGate"/>.</summary>
+    public int ActiveDownloads => _activeDownloads;
+
     private int _downloads;
+
+    private int _activeDownloads;
 
     /// <summary>Signalled when a download starts.</summary>
     public TaskCompletionSource? DownloadStarted { get; set; }
@@ -187,23 +192,31 @@ internal sealed class FakeFileSystem : IPS5FileSystem
         ThrowIfUnreachable();
         Interlocked.Increment(ref _downloads);
         DownloadStarted?.TrySetResult();
-        if (DownloadGate is not null)
+        Interlocked.Increment(ref _activeDownloads);
+        try
         {
-            await DownloadGate.Task.WaitAsync(cancellationToken);
-        }
+            if (DownloadGate is not null)
+            {
+                await DownloadGate.Task.WaitAsync(cancellationToken);
+            }
 
-        if (FailDownloads)
+            if (FailDownloads)
+            {
+                throw new ConsoleUnreachableException("The connection dropped during the download.");
+            }
+
+            if (Unreadable.Contains(path) || !_files.TryGetValue(path, out var bytes))
+            {
+                throw new IOException($"Downloading {path} from the console failed.");
+            }
+
+            await destination.WriteAsync(bytes, cancellationToken);
+            progress?.Report(bytes.Length);
+        }
+        finally
         {
-            throw new ConsoleUnreachableException("The connection dropped during the download.");
+            Interlocked.Decrement(ref _activeDownloads);
         }
-
-        if (Unreadable.Contains(path) || !_files.TryGetValue(path, out var bytes))
-        {
-            throw new IOException($"Downloading {path} from the console failed.");
-        }
-
-        await destination.WriteAsync(bytes, cancellationToken);
-        progress?.Report(bytes.Length);
     }
 
     public Task MoveAsync(string from, string to, CancellationToken cancellationToken) =>

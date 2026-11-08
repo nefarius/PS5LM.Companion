@@ -221,6 +221,39 @@ public sealed class ModelCopyTransferTests
     }
 
     [Fact]
+    public async Task Cancelling_the_last_destination_stops_the_source_read()
+    {
+        var source = Installed(ModelPath, ModelBytes);
+        source.DownloadStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        source.DownloadGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var harness = new TransferHarness(source, "den");
+        await harness.PrimeAsync();
+        var result = await harness.Service.EnqueueCopiesAsync(Request(["den"]), CancellationToken.None);
+        var childId = result.Items.Single().Targets.Single().TransferId!.Value;
+        harness.StartWorker();
+        await source.DownloadStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        var cancelled = await harness.Service.CancelAsync(childId, CancellationToken.None);
+
+        Assert.Equal(OperationOutcome.Accepted, cancelled.Outcome);
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (source.ActiveDownloads > 0 || harness.Service.HasActive("ps5"))
+        {
+            if (DateTime.UtcNow > deadline)
+            {
+                throw new TimeoutException("The source read continued after its only destination was cancelled.");
+            }
+
+            await Task.Delay(20);
+        }
+
+        Assert.False(source.DownloadGate.Task.IsCompleted);
+        Assert.Equal(CopyBatchState.Cancelled, harness.Service.FindCopy(result.Batch!.Id)!.Batch.State);
+        Assert.Equal(TransferState.Cancelled, harness.Service.Snapshot().Single(transfer => transfer.Id == childId).State);
+        Assert.False(harness.Connectors["den"].FileSystem.Files.ContainsKey(ModelPath));
+    }
+
+    [Fact]
     public async Task A_restart_finishes_a_copy_that_was_only_queued()
     {
         var source = Installed(ModelPath, ModelBytes);
