@@ -68,7 +68,7 @@ else
         }
         @if (Outdated is { Count: > 0 } outdated)
         {
-            <MudAlert Severity="Severity.Warning" Class="mt-2">
+            <MudAlert id="updates" Severity="Severity.Warning" Class="mt-2">
                 @(outdated.Count == 1 ? "1 component differs" : $"{outdated.Count} components differ") from this companion's pinned versions:
                 @string.Join(", ", outdated.Select(update => update.Name)).
                 @Display.UpdateCommandGuidance(Target.Host, Target.Options, HasAppUpdate)
@@ -78,7 +78,7 @@ else
         }
         @if (SettingsDrift is { Count: > 0 } drift)
         {
-            <MudAlert Severity="Severity.Warning" Class="mt-2">
+            <MudAlert id="boot-settings" Severity="Severity.Warning" Class="mt-2">
                 Boot settings differ from the recommendation. Fix settings only rewrites configuration. It takes effect at the next console boot or autoload and does not restart any payload.
                 <ul>
                     @foreach (var item in drift)
