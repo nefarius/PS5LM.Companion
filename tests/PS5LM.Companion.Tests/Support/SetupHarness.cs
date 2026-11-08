@@ -81,6 +81,15 @@ internal sealed class SetupHarness : IDisposable
 
     public AutoloadConfig Autoload { get; set; } = new(false, string.Empty);
 
+    /// <summary>Reads of <c>/autoload_status</c>. The last entry repeats; an empty queue answers null.</summary>
+    public Queue<AutoloadRun?> AutoloadRuns { get; } = new();
+
+    /// <summary>How many times the boot-autoload status was read.</summary>
+    public int AutoloadRunReads { get; private set; }
+
+    /// <summary>Runs once each time a read says the boot autoload is no longer sending payloads.</summary>
+    public Action? OnAutoloadFinished { get; set; }
+
     /// <summary>Makes <c>/processes_list</c> unreadable (the fake answers null).</summary>
     public bool ProcessListUnreadable { get; set; }
 
@@ -134,6 +143,19 @@ internal sealed class SetupHarness : IDisposable
     public SetupManifest Manifest { get; set; } = SetupManifest.LoadEmbedded();
 
     public static SetupOptions Options(string? app = "ps5lmplus") => new("ps5.test", app) { WaitOverride = TimeSpan.FromMilliseconds(2), UpgradePayloadManager = false };
+
+    /// <summary>What a finished boot autoload leaves running: one kstuff and the payloads that follow it.</summary>
+    public void FinishBootAutoload()
+    {
+        Processes.Add("kstuff.elf");
+        Processes.Add("onion_daemon.elf");
+        Processes.Add("shadowmountplus.elf");
+        Ports.Add(9021);
+        Ports.Add(2121);
+        Ports.Add(7007);
+        Ports.Add(8888);
+        KstuffCount = Math.Max(KstuffCount, 1);
+    }
 
     public SetupRunner Runner(SetupOptions options) => new(
         Manifest,
@@ -383,6 +405,23 @@ internal sealed class SetupHarness : IDisposable
         }
 
         public Task<AutoloadConfig?> GetAutoloadAsync(CancellationToken cancellationToken) => Task.FromResult<AutoloadConfig?>(owner.Autoload);
+
+        public Task<AutoloadRun?> GetAutoloadRunAsync(CancellationToken cancellationToken)
+        {
+            owner.AutoloadRunReads++;
+            if (owner.AutoloadRuns.Count == 0)
+            {
+                return Task.FromResult<AutoloadRun?>(null);
+            }
+
+            var run = owner.AutoloadRuns.Count == 1 ? owner.AutoloadRuns.Peek() : owner.AutoloadRuns.Dequeue();
+            if (run is { InProgress: false })
+            {
+                owner.OnAutoloadFinished?.Invoke();
+            }
+
+            return Task.FromResult(run);
+        }
 
         public Task SetAutoloadAsync(bool enabled, string list, int delaySeconds, CancellationToken cancellationToken)
         {

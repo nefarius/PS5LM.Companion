@@ -32,6 +32,9 @@ In a container, mount `/data` so downloads are cached, and pass `--upgrade-paylo
 ## Steps
 
 1. Payload Manager must answer on port 8084 and be 0.6.0 or newer. An older one is upgraded (below), after consent.
+   If its boot autoload is still running, setup waits for that list to finish before the upgrade, the uploads or any launch.
+   The wait is five minutes plus the countdown `/autoload_status` reports. Past that, setup stops and nothing is sent: let the
+   list finish, or abort it in Payload Manager, then run setup again. A status that cannot be read does not block.
 2. List what Payload Manager stores and compare it with the manifest.
 3. Download missing payloads, verify the SHA-256, upload each as `<id>.elf` (slot `local/<id>`).
 4. Enable autoload once the kstuff decision below is known. The steady list is the payloads in order with at least a 3 s
@@ -100,6 +103,8 @@ Payload Manager's own 10 s countdown, the chain is about a minute.
 That is the boot order. A first setup whose `config.ini` does not exist yet sends OnionHEN before VoidShell, and does not send kstuff-lite, because the bundled copy is the one kstuff for that boot. The list above is what the following boot uses, once the bundled copy has been switched off.
 
 Payload Manager 0.6.0 is the oldest build whose `get_config` reports `AUTOLOAD_DELAY`. An older manager is not given a new list.
+The same 0.6.0 build is the first whose `/autoload_status` names the run (`waiting`, `countdown`, `executing`, and the finished states).
+0.5.x answers with the countdown seconds only, so a countdown above zero is waited out and a list that is already sending payloads is not visible.
 OnionHEN 0.9.0 is the oldest build that reads `[kstuff] autoload`. A stored slot that names an older build is left unchanged.
 A slot with no revision is treated as current.
 

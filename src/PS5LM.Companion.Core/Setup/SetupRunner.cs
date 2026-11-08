@@ -121,6 +121,11 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
             return false;
         }
 
+        if (!await WaitForBootAutoloadAsync(cancellationToken))
+        {
+            return false;
+        }
+
         var wanted = manifest.PayloadManager;
         PayloadManagerVersion.TryParse(wanted.Version, out var target);
         PayloadManagerVersion.TryParse(wanted.MinimumVersion, out var minimum);
@@ -146,6 +151,119 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         }
 
         return await new PayloadManagerUpgrade(manifest, options, services, Add, Notify).RunAsync(target, cancellationToken);
+    }
+
+    // The boot list can still be counting down or sending payloads. Launching over that is how a second kstuff gets sent.
+    internal async Task<bool> WaitForBootAutoloadAsync(CancellationToken cancellationToken)
+    {
+        var run = await services.Manager.GetAutoloadRunAsync(cancellationToken);
+        NoteUnrecognized(run);
+        if (run is not { InProgress: true })
+        {
+            return true;
+        }
+
+        var announced = "";
+        Announce(run);
+        var budget = options.Wait(options.BootAutoloadTimeout);
+        var covered = CountdownAllowance(run.RemainingSeconds);
+        var started = services.Time.GetUtcNow();
+        var deadline = started + budget + TimeSpan.FromSeconds(covered);
+        var finished = false;
+        while (true)
+        {
+            var next = await services.Manager.GetAutoloadRunAsync(cancellationToken);
+            NoteUnrecognized(next);
+            if (next is { InProgress: false })
+            {
+                finished = true;
+                break;
+            }
+
+            // A missing read is not a finished list. Keep polling until one says so, or the deadline passes.
+            if (next is { InProgress: true })
+            {
+                // A countdown reported after the first read still has to fit. A smaller later value does not shorten the wait.
+                var allowance = CountdownAllowance(next.RemainingSeconds);
+                if (allowance > covered)
+                {
+                    deadline += TimeSpan.FromSeconds(allowance - covered);
+                    covered = allowance;
+                }
+
+                Announce(next);
+            }
+
+            if (services.Time.GetUtcNow() >= deadline)
+            {
+                break;
+            }
+
+            await Task.Delay(options.WaitOverride ?? options.PollInterval, services.Time, cancellationToken);
+        }
+
+        if (finished)
+        {
+            return true;
+        }
+
+        var seconds = Math.Max(1, (int)Math.Ceiling((deadline - started).TotalSeconds));
+        Add(
+            "Autoload",
+            SetupStatus.Fail,
+            $"Payload Manager's boot autoload was still running after {seconds} s, so nothing was launched. Let it finish or abort it in Payload Manager, then run again.");
+        return false;
+
+        void Announce(AutoloadRun current)
+        {
+            var key = (current.State ?? "") + "\n" + (current.Current ?? "");
+            if (key == announced)
+            {
+                return;
+            }
+
+            announced = key;
+            Ui.Info($"Payload Manager's boot autoload is running ({Describe(current)}). Waiting for it to finish.");
+        }
+    }
+
+    private static string Describe(AutoloadRun run)
+    {
+        var parts = new List<string>();
+        if ((run.State is null or "countdown" or "waiting") && run.RemainingSeconds > 0)
+        {
+            parts.Add($"countdown {run.RemainingSeconds} s");
+        }
+        else if (run.State is "waiting")
+        {
+            parts.Add("waiting");
+        }
+
+        if (!string.IsNullOrWhiteSpace(run.Current))
+        {
+            parts.Add($"{run.Done} of {run.Total}, {run.Current}");
+        }
+
+        return parts.Count == 0 ? run.State ?? "running" : string.Join(" | ", parts);
+    }
+
+    /// <summary>Payload Manager stores a countdown of 0 through 3600 seconds. Anything outside that does not extend the wait.</summary>
+    internal static int CountdownAllowance(int remainingSeconds) => Math.Clamp(remainingSeconds, 0, 3600);
+
+    private bool _notedUnrecognizedAutoload;
+
+    private void NoteUnrecognized(AutoloadRun? run)
+    {
+        if (_notedUnrecognizedAutoload || run is not { Understood: false })
+        {
+            return;
+        }
+
+        _notedUnrecognizedAutoload = true;
+        var detail = string.IsNullOrWhiteSpace(run.State)
+            ? "it named neither a state nor a countdown"
+            : "state '" + run.State + "'";
+        Ui.Info($"Payload Manager's autoload status was not recognized ({detail}). This run will not wait for it.");
     }
 
     // Steps 2 and 3: diff the manager's list against the manifest and upload what is missing.

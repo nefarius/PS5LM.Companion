@@ -17,6 +17,7 @@ public sealed class KstuffSafetyTests
         ConfigNever,
         FtpDown,
         OldOnion,
+        BootAutoloadRunning,
     }
 
     public enum SafetyCommand
@@ -190,6 +191,12 @@ public sealed class KstuffSafetyTests
                     harness.Stored.Add(new ManagedPayload("repo/onionhen@v0.0.13", "onionhen", "onionhen.elf", "/data/pldmgr/payloads/onionhen.elf"));
                 }
 
+                break;
+            case ConsoleState.BootAutoloadRunning:
+                harness.AutoloadRuns.Enqueue(new AutoloadRun("countdown", 7, "", 0, 7));
+                harness.AutoloadRuns.Enqueue(new AutoloadRun("executing", 0, "local/kstuff-lite", 3, 7));
+                harness.AutoloadRuns.Enqueue(new AutoloadRun("done", 0, "", 7, 7));
+                harness.OnAutoloadFinished = harness.FinishBootAutoload;
                 break;
         }
     }

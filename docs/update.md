@@ -28,7 +28,9 @@ Exit codes: 0 current or updated, 1 bad arguments, 2 something failed, 3 `--chec
 
 ## What it does
 
-1. Payload Manager must answer on its port (otherwise run `setup`); an older one is upgraded as in `setup`.
+1. Payload Manager must answer on its port (otherwise run `setup`); an older one is upgraded as in `setup`. A boot autoload that is
+   still running is waited out first, on the same terms as `setup`, so an update does not send a payload the list is about to send.
+   `--check` only reports and does not wait.
 2. Each pinned payload's stored file is read back over FTP and compared by SHA-256 with the pinned download. A different file is
    uploaded through Payload Manager into the same slot, so autoload stays valid. The list itself is rewritten only with
    `--settings`. A payload that is not stored

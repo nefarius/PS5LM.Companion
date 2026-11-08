@@ -92,6 +92,11 @@ public sealed class UpdateRunner
             return false;
         }
 
+        if (!_options.CheckOnly && !await _setup.WaitForBootAutoloadAsync(cancellationToken))
+        {
+            return false;
+        }
+
         PayloadManagerVersion.TryParse(_manifest.PayloadManager.Version, out var target);
         if (running >= target)
         {
