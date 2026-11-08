@@ -60,7 +60,7 @@ public sealed class KstuffSafetyTests
         Assert.Null(harness.Files.Text("/data/OnionHEN/config.ini"));
         Assert.DoesNotContain("kstuff-lite", harness.Autoload.List, StringComparison.Ordinal);
         Assert.Contains("local/onionhen", harness.Autoload.List, StringComparison.Ordinal);
-        Assert.Contains(report.Lines, line => line.Status == SetupStatus.Warn && line.Message.Contains("stays on for this boot", StringComparison.Ordinal) || line.Message.Contains("not confirmed off", StringComparison.Ordinal));
+        Assert.Contains(report.Lines, line => line.Status == SetupStatus.Warn && (line.Message.Contains("stays on for this boot", StringComparison.Ordinal) || line.Message.Contains("not confirmed off", StringComparison.Ordinal)));
         KstuffSafety.AssertBoot(harness, report.ExitCode);
     }
 

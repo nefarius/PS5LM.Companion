@@ -263,16 +263,24 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
             return;
         }
 
+        // OnionHEN is what creates config.ini on a fresh console. Without it, that wait cannot succeed, so the
+        // external kstuff is launched directly and the rest of this run follows once that process is up.
+        bool ready;
         if (fromOnion.Count > 0)
         {
             await LaunchPayloadsAsync([fromOnion[0]], cancellationToken);
+            ready = await WaitForAsync(
+                async token => await IsReadyAsync(kstuff.Payload, token)
+                    && await services.Files.ReadTextAsync(BootSettings.OnionConfigPath, MaxTextBytes, token) is not null,
+                options.Wait(options.OnionConfigTimeout),
+                cancellationToken);
+        }
+        else
+        {
+            await LaunchPayloadsAsync([kstuff], cancellationToken);
+            ready = await IsReadyAsync(kstuff.Payload, cancellationToken);
         }
 
-        var ready = await WaitForAsync(
-            async token => await IsReadyAsync(kstuff.Payload, token)
-                && await services.Files.ReadTextAsync(BootSettings.OnionConfigPath, MaxTextBytes, token) is not null,
-            options.Wait(options.OnionConfigTimeout),
-            cancellationToken);
         if (!ready)
         {
             Ui.Info(await IsReadyAsync(kstuff.Payload, cancellationToken)

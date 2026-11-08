@@ -411,6 +411,25 @@ public sealed class SetupRunnerTests
     }
 
     [Fact]
+    public async Task Fresh_setup_without_onionhen_launches_kstuff_lite_and_does_not_wait_for_config()
+    {
+        using var harness = SetupHarness.Fresh();
+        harness.Manifest = harness.Manifest with
+        {
+            Payloads = harness.Manifest.Payloads.Where(payload => payload.Id != "onionhen").ToList(),
+        };
+        harness.VoidShell.SetUp([SetupHarness.TitleId]);
+
+        await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
+
+        Assert.Contains("load:kstuff-lite.elf", harness.Events);
+        Assert.DoesNotContain("load:onionhen.elf", harness.Events);
+        Assert.Contains("load:voidshell.elf", harness.Events);
+        Assert.True(harness.Events.IndexOf("load:voidshell.elf") > harness.Events.IndexOf("load:kstuff-lite.elf"));
+        Assert.DoesNotContain(harness.Messages, message => message.Contains("stays on for this boot", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Unready_kstuff_skips_onionhen_and_leaves_bundled_kstuff_off()
     {
         using var harness = Ready();
