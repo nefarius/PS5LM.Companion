@@ -27,6 +27,16 @@ internal sealed class FakeFileSystem : IPS5FileSystem
     /// <summary>Paths that are listed but whose download fails, as an ftpsrv that answers RETR with 550.</summary>
     public HashSet<string> Unreadable { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>How many times <see cref="ReadTextAsync"/> was called for each path.</summary>
+    public Dictionary<string, int> ReadCounts { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>Runs before a text read looks the path up, so a test can create the file on a later read.</summary>
+    public Action<string>? BeforeRead { get; set; }
+
+    public bool Has(string path) => _files.ContainsKey(path);
+
+    public string? Peek(string path) => _files.TryGetValue(path, out var bytes) ? Encoding.UTF8.GetString(bytes) : null;
+
     /// <summary>Folders whose listing fails with 550: they and their files look absent, as in FtpFileSystem.</summary>
     public HashSet<string> Unlistable { get; } = new(StringComparer.Ordinal);
 
@@ -109,8 +119,12 @@ internal sealed class FakeFileSystem : IPS5FileSystem
             return files.Concat(dirs).ToList();
         });
 
-    public Task<string?> ReadTextAsync(string path, int maxBytes, CancellationToken cancellationToken) =>
-        Run(() => !Unreadable.Contains(path) && _files.TryGetValue(path, out var bytes) && bytes.Length <= maxBytes ? Encoding.UTF8.GetString(bytes) : null);
+    public Task<string?> ReadTextAsync(string path, int maxBytes, CancellationToken cancellationToken)
+    {
+        ReadCounts[path] = ReadCounts.GetValueOrDefault(path) + 1;
+        BeforeRead?.Invoke(path);
+        return Run(() => !Unreadable.Contains(path) && _files.TryGetValue(path, out var bytes) && bytes.Length <= maxBytes ? Encoding.UTF8.GetString(bytes) : null);
+    }
 
     public Task<byte[]?> ReadBytesAsync(string path, int maxBytes, CancellationToken cancellationToken) =>
         Run(() => !Unreadable.Contains(path) && _files.TryGetValue(path, out var bytes) && bytes.Length <= maxBytes ? bytes : null);

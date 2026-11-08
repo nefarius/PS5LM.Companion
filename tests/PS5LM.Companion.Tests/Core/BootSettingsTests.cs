@@ -82,15 +82,68 @@ public sealed class BootSettingsTests
     }
 
     [Fact]
-    public async Task A_missing_config_is_not_confirmed_and_is_not_drift()
+    public async Task A_missing_config_is_pending_and_kstuff_lite_in_the_list_is_drift()
     {
         using var harness = await PreparedAsync();
         await harness.Files.DeleteAsync(ConfigPath, CancellationToken.None);
 
+        var withKstuff = await Check(harness);
+
+        Assert.DoesNotContain(withKstuff.Drift, item => item.Id == "onionhen-kstuff");
+        Assert.Contains(withKstuff.Drift, item => item.Id == "autoload-kstuff" && item.Detail.Contains("two kstuffs", StringComparison.Ordinal));
+        Assert.Contains(withKstuff.Lines, line => line.Status == SetupStatus.Warn && line.Message.Contains("pending", StringComparison.Ordinal));
+
+        harness.Autoload = harness.Autoload with
+        {
+            List = harness.Autoload.List.Replace("local/kstuff-lite,!8000,", string.Empty, StringComparison.Ordinal),
+        };
+        var without = await Check(harness);
+
+        Assert.DoesNotContain(without.Drift, item => item.Id is "autoload-kstuff" or "onionhen-kstuff");
+        Assert.Contains(without.Lines, line => line.Message.Contains("pending", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Missing_config_keeps_kstuff_lite_when_no_onionhen_is_stored()
+    {
+        using var harness = await PreparedAsync();
+        harness.Stored.RemoveAll(item => item.FileName == "onionhen.elf");
+        await harness.Files.DeleteAsync(ConfigPath, CancellationToken.None);
+        harness.Autoload = harness.Autoload with
+        {
+            List = harness.Autoload.List
+                .Replace("local/onionhen,!25000,", string.Empty, StringComparison.Ordinal)
+                .Replace("local/kstuff-lite,!8000,", string.Empty, StringComparison.Ordinal),
+        };
+
         var outcome = await Check(harness);
 
-        Assert.DoesNotContain(outcome.Drift, item => item.Id == "onionhen-kstuff");
-        Assert.Contains(outcome.Lines, line => line.Status == SetupStatus.Warn && line.Message.Contains("not confirmed off", StringComparison.Ordinal));
+        Assert.DoesNotContain(outcome.Drift, item => item.Id == "autoload-kstuff");
+        Assert.DoesNotContain(outcome.Lines, line => line.Message.Contains("not confirmed off", StringComparison.Ordinal));
+        Assert.Contains(outcome.Drift, item => item.Id == "autoload-order" && item.Detail.Contains("kstuff-lite", StringComparison.Ordinal));
+
+        var lines = new List<string>();
+        var decision = await BootSettings.ApplyKstuffAsync(
+            harness.Manifest,
+            Resolved(harness),
+            Services(harness),
+            2121,
+            new OnionConfigSession(),
+            (_, _, message) => lines.Add(message),
+            CancellationToken.None);
+        await BootSettings.ApplyAsync(
+            harness.Manifest,
+            Resolved(harness),
+            Services(harness),
+            2121,
+            new OnionConfigSession(),
+            (_, _, _) => { },
+            CancellationToken.None);
+
+        Assert.Equal(KstuffAutoload.Include, decision);
+        Assert.Empty(lines);
+        Assert.Contains("local/kstuff-lite", harness.Autoload.List, StringComparison.Ordinal);
+        Assert.DoesNotContain("local/onionhen", harness.Autoload.List, StringComparison.Ordinal);
     }
 
     [Fact]

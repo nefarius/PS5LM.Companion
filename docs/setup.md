@@ -34,28 +34,43 @@ In a container, mount `/data` so downloads are cached, and pass `--upgrade-paylo
 1. Payload Manager must answer on port 8084 and be 0.6.0 or newer. An older one is upgraded (below), after consent.
 2. List what Payload Manager stores and compare it with the manifest.
 3. Download missing payloads, verify the SHA-256, upload each as `<id>.elf` (slot `local/<id>`).
-4. Enable autoload with the payloads in order and at least a 3 s pause between every step, including entries you already had:
-   elfldr (6 s), kstuff-lite (8 s), ftpsrv, VoidShell, OnionHEN (25 s), ShadowMountPlus (5 s), PS5 Web File Manager.
-   A longer pause on a payload in the manifest is kept. Payload Manager's own countdown (`AUTOLOAD_DELAY`) is raised to
-   10 s when it is shorter; a longer countdown is left as it is. Payload Manager accepts at most 4094 bytes. A longer list,
-   pauses included, is left unchanged and the report says to shorten the existing entries. Plain `update` does not rewrite this
-   list or the countdown. [`update --settings`](update.md#boot-settings) does, on one console or a whole fleet, and leaves a
-   payload that is already running until the next boot.
-5. Launch them in that order, skipping any that already run, waiting for each one's port or process, then waiting out that
-   payload's pause. Once ftpsrv is answering, and before OnionHEN is sent, bundled kstuff is switched off (step 7).
-   If elfldr does not come up, launching stops before OnionHEN: Payload Manager sends everything through elfldr and cannot start it.
-   If the manifest includes kstuff-lite and that payload did not resolve, or the resolved copy is not ready, OnionHEN and
-   everything after it are not sent. Bundled kstuff stays off; setup does not turn it back on. A manifest without
-   kstuff-lite does not wait for it.
+4. Enable autoload once the kstuff decision below is known. The steady list is the payloads in order with at least a 3 s
+   pause between every step, including entries you already had: elfldr (6 s), kstuff-lite (8 s), ftpsrv, VoidShell,
+   OnionHEN (25 s), ShadowMountPlus (5 s), PS5 Web File Manager. A longer pause on a payload in the manifest is kept.
+   Payload Manager's own countdown (`AUTOLOAD_DELAY`) is raised to 10 s when it is shorter; a longer countdown is left as
+   it is. Payload Manager accepts at most 4094 bytes. A longer list, pauses included, is left unchanged and the report says
+   to shorten the existing entries. kstuff-lite is left out of the list, and an existing `local/kstuff-lite` entry is
+   removed, while `/data/OnionHEN/config.ini` does not exist: OnionHEN would otherwise load its bundled copy as well.
+   The entry comes back in the same run once the file exists and `[kstuff] autoload` is false. Plain `update` does not
+   rewrite this list or the countdown. [`update --settings`](update.md#boot-settings) does, on one console or a whole
+   fleet, and leaves a payload that is already running until the next boot. The switch is written before the list, so the
+   two cannot disagree.
+5. Launch what this boot can run safely. elfldr and ftpsrv go first: neither needs kstuff, and ftpsrv is how the config is
+   read. If elfldr does not come up, launching stops. Payload Manager sends everything through elfldr and cannot start it.
+   - The config already exists. Bundled kstuff is switched off, then kstuff-lite, VoidShell, OnionHEN and the rest are sent.
+     Anything already running is skipped.
+   - The config does not exist yet and no kstuff is running. This is a fresh console. kstuff-lite is not sent. OnionHEN is,
+     so its bundled kstuff-lite 1.11 (the same build the manifest pins) is the one kstuff for this boot. Setup waits up to
+     60 s for that process and for OnionHEN to create the config, then switches the bundled copy off for later boots and
+     sends VoidShell, ShadowMountPlus and the Web File Manager. VoidShell is not sent unless a kstuff process is up.
+   - kstuff is already running and the config still does not exist. OnionHEN is not sent: it would load a second kstuff.
+     The report says to reboot, then run setup again. The autoload list saved here has no kstuff-lite, so that reboot
+     starts only the bundled copy.
+   If kstuff-lite did not resolve, or it was sent and did not become ready, OnionHEN and everything after it are not sent.
+   A manifest without kstuff-lite does not wait for it. `update` uses the same refusal when it launches a payload: it will
+   not send kstuff-lite while a kstuff process or OnionHEN is already up, and it will not send OnionHEN while a kstuff is
+   running and the bundled copy is not confirmed off. It reads the process list and the config again immediately before
+   each send.
 6. Place extra files over FTP (VoidShell's `index.html` to `/data/voidshell/www/index.html`). Uploaded as `.part`, then renamed.
    Skipped when the size on the console matches (FTP cannot hash).
-7. Switch off OnionHEN's bundled kstuff, even with `--skip-app`, when the manifest includes kstuff-lite. When this run
-   launches OnionHEN, the edit happens after ftpsrv is answering and before that launch. Sets `[kstuff] autoload=false`
-   in `/data/OnionHEN/config.ini` (that is what v0.9.0 reads) and writes an empty `/data/OnionHEN/no_kstuff`, which is
-   what the Toolbox writes alongside the key. The first edit in the run saves `config.ini.bak`; the allow-list edit
-   below does not replace it. A missing file, or ftpsrv not answering, means the switch is not confirmed off. Setup does
-   not invent a config and does not send OnionHEN. Run setup again once OnionHEN has created the file. This step runs
-   only when kstuff-lite is in the manifest.
+7. Switch off OnionHEN's bundled kstuff, even with `--skip-app`, when the manifest includes kstuff-lite and the payload is
+   stored. On a console whose config already exists, the edit happens after ftpsrv is answering and before OnionHEN is sent.
+   On a fresh console it happens after OnionHEN has created the file. Sets `[kstuff] autoload=false` in
+   `/data/OnionHEN/config.ini` (that is what v0.9.0 reads) and writes an empty `/data/OnionHEN/no_kstuff`, which is what the
+   Toolbox writes alongside the key. The first edit in the run saves `config.ini.bak`; the allow-list edit below does not
+   replace it. Setup does not invent a config. A missing file stays a warning and the autoload list omits kstuff-lite until
+   the file exists. ftpsrv not answering leaves the kstuff-lite entry as it was. `update --settings` and the dashboard's
+   Fix settings do not edit the switch when kstuff-lite is not stored.
 8. Add the app's title ID to `exact_title_ids` in `[app_jailbreak]` of `/data/OnionHEN/config.ini`, after writing `config.ini.bak`
    when step 7 did not already. A missing file, section or key, or a bracketed list, is only a warning and nothing is changed.
 9. Install the app when it is not already there. A new install is uploaded to `/data/ps5lm-companion/staging/<title>` and renamed
@@ -63,7 +78,8 @@ In a container, mount `/data` so downloads are cached, and pass `--upgrade-paylo
    place, including when its `param.json` differs from the pin, and the report points at [`update --apps`](update.md).
    `setup --force` overwrites that app in place with `param.json` last; nothing is deleted, so models in the folder stay.
 10. Wait up to 3 minutes for ShadowMountPlus to register the title (VoidShell's library, else its log
-    `/data/shadowmount/debug.log`). Nothing can force a scan; ShadowMountPlus pauses while a game runs.
+    `/data/shadowmount/debug.log`). Nothing can force a scan; ShadowMountPlus pauses while a game runs. When
+    ShadowMountPlus is not running, setup says so and does not wait, and it does not ask VoidShell to rescan.
 11. Report: Payload Manager, autoload, each payload (port or process), the VoidShell dashboard page.
 
 ## Boot timing
@@ -80,6 +96,8 @@ Payload Manager's own 10 s countdown, the chain is about a minute.
 | ftpsrv, VoidShell | 3 s | Light services. They do not touch ShellUI, and they are up before OnionHEN, so FTP and the shell still answer if OnionHEN freezes the home screen. The OnionHEN log is `/data/OnionHEN/OnionHEN.log`. |
 | OnionHEN | 25 s | Startup is sequential: private loader on 9020 (up to 10 s), a fixed 3 s sleep, util (up to 15 s), kstuff, daemon (up to 20 s), then the ShellUI injection (`launch_pipeline.c` in aydencharles/onionHEN v0.9.0). A log on [onionHEN#119](https://github.com/aydencharles/onionHEN/issues/119) shows about 13 s from "Activating toolbox" to a ShellUI crash. The owner of [onionHEN#92](https://github.com/aydencharles/onionHEN/issues/92) asks for a delay before OnionHEN and no controller input while it loads. ShadowMountPlus, which starts scanning disks immediately, waits until that window has passed. |
 | ShadowMountPlus | 5 s | Its first scan and mounts are disk-heavy, so they come after OnionHEN has injected. |
+
+That is the boot order. A first setup whose `config.ini` does not exist yet sends OnionHEN before VoidShell, and does not send kstuff-lite, because the bundled copy is the one kstuff for that boot. The list above is what the following boot uses, once the bundled copy has been switched off.
 
 Payload Manager 0.6.0 is the oldest build whose `get_config` reports `AUTOLOAD_DELAY`. An older manager is not given a new list.
 OnionHEN 0.9.0 is the oldest build that reads `[kstuff] autoload`. A stored slot that names an older build is left unchanged.

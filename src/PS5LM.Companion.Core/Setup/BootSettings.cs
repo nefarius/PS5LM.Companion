@@ -67,12 +67,37 @@ public static class BootSettings
         return Inspect(manifest, resolved, autoload, delayApi, ftpOpen, config);
     }
 
+    /// <summary>
+    /// Switches bundled kstuff off first, then writes the autoload list from that result. Setup, <c>update --settings</c>
+    /// and the dashboard fix all go through here. The list omits kstuff-lite only while a stored OnionHEN could still
+    /// load its bundled copy.
+    /// </summary>
+    public static async Task ApplyAsync(
+        SetupManifest manifest,
+        IReadOnlyList<(ManifestPayload Payload, ManagedPayload Stored)> resolved,
+        SetupServices services,
+        int ftpPort,
+        OnionConfigSession backup,
+        Action<string, SetupStatus, string> report,
+        CancellationToken cancellationToken,
+        bool onlyWhenKstuffIsStored = false)
+    {
+        // setup edits the switch from the manifest, including when the upload did not stick.
+        // update and the dashboard leave a console alone when kstuff-lite is not stored there.
+        var stored = resolved.Any(item => item.Payload.Id.Equals(KstuffPayloadId, StringComparison.OrdinalIgnoreCase));
+        var kstuff = onlyWhenKstuffIsStored && !stored
+            ? KstuffAutoload.Include
+            : await ApplyKstuffAsync(manifest, resolved, services, ftpPort, backup, report, cancellationToken);
+        await ApplyAutoloadAsync(resolved, services, report, cancellationToken, kstuff);
+    }
+
     /// <summary>Writes the autoload list and countdown. An already matching list is left as it is.</summary>
     public static async Task ApplyAutoloadAsync(
         IReadOnlyList<(ManifestPayload Payload, ManagedPayload Stored)> resolved,
         SetupServices services,
         Action<string, SetupStatus, string> report,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        KstuffAutoload kstuff = KstuffAutoload.Include)
     {
         if (resolved.Count == 0)
         {
@@ -88,7 +113,17 @@ public static class BootSettings
         }
 
         var current = await services.Manager.GetAutoloadAsync(cancellationToken);
-        var list = AutoloadListBuilder.Build(resolved.Select(item => (item.Stored.LaunchTarget, item.Payload.DelayAfterMs)), current?.List);
+        var includeKstuff = kstuff switch
+        {
+            KstuffAutoload.Include => true,
+            KstuffAutoload.Exclude => false,
+            _ => ListHasPayload(current?.List, KstuffPayloadId),
+        };
+        var selected = includeKstuff
+            ? resolved
+            : resolved.Where(item => !item.Payload.Id.Equals(KstuffPayloadId, StringComparison.OrdinalIgnoreCase)).ToList();
+        var existing = includeKstuff ? current?.List : StripPayload(current?.List, KstuffPayloadId);
+        var list = AutoloadListBuilder.Build(selected.Select(item => (item.Stored.LaunchTarget, item.Payload.DelayAfterMs)), existing);
         if (!AutoloadListBuilder.Fits(list))
         {
             report(
@@ -110,7 +145,7 @@ public static class BootSettings
         var delay = Math.Max(current?.DelaySeconds ?? 0, MinimumAutoloadDelaySeconds);
         if (current is { Enabled: true } && current.List == list && current.DelaySeconds == delay)
         {
-            report("Autoload", SetupStatus.Ok, $"Enabled with {resolved.Count} payloads after a {delay} s countdown.");
+            report("Autoload", SetupStatus.Ok, $"Enabled with {selected.Count} payloads after a {delay} s countdown.");
             return;
         }
 
@@ -119,7 +154,7 @@ public static class BootSettings
         var check = await services.Manager.GetAutoloadAsync(cancellationToken);
         if (check is { Enabled: true } && check.List == list && check.DelaySeconds == delay)
         {
-            report("Autoload", SetupStatus.Ok, $"Enabled with {resolved.Count} payloads after a {delay} s countdown.");
+            report("Autoload", SetupStatus.Ok, $"Enabled with {selected.Count} payloads after a {delay} s countdown.");
         }
         else
         {
@@ -128,10 +163,13 @@ public static class BootSettings
     }
 
     /// <summary>
-    /// Switches off OnionHEN's bundled kstuff when the manifest ships kstuff-lite. True when the switch is confirmed
-    /// off, the manifest has no external kstuff, or the stored OnionHEN is older than 0.9.0 and the key does not apply.
+    /// Switches off OnionHEN's bundled kstuff when the manifest ships kstuff-lite.
+    /// <see cref="KstuffAutoload.Include"/> when the switch is confirmed off, the manifest has no external kstuff,
+    /// no OnionHEN is stored, or the stored OnionHEN is older than 0.9.0 and the key does not apply.
+    /// <see cref="KstuffAutoload.Exclude"/> when a stored OnionHEN can load bundled kstuff and <c>config.ini</c> is absent.
+    /// <see cref="KstuffAutoload.Leave"/> when FTP is not answering, so a list that already names kstuff-lite is kept.
     /// </summary>
-    public static async Task<bool> ApplyKstuffAsync(
+    public static async Task<KstuffAutoload> ApplyKstuffAsync(
         SetupManifest manifest,
         IReadOnlyList<(ManifestPayload Payload, ManagedPayload Stored)> resolved,
         SetupServices services,
@@ -142,28 +180,33 @@ public static class BootSettings
     {
         if (!manifest.Payloads.Any(payload => payload.Id.Equals(KstuffPayloadId, StringComparison.OrdinalIgnoreCase)))
         {
-            return true;
+            return KstuffAutoload.Include;
         }
 
         var onion = resolved.FirstOrDefault(item => item.Payload.Id.Equals(OnionHenPayloadId, StringComparison.OrdinalIgnoreCase)).Stored;
+        if (onion is null)
+        {
+            return KstuffAutoload.Include;
+        }
+
         if (!SupportsBundledKstuffSwitch(onion))
         {
-            report("OnionHEN kstuff", SetupStatus.Ok, $"OnionHEN {SlotRevision(onion!.Slot)} does not read [kstuff] autoload, so bundled kstuff was left unchanged.");
-            return true;
+            report("OnionHEN kstuff", SetupStatus.Ok, $"OnionHEN {SlotRevision(onion.Slot)} does not read [kstuff] autoload, so bundled kstuff was left unchanged.");
+            return KstuffAutoload.Include;
         }
 
         if (!await services.Probe.PortOpenAsync(ftpPort, cancellationToken))
         {
             report("OnionHEN kstuff", SetupStatus.Warn, $"ftpsrv is not answering, so {OnionConfigPath} was not checked. Bundled kstuff is not confirmed off.");
-            return false;
+            return KstuffAutoload.Leave;
         }
 
         services.Ui.Info("Checking OnionHEN's bundled kstuff.");
         var text = await services.Files.ReadTextAsync(OnionConfigPath, MaxTextBytes, cancellationToken);
         if (text is null)
         {
-            report("OnionHEN kstuff", SetupStatus.Warn, $"{OnionConfigPath} does not exist yet, so bundled kstuff is not confirmed off. Run setup again once OnionHEN has created it.");
-            return false;
+            report("OnionHEN kstuff", SetupStatus.Warn, $"{OnionConfigPath} does not exist yet, so bundled kstuff is not confirmed off. Boot settings stay pending until OnionHEN has created the file.");
+            return KstuffAutoload.Exclude;
         }
 
         var edit = OnionHenConfigEditor.SetValue(text, OnionHenConfigEditor.KstuffSection, OnionHenConfigEditor.KstuffAutoloadKey, "false");
@@ -179,7 +222,7 @@ public static class BootSettings
             edit.Status == ConfigValueStatus.Unchanged
                 ? "Bundled kstuff is already off (/data/OnionHEN/no_kstuff)."
                 : "Set [kstuff] autoload=false and wrote /data/OnionHEN/no_kstuff (backup: config.ini.bak).");
-        return true;
+        return KstuffAutoload.Include;
     }
 
     /// <summary>
@@ -211,9 +254,21 @@ public static class BootSettings
 
         var drift = new List<SettingDrift>();
         var lines = new List<ReportLine>();
+        var includeKstuff = RecommendKstuff(resolved, ftpOpen, onionConfig);
+        var forList = includeKstuff
+            ? resolved
+            : resolved.Where(item => !item.Payload.Id.Equals(KstuffPayloadId, StringComparison.OrdinalIgnoreCase)).ToList();
         if (delayApi && autoload is not null)
         {
-            drift.AddRange(AutoloadDrift(resolved, autoload));
+            drift.AddRange(AutoloadDrift(forList, autoload));
+            if (!includeKstuff && ListHasPayload(autoload.List, KstuffPayloadId))
+            {
+                drift.Add(new SettingDrift(
+                    "autoload-kstuff",
+                    "Autoload kstuff",
+                    "kstuff-lite left out until bundled kstuff is confirmed off",
+                    "kstuff-lite is in the autoload list while OnionHEN's bundled kstuff is not confirmed off. The next boot would load two kstuffs."));
+            }
         }
         else if (!delayApi)
         {
@@ -326,9 +381,14 @@ public static class BootSettings
         }
 
         var onion = resolved.FirstOrDefault(item => item.Payload.Id.Equals(OnionHenPayloadId, StringComparison.OrdinalIgnoreCase)).Stored;
+        if (onion is null)
+        {
+            yield break;
+        }
+
         if (!SupportsBundledKstuffSwitch(onion))
         {
-            lines.Add(new ReportLine("OnionHEN kstuff", SetupStatus.Ok, $"OnionHEN {SlotRevision(onion!.Slot)} does not read [kstuff] autoload, so it was not compared."));
+            lines.Add(new ReportLine("OnionHEN kstuff", SetupStatus.Ok, $"OnionHEN {SlotRevision(onion.Slot)} does not read [kstuff] autoload, so it was not compared."));
             yield break;
         }
 
@@ -340,7 +400,7 @@ public static class BootSettings
 
         if (onionConfig is null)
         {
-            lines.Add(new ReportLine("OnionHEN kstuff", SetupStatus.Warn, $"{OnionConfigPath} does not exist yet, so bundled kstuff is not confirmed off."));
+            lines.Add(new ReportLine("OnionHEN kstuff", SetupStatus.Warn, $"{OnionConfigPath} does not exist yet, so bundled kstuff is not confirmed off. Boot settings stay pending until OnionHEN has created the file."));
             yield break;
         }
 
@@ -353,6 +413,47 @@ public static class BootSettings
                 "off",
                 "OnionHEN still loads its bundled kstuff. [kstuff] autoload is not false.");
         }
+    }
+
+    /// <summary>
+    /// False only when a stored OnionHEN can load bundled kstuff, FTP answered, and <c>config.ini</c> is missing.
+    /// No stored OnionHEN, an older OnionHEN, or a closed FTP port leaves kstuff-lite in the recommendation.
+    /// </summary>
+    private static bool RecommendKstuff(
+        IReadOnlyList<(ManifestPayload Payload, ManagedPayload Stored)> resolved,
+        bool ftpOpen,
+        string? onionConfig)
+    {
+        if (!resolved.Any(item => item.Payload.Id.Equals(KstuffPayloadId, StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        var onion = resolved.FirstOrDefault(item => item.Payload.Id.Equals(OnionHenPayloadId, StringComparison.OrdinalIgnoreCase)).Stored;
+        if (onion is null || !SupportsBundledKstuffSwitch(onion) || !ftpOpen)
+        {
+            return true;
+        }
+
+        return onionConfig is not null;
+    }
+
+    private static bool ListHasPayload(string? list, string payloadId) =>
+        (list ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Any(entry => !entry.StartsWith('!') && AutoloadListBuilder.PayloadId(entry) is { } id && id.Equals(payloadId, StringComparison.OrdinalIgnoreCase));
+
+    private static string? StripPayload(string? list, string payloadId)
+    {
+        if (string.IsNullOrEmpty(list))
+        {
+            return list;
+        }
+
+        var kept = list
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(entry => entry.StartsWith('!') || AutoloadListBuilder.PayloadId(entry) is not { } id || !id.Equals(payloadId, StringComparison.OrdinalIgnoreCase));
+        return string.Join(',', kept);
     }
 
     private static string? DuplicateDetail(List<ListEntry> entries)
@@ -449,6 +550,19 @@ public static class BootSettings
     }
 
     private readonly record struct ListEntry(string? Slot, int? PauseMs);
+}
+
+/// <summary>Whether the autoload list may name kstuff-lite.</summary>
+public enum KstuffAutoload
+{
+    /// <summary>Bundled kstuff is confirmed off, or this OnionHEN does not load one. The list names kstuff-lite.</summary>
+    Include,
+
+    /// <summary><c>config.ini</c> is absent, so OnionHEN would load its bundled copy. The list must not name kstuff-lite.</summary>
+    Exclude,
+
+    /// <summary>The config could not be read. A kstuff-lite entry that is already there stays; one that is not there is not added.</summary>
+    Leave,
 }
 
 /// <summary>The first config.ini edit in a run keeps the previous file; a later edit does not replace that backup.</summary>

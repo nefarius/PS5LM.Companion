@@ -239,10 +239,13 @@ public sealed class UpdateRunner
         foreach (var (payload, _) in toLaunch)
         {
             var ready = await _setup.IsReadyAsync(payload, cancellationToken);
+            var note = _setup.LaunchNote(payload.Id);
             Add(
                 payload.Name,
                 ready ? SetupStatus.Ok : payload.Optional ? SetupStatus.Warn : SetupStatus.Fail,
-                ready ? $"Updated to {payload.Version} and running." : $"Uploaded {payload.Version}, but it is not running.");
+                ready
+                    ? $"Updated to {payload.Version} and running."
+                    : $"Uploaded {payload.Version}, but it is not running.{(string.IsNullOrWhiteSpace(note) ? string.Empty : " " + note)}");
         }
     }
 
@@ -285,10 +288,13 @@ public sealed class UpdateRunner
 
             await _setup.LaunchPayloadsAsync([(payload, stored)], cancellationToken);
             var ready = await _setup.IsReadyAsync(payload, cancellationToken);
+            var note = _setup.LaunchNote(payload.Id);
             Add(
                 payload.Name,
                 ready ? SetupStatus.Ok : payload.Optional ? SetupStatus.Warn : SetupStatus.Fail,
-                ready ? $"Updated to {payload.Version}; the old copy was stopped and the new one is running." : "The old copy was stopped, but the new one did not come up.");
+                ready
+                    ? $"Updated to {payload.Version}; the old copy was stopped and the new one is running."
+                    : "The old copy was stopped, but the new one did not come up." + (string.IsNullOrWhiteSpace(note) ? string.Empty : " " + note));
         }
     }
 
@@ -763,11 +769,7 @@ public sealed class UpdateRunner
             return;
         }
 
-        await BootSettings.ApplyAutoloadAsync(resolved, _services, Add, cancellationToken);
-        if (resolved.Any(item => item.Payload.Id.Equals(BootSettings.KstuffPayloadId, StringComparison.OrdinalIgnoreCase)))
-        {
-            await BootSettings.ApplyKstuffAsync(_manifest, resolved, _services, _options.FtpPort, new OnionConfigSession(), Add, cancellationToken);
-        }
+        await BootSettings.ApplyAsync(_manifest, resolved, _services, _options.FtpPort, new OnionConfigSession(), Add, cancellationToken, onlyWhenKstuffIsStored: true);
     }
 
     private void Pending(string id, string name, string pinned, string detail)

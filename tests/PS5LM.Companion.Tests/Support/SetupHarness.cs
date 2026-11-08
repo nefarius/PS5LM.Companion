@@ -26,6 +26,22 @@ internal sealed class SetupHarness : IDisposable
 
     private readonly string _directory = Directory.CreateTempSubdirectory("setup-tests").FullName;
 
+    /// <summary>What a first OnionHEN start writes before setup has edited it.</summary>
+    public const string OnionCreatedConfig = "[app_jailbreak]\nexact_title_ids =\n";
+
+    /// <summary>When OnionHEN creates <c>config.ini</c>. The default writes it as the payload starts.</summary>
+    public OnionConfigCreation ConfigCreation { get; set; } = OnionConfigCreation.WhenLaunched;
+
+    /// <summary>True when <c>config.ini</c> was already on the console at the moment OnionHEN was sent.</summary>
+    public bool? ConfigExistedBeforeOnionLaunch { get; private set; }
+
+    /// <summary>Live kstuffs. kstuff-lite and OnionHEN's bundled copy each add one.</summary>
+    public int KstuffCount { get; set; }
+
+    public List<LoadKstuff> Loads { get; } = [];
+
+    private int? _configReadsRemaining;
+
     public SetupHarness()
     {
         Manager = new FakeManager(this);
@@ -34,6 +50,18 @@ internal sealed class SetupHarness : IDisposable
         Elfldr = new FakeElfldr(this);
         VoidShell = new FakeAppProvider(AppProviderKind.VoidShell);
         Files = new FakeFileSystem();
+        Files.BeforeRead = OnRead;
+    }
+
+    /// <summary>A console with nothing but Payload Manager. OnionHEN has never written a config.</summary>
+    public static SetupHarness Fresh() => new();
+
+    /// <summary>A console that already has OnionHEN's config, the way the older tests started.</summary>
+    public static SetupHarness Prepared(string config) 
+    {
+        var harness = new SetupHarness();
+        harness.Files.AddFile(BootSettings.OnionConfigPath, config);
+        return harness;
     }
 
     public HashSet<int> Ports { get; } = [8084];
@@ -112,7 +140,141 @@ internal sealed class SetupHarness : IDisposable
         options,
         new SetupServices(Manager, Artifacts, Files, Probe, Elfldr, VoidShell, new FakeUi(this), TimeProvider.System));
 
-    public void Dispose() => Directory.Delete(_directory, recursive: true);
+    public void Dispose()
+    {
+        try
+        {
+            KstuffSafety.AssertLaunches(this);
+        }
+        finally
+        {
+            Directory.Delete(_directory, recursive: true);
+        }
+    }
+
+    public bool BundledWouldLoad(string? slot)
+    {
+        if (!BootSettings.SupportsBundledKstuffSwitch(slot is null ? null : new ManagedPayload(slot, "onionhen", "onionhen.elf", null)))
+        {
+            return false;
+        }
+
+        var text = Files.Peek(BootSettings.OnionConfigPath);
+        return text is null
+            || !OnionHenConfigEditor.TryGetValue(text, OnionHenConfigEditor.KstuffSection, OnionHenConfigEditor.KstuffAutoloadKey, out var value)
+            || !value.Equals("false", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Replays the saved autoload list against the saved config, the way the next boot would.</summary>
+    public BootSimulation SimulateBoot()
+    {
+        var kstuff = 0;
+        var conflict = false;
+        var started = new List<string>();
+        foreach (var raw in Autoload.List.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (raw.StartsWith('!'))
+            {
+                continue;
+            }
+
+            var id = AutoloadListBuilder.PayloadId(raw);
+            if (id is null)
+            {
+                continue;
+            }
+
+            started.Add(id);
+            if (id.Contains("kstuff", StringComparison.OrdinalIgnoreCase))
+            {
+                if (kstuff > 0)
+                {
+                    conflict = true;
+                }
+
+                kstuff++;
+            }
+            else if (id.Equals(BootSettings.OnionHenPayloadId, StringComparison.OrdinalIgnoreCase))
+            {
+                var stored = Stored.FirstOrDefault(item => item.FileName.Equals("onionhen.elf", StringComparison.OrdinalIgnoreCase));
+                var versionSlot = raw.Contains('@', StringComparison.Ordinal) ? raw : stored?.Slot ?? raw;
+                if (BundledWouldLoad(versionSlot))
+                {
+                    if (kstuff > 0)
+                    {
+                        conflict = true;
+                    }
+
+                    kstuff++;
+                }
+            }
+        }
+
+        return new BootSimulation(kstuff, conflict, started);
+    }
+
+    private void OnRead(string path)
+    {
+        if (!path.Equals(BootSettings.OnionConfigPath, StringComparison.Ordinal) || _configReadsRemaining is not int remaining)
+        {
+            return;
+        }
+
+        if (remaining > 1)
+        {
+            _configReadsRemaining = remaining - 1;
+            return;
+        }
+
+        _configReadsRemaining = null;
+        if (!Files.Has(path))
+        {
+            Files.AddFile(path, OnionCreatedConfig);
+        }
+    }
+
+    private void NoteKstuffLoad(string fileName, string? slot, bool kstuffAlready)
+    {
+        var before = kstuffAlready ? Math.Max(KstuffCount, 1) : 0;
+        var bundled = false;
+        if (fileName.Equals("kstuff-lite.elf", StringComparison.OrdinalIgnoreCase))
+        {
+            if (kstuffAlready)
+            {
+                Events.Add("kstuff-conflict");
+            }
+
+            KstuffCount = kstuffAlready ? KstuffCount + 1 : 1;
+        }
+        else if (fileName.Equals("onionhen.elf", StringComparison.OrdinalIgnoreCase))
+        {
+            ConfigExistedBeforeOnionLaunch = Files.Has(BootSettings.OnionConfigPath);
+            if (BundledWouldLoad(slot))
+            {
+                bundled = true;
+                if (kstuffAlready)
+                {
+                    Events.Add("kstuff-conflict");
+                }
+
+                KstuffCount = kstuffAlready ? KstuffCount + 1 : 1;
+                Processes.Add("kstuff.elf");
+            }
+
+            switch (ConfigCreation)
+            {
+                case OnionConfigCreation.WhenLaunched when !Files.Has(BootSettings.OnionConfigPath):
+                    Files.AddFile(BootSettings.OnionConfigPath, OnionCreatedConfig);
+                    break;
+                case OnionConfigCreation.OnSecondRead when !Files.Has(BootSettings.OnionConfigPath):
+                    // The decision already observed the missing file. The next read, from the wait, is when it appears.
+                    _configReadsRemaining = 1;
+                    break;
+            }
+        }
+
+        Loads.Add(new LoadKstuff(fileName, before, bundled));
+    }
 
     internal sealed class FakeUi(SetupHarness owner) : ISetupUi
     {
@@ -164,6 +326,7 @@ internal sealed class SetupHarness : IDisposable
 
             owner.Events.Add("load:" + stored.FileName);
             owner.LoadTargets.Add(target);
+            var kstuffAlready = owner.Processes.Contains("kstuff.elf") || owner.Processes.Contains("kstuff-lite.elf");
             if (Effects.TryGetValue(stored.FileName, out var effect))
             {
                 if (effect.Port > 0)
@@ -193,6 +356,7 @@ internal sealed class SetupHarness : IDisposable
                 }
             }
 
+            owner.NoteKstuffLoad(stored.FileName, stored.Slot, kstuffAlready);
             return Task.FromResult(new PayloadLaunchResult(true, 200, "OK"));
         }
 
@@ -315,3 +479,17 @@ internal sealed class SetupHarness : IDisposable
         }
     }
 }
+
+/// <summary>When the fake OnionHEN writes <c>config.ini</c>.</summary>
+internal enum OnionConfigCreation
+{
+    WhenLaunched,
+    OnSecondRead,
+    Never,
+}
+
+/// <summary>One payload send and how many kstuffs were already running.</summary>
+internal sealed record LoadKstuff(string File, int KstuffBefore, bool StartedBundled);
+
+/// <summary>What the saved autoload list would start on the next boot.</summary>
+internal sealed record BootSimulation(int Kstuff, bool Conflict, IReadOnlyList<string> Started);

@@ -32,6 +32,9 @@ public sealed record SetupOptions(string Host, string? AppId)
     /// <summary>How long to wait for the app to be installed by ShadowMountPlus.</summary>
     public TimeSpan AppInstallTimeout { get; init; } = TimeSpan.FromMinutes(3);
 
+    /// <summary>How long a first run waits for OnionHEN to create <c>/data/OnionHEN/config.ini</c>.</summary>
+    public TimeSpan OnionConfigTimeout { get; init; } = TimeSpan.FromSeconds(60);
+
     /// <summary>Replaces every wait timeout and pause; tests use a few milliseconds.</summary>
     public TimeSpan? WaitOverride { get; init; }
 

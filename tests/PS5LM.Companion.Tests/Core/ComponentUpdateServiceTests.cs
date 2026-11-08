@@ -142,6 +142,8 @@ public sealed class ComponentUpdateServiceTests
         var status = await service.ApplySettingsAsync(CancellationToken.None);
 
         Assert.Null(status.Failure);
+        Assert.DoesNotContain("local/kstuff-lite", harness.Autoload.List, StringComparison.Ordinal);
+        Assert.Contains("local/onionhen", harness.Autoload.List, StringComparison.Ordinal);
         Assert.DoesNotContain(status.Settings, item => item.Id == "onionhen-kstuff");
         Assert.Contains(status.Warnings, warning => warning.Contains("not confirmed off", StringComparison.Ordinal));
         Assert.Contains(store.Current.Updates!.Warnings, warning => warning.Contains("not confirmed off", StringComparison.Ordinal));
