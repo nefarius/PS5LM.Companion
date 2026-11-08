@@ -165,28 +165,44 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
 
         var announced = "";
         Announce(run);
-        var timeout = options.Wait(options.BootAutoloadTimeout) + TimeSpan.FromSeconds(CountdownAllowance(run.RemainingSeconds));
-        var finished = await WaitForAsync(
-            async token =>
+        var budget = options.Wait(options.BootAutoloadTimeout);
+        var covered = CountdownAllowance(run.RemainingSeconds);
+        var started = services.Time.GetUtcNow();
+        var deadline = started + budget + TimeSpan.FromSeconds(covered);
+        var finished = false;
+        while (true)
+        {
+            var next = await services.Manager.GetAutoloadRunAsync(cancellationToken);
+            NoteUnrecognized(next);
+            if (next is not { InProgress: true })
             {
-                var next = await services.Manager.GetAutoloadRunAsync(token);
-                NoteUnrecognized(next);
-                if (next is not { InProgress: true })
-                {
-                    return true;
-                }
+                finished = true;
+                break;
+            }
 
-                Announce(next);
-                return false;
-            },
-            timeout,
-            cancellationToken);
+            // A countdown reported after the first read still has to fit. A smaller later value does not shorten the wait.
+            var allowance = CountdownAllowance(next.RemainingSeconds);
+            if (allowance > covered)
+            {
+                deadline += TimeSpan.FromSeconds(allowance - covered);
+                covered = allowance;
+            }
+
+            Announce(next);
+            if (services.Time.GetUtcNow() >= deadline)
+            {
+                break;
+            }
+
+            await Task.Delay(options.WaitOverride ?? options.PollInterval, services.Time, cancellationToken);
+        }
+
         if (finished)
         {
             return true;
         }
 
-        var seconds = Math.Max(1, (int)Math.Ceiling(timeout.TotalSeconds));
+        var seconds = Math.Max(1, (int)Math.Ceiling((deadline - started).TotalSeconds));
         Add(
             "Autoload",
             SetupStatus.Fail,

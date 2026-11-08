@@ -130,4 +130,21 @@ public sealed class BootAutoloadTests
         Assert.Contains(harness.Messages, message => message.Contains("countdown 5 s", StringComparison.Ordinal));
         Assert.DoesNotContain("load:kstuff-lite.elf", harness.Events);
     }
+
+    [Fact]
+    public async Task A_countdown_reported_after_the_first_read_still_blocks_launch()
+    {
+        using var harness = Ready();
+        harness.AutoloadRuns.Enqueue(new AutoloadRun("waiting", 0, "", 0, 7));
+        harness.AutoloadRuns.Enqueue(new AutoloadRun("waiting", 0, "", 0, 7));
+        harness.AutoloadRuns.Enqueue(new AutoloadRun("countdown", 30, "", 0, 7));
+        harness.AutoloadRuns.Enqueue(new AutoloadRun("done", 0, "", 7, 7));
+        harness.OnAutoloadFinished = harness.FinishBootAutoload;
+
+        var report = await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
+
+        Assert.Equal(0, report.ExitCode);
+        Assert.Contains(harness.Messages, message => message.Contains("countdown 30 s", StringComparison.Ordinal));
+        Assert.DoesNotContain("load:kstuff-lite.elf", harness.Events);
+    }
 }
