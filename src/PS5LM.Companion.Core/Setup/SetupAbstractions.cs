@@ -19,6 +19,25 @@ public sealed record ManagedPayload(string Slot, string? Id, string FileName, st
 /// <param name="DelayReported">False when <c>AUTOLOAD_DELAY</c> was absent or outside the range Payload Manager stores.</param>
 public sealed record AutoloadConfig(bool Enabled, string List, int DelaySeconds = 0, bool DelayReported = false);
 
+/// <summary>
+/// One read of Payload Manager's <c>/autoload_status</c>. 0.6.x names <see cref="State"/>;
+/// 0.5.x reports only <see cref="RemainingSeconds"/>.
+/// </summary>
+/// <param name="State"><c>disabled</c>, <c>waiting</c>, <c>countdown</c>, <c>executing</c>, <c>done</c>, <c>aborted</c> or <c>failed</c>. Null when the manager did not send one.</param>
+/// <param name="RemainingSeconds">Countdown seconds still to run. Zero or negative when there is no countdown.</param>
+/// <param name="Current">The list entry being sent, when the manager names one.</param>
+public sealed record AutoloadRun(string? State, int RemainingSeconds, string? Current, int Done, int Total)
+{
+    /// <summary>
+    /// True while the boot list can still send a payload. A 0.5.x body has no state, so only a countdown above zero counts.
+    /// </summary>
+    public bool InProgress => State is null
+        ? RemainingSeconds > 0
+        : State.Equals("waiting", StringComparison.OrdinalIgnoreCase)
+            || State.Equals("countdown", StringComparison.OrdinalIgnoreCase)
+            || State.Equals("executing", StringComparison.OrdinalIgnoreCase);
+}
+
 /// <summary>Payload Manager's administration surface, in the forms that 0.5.x and 0.6.x share and the 0.6.x extras.</summary>
 public interface IPayloadManagerAdmin
 {
@@ -42,6 +61,12 @@ public interface IPayloadManagerAdmin
     Task<bool> KillProcessAsync(int pid, CancellationToken cancellationToken);
 
     Task<AutoloadConfig?> GetAutoloadAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The boot autoload's run, or <see langword="null"/> when <c>/autoload_status</c> could not be read.
+    /// Callers that do not track it answer null and setup does not wait.
+    /// </summary>
+    Task<AutoloadRun?> GetAutoloadRunAsync(CancellationToken cancellationToken) => Task.FromResult<AutoloadRun?>(null);
 
     /// <param name="delaySeconds">Countdown before the list runs, in seconds. Payload Manager stores 0 through 3600.</param>
     Task SetAutoloadAsync(bool enabled, string list, int delaySeconds, CancellationToken cancellationToken);

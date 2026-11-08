@@ -35,6 +35,11 @@ public sealed record SetupOptions(string Host, string? AppId)
     /// <summary>How long a first run waits for OnionHEN to create <c>/data/OnionHEN/config.ini</c>.</summary>
     public TimeSpan OnionConfigTimeout { get; init; } = TimeSpan.FromSeconds(60);
 
+    /// <summary>
+    /// How long to wait for Payload Manager's boot autoload to finish, on top of the countdown it reports.
+    /// </summary>
+    public TimeSpan BootAutoloadTimeout { get; init; } = TimeSpan.FromMinutes(5);
+
     /// <summary>Replaces every wait timeout and pause; tests use a few milliseconds.</summary>
     public TimeSpan? WaitOverride { get; init; }
 

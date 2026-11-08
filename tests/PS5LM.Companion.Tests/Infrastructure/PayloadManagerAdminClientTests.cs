@@ -3,6 +3,7 @@ using System.Text;
 
 using Polly.Timeout;
 
+using PS5LM.Companion.Core.Setup;
 using PS5LM.Companion.Infrastructure.Setup;
 using PS5LM.Companion.Tests.Support;
 
@@ -159,5 +160,26 @@ public sealed class PayloadManagerAdminClientTests
         await Client(handler).ShutdownAsync(CancellationToken.None);
         Assert.Equal(HttpMethod.Post, handler.Requests.Single().Method);
         Assert.Equal("1", handler.Requests.Single().Headers.GetValues("X-PLDMGR-Request").Single());
+    }
+
+    [Fact]
+    public async Task Autoload_status_reads_the_06_shape_the_05_countdown_and_a_failure()
+    {
+        var disabled = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "Fixtures", "payload-manager", "0.6.3", "autoload_status.json"));
+        var idle = await Client(new StubHandler(_ => Text(disabled))).GetAutoloadRunAsync(CancellationToken.None);
+        Assert.Equal("disabled", idle!.State);
+        Assert.Equal(-1, idle.RemainingSeconds);
+        Assert.False(idle.InProgress);
+
+        const string executing = """{"remaining":0,"remaining_ms":0,"total":7,"done":3,"current":"local/kstuff-lite","list":"local/elfldr,local/kstuff-lite","delay":10,"KILL_DISC_PLAYER_ON_STARTUP":true,"SCAN_USB_PAYLOADS":false,"state":"executing","successful":2,"failed":0,"skipped":0,"outcomes":"ssppppp","entry_index":2,"entry_duration_ms":8000,"entry_remaining_ms":1000}""";
+        var busy = await Client(new StubHandler(_ => Text(executing))).GetAutoloadRunAsync(CancellationToken.None);
+        Assert.Equal(new AutoloadRun("executing", 0, "local/kstuff-lite", 3, 7), busy);
+        Assert.True(busy!.InProgress);
+
+        var legacy = await Client(new StubHandler(_ => Text("""{"remaining":5}"""))).GetAutoloadRunAsync(CancellationToken.None);
+        Assert.Equal(new AutoloadRun(null, 5, null, 0, 0), legacy);
+        Assert.True(legacy!.InProgress);
+
+        Assert.Null(await Client(new StubHandler(_ => Text("no", HttpStatusCode.InternalServerError))).GetAutoloadRunAsync(CancellationToken.None));
     }
 }

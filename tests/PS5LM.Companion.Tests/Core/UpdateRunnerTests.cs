@@ -78,6 +78,37 @@ public sealed class UpdateRunnerTests
     }
 
     [Fact]
+    public async Task Update_waits_for_a_boot_autoload_before_replacing_a_stale_kstuff()
+    {
+        using var harness = await PreparedAsync();
+        Stale(harness, "kstuff-lite.elf");
+        harness.Processes.Remove("kstuff.elf");
+        harness.AutoloadRuns.Enqueue(new AutoloadRun("countdown", 7, "", 0, 7));
+        harness.AutoloadRuns.Enqueue(new AutoloadRun("executing", 0, "local/kstuff-lite", 3, 7));
+        harness.AutoloadRuns.Enqueue(new AutoloadRun("done", 0, "", 7, 7));
+        harness.OnAutoloadFinished = harness.FinishBootAutoload;
+
+        var report = await Runner(harness).RunAsync(CancellationToken.None);
+
+        Assert.Equal(["upload:kstuff-lite.elf"], harness.Events);
+        Assert.Contains(harness.Messages, message => message.Contains("boot autoload is running", StringComparison.Ordinal));
+        Assert.Contains(report.Lines, l => l.Component == "kstuff-lite" && l.Message.Contains("cannot replace it while it runs", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Check_does_not_read_the_boot_autoload()
+    {
+        using var harness = await PreparedAsync();
+        harness.AutoloadRuns.Enqueue(new AutoloadRun("executing", 0, "local/kstuff-lite", 1, 7));
+        var reads = harness.AutoloadRunReads;
+
+        var report = await Runner(harness, check: true).RunAsync(CancellationToken.None);
+
+        Assert.Equal(0, report.ExitCode);
+        Assert.Equal(reads, harness.AutoloadRunReads);
+    }
+
+    [Fact]
     public async Task Refused_upload_falls_back_to_replacing_the_stored_file_over_ftp()
     {
         using var harness = await PreparedAsync();

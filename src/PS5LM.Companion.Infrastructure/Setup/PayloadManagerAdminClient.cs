@@ -11,8 +11,8 @@ namespace PS5LM.Companion.Infrastructure.Setup;
 
 /// <summary>
 /// Payload Manager administration over plain <see cref="HttpClient"/>. It speaks the forms that 0.5.x and 0.6.x share
-/// (<c>/version</c>, <c>/list_payloads</c>, <c>/manage:upload</c>, <c>/loadpayload:</c>, <c>/shutdown</c>) and the 0.6.x
-/// config calls. Every mutating request carries <c>X-PLDMGR-Request: 1</c>, which 0.6.x requires and 0.5.x ignores.
+/// (<c>/version</c>, <c>/list_payloads</c>, <c>/manage:upload</c>, <c>/loadpayload:</c>, <c>/shutdown</c>), the 0.6.x
+/// config calls, and <c>/autoload_status</c>. Every mutating request carries <c>X-PLDMGR-Request: 1</c>, which 0.6.x requires and 0.5.x ignores.
 /// </summary>
 public sealed class PayloadManagerAdminClient(HttpClient http) : IPayloadManagerAdmin
 {
@@ -217,6 +217,37 @@ public sealed class PayloadManagerAdminClient(HttpClient http) : IPayloadManager
         }
     }
 
+    public async Task<AutoloadRun?> GetAutoloadRunAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await http.GetAsync("autoload_status", cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            var seconds = 0;
+            if (root.TryGetProperty("remaining", out var remaining))
+            {
+                _ = TryDelayValue(remaining, out seconds);
+            }
+
+            return new AutoloadRun(Text(root, "state"), seconds, Text(root, "current"), Number(root, "done"), Number(root, "total"));
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException or TimeoutRejectedException && !cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+    }
+
     public async Task SetAutoloadAsync(bool enabled, string list, int delaySeconds, CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, "set_config")
@@ -293,4 +324,9 @@ public sealed class PayloadManagerAdminClient(HttpClient http) : IPayloadManager
         element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
             : null;
+
+    private static int Number(JsonElement element, string name) =>
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) && TryDelayValue(value, out var number)
+            ? number
+            : 0;
 }
