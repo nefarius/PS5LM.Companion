@@ -70,6 +70,63 @@ public sealed class FtpLaneTests
         Assert.Equal(2, server.UploadsAccepted);
     }
 
+    [Fact]
+    public async Task A_listing_completes_while_a_download_holds_the_bulk_lane()
+    {
+        await using var server = await GatedFtpServer.StartAsync(holdDownloads: true);
+        using var fs = Client(server.Port);
+        await using var destination = new MemoryStream();
+
+        var download = fs.DownloadToAsync("/data/PS5LM/models/m.gguf", destination, null, CancellationToken.None);
+        await WaitAsync(server.FirstDownloadAccepted, server);
+
+        var exists = await fs.FileExistsAsync("/missing/file", CancellationToken.None).WaitAsync(Bound);
+
+        Assert.False(exists);
+        server.ReleaseDownloads();
+        await download.WaitAsync(Bound);
+        Assert.Equal("file"u8.ToArray(), destination.ToArray());
+    }
+
+    [Fact]
+    public async Task A_download_and_an_upload_run_one_at_a_time()
+    {
+        await using var server = await GatedFtpServer.StartAsync(holdDownloads: true);
+        using var fs = Client(server.Port);
+        await using var destination = new MemoryStream();
+        await using var upload = new MemoryStream(new byte[64]);
+
+        var download = fs.DownloadToAsync("/data/PS5LM/models/m.gguf", destination, null, CancellationToken.None);
+        await WaitAsync(server.FirstDownloadAccepted, server);
+        var queued = fs.UploadAsync(upload, "/data/PS5LM/models/n.gguf.part", null, CancellationToken.None);
+        await Task.Delay(200);
+
+        Assert.Equal(0, server.UploadsAccepted);
+        server.ReleaseDownloads();
+        await Task.WhenAll(download, queued).WaitAsync(Bound);
+        Assert.Equal(1, server.DownloadsAccepted);
+        Assert.Equal(1, server.UploadsAccepted);
+    }
+
+    [Fact]
+    public async Task Two_downloads_run_one_at_a_time()
+    {
+        await using var server = await GatedFtpServer.StartAsync(holdDownloads: true);
+        using var fs = Client(server.Port);
+        await using var first = new MemoryStream();
+        await using var second = new MemoryStream();
+
+        var download = fs.DownloadToAsync("/data/PS5LM/models/a.gguf", first, null, CancellationToken.None);
+        await WaitAsync(server.FirstDownloadAccepted, server);
+        var queued = fs.DownloadToAsync("/data/PS5LM/models/b.gguf", second, null, CancellationToken.None);
+        await Task.Delay(200);
+
+        Assert.Equal(1, server.DownloadsAccepted);
+        server.ReleaseDownloads();
+        await Task.WhenAll(download, queued).WaitAsync(Bound);
+        Assert.Equal(2, server.DownloadsAccepted);
+    }
+
     private static async Task WaitAsync(Task signal, GatedFtpServer server)
     {
         try
@@ -93,20 +150,25 @@ public sealed class FtpLaneTests
         private readonly Task _accepting;
         private readonly bool _holdListings;
         private readonly bool _holdUploads;
+        private readonly bool _holdDownloads;
         private readonly TaskCompletionSource _releaseListings = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource _releaseUploads = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _releaseDownloads = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource _firstListing = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource _firstUpload = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _firstDownload = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly List<string> _commands = [];
         private int _listings;
         private int _uploads;
+        private int _downloads;
 
-        private GatedFtpServer(TcpListener listener, int port, bool holdListings, bool holdUploads)
+        private GatedFtpServer(TcpListener listener, int port, bool holdListings, bool holdUploads, bool holdDownloads)
         {
             _listener = listener;
             Port = port;
             _holdListings = holdListings;
             _holdUploads = holdUploads;
+            _holdDownloads = holdDownloads;
             _accepting = AcceptAsync();
         }
 
@@ -116,9 +178,13 @@ public sealed class FtpLaneTests
 
         public Task FirstUploadAccepted => _firstUpload.Task;
 
+        public Task FirstDownloadAccepted => _firstDownload.Task;
+
         public int Listings => Volatile.Read(ref _listings);
 
         public int UploadsAccepted => Volatile.Read(ref _uploads);
+
+        public int DownloadsAccepted => Volatile.Read(ref _downloads);
 
         public string Transcript
         {
@@ -131,22 +197,25 @@ public sealed class FtpLaneTests
             }
         }
 
-        public static Task<GatedFtpServer> StartAsync(bool holdListings = false, bool holdUploads = false)
+        public static Task<GatedFtpServer> StartAsync(bool holdListings = false, bool holdUploads = false, bool holdDownloads = false)
         {
             var listener = new TcpListener(IPAddress.Loopback, 0);
             listener.Start();
             var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-            return Task.FromResult(new GatedFtpServer(listener, port, holdListings, holdUploads));
+            return Task.FromResult(new GatedFtpServer(listener, port, holdListings, holdUploads, holdDownloads));
         }
 
         public void ReleaseListings() => _releaseListings.TrySetResult();
 
         public void ReleaseUploads() => _releaseUploads.TrySetResult();
 
+        public void ReleaseDownloads() => _releaseDownloads.TrySetResult();
+
         public async ValueTask DisposeAsync()
         {
             ReleaseListings();
             ReleaseUploads();
+            ReleaseDownloads();
             _stopped.Cancel();
             _listener.Stop();
             await _accepting;
@@ -230,6 +299,18 @@ public sealed class FtpLaneTests
 
                                 await writer.WriteLineAsync("550 missing");
                                 break;
+                            case "SIZE":
+                                await writer.WriteLineAsync("213 4");
+                                break;
+                            case "RETR":
+                                await SendDataAsync(passive, writer, hold: _holdDownloads && DownloadsAccepted == 0, () =>
+                                {
+                                    if (Interlocked.Increment(ref _downloads) == 1)
+                                    {
+                                        _firstDownload.TrySetResult();
+                                    }
+                                });
+                                break;
                             case "STOR":
                                 await AcceptDataAsync(passive, writer, hold: _holdUploads && UploadsAccepted == 0, () =>
                                 {
@@ -289,6 +370,28 @@ public sealed class FtpLaneTests
                 // The bytes are irrelevant; the upload only has to finish.
             }
 
+            await writer.WriteLineAsync("226 done");
+        }
+
+        /// <summary>Replies 150, accepts the data connection, writes a small payload and replies 226.</summary>
+        private async Task SendDataAsync(TcpListener? passive, StreamWriter writer, bool hold, Action onAccepted)
+        {
+            if (passive is null)
+            {
+                await writer.WriteLineAsync("425 no passive port");
+                return;
+            }
+
+            await writer.WriteLineAsync("150 go");
+            using var data = await passive.AcceptTcpClientAsync(_stopped.Token);
+            onAccepted();
+            if (hold)
+            {
+                await _releaseDownloads.Task.WaitAsync(_stopped.Token);
+            }
+
+            await using var outgoing = data.GetStream();
+            await outgoing.WriteAsync("file"u8.ToArray(), _stopped.Token);
             await writer.WriteLineAsync("226 done");
         }
 

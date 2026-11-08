@@ -1,0 +1,58 @@
+@inject IConsoleRegistry Registry
+@inject IConsoleProbe Probe
+
+<MudDialog>
+    <DialogContent>
+        @if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error">@_error</MudAlert>
+        }
+        else if (_report is null)
+        {
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                <MudText>Testing the connection...</MudText>
+            </MudStack>
+        }
+        else
+        {
+            <ProbeChecks Report="@_report" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Close">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private string? _error;
+    private ConsoleProbeReport? _report;
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter]
+    public string ConsoleId { get; set; } = string.Empty;
+
+    public static Task ShowAsync(IDialogService dialogs, ConsoleRuntime console)
+    {
+        var parameters = new DialogParameters<ConsoleProbeDialog> { { dialog => dialog.ConsoleId, console.Id } };
+        return dialogs.ShowAsync<ConsoleProbeDialog>(
+            $"Test {console.Name}",
+            parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true });
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Registry.Find(ConsoleId) is not { } console)
+        {
+            _error = "That console is no longer configured.";
+            return;
+        }
+
+        _report = await Probe.TestAsync(console.Options, CancellationToken.None);
+    }
+
+    private void Close() => MudDialog.Close();
+}

@@ -16,6 +16,7 @@ else
     <MudText Typo="Typo.h4" HtmlTag="h1">Models<MudText Typo="Typo.subtitle1" Color="Color.Secondary" Inline="true" Class="ml-3">on @Target.Name (@Target.Host)</MudText></MudText>
     <MudSpacer />
     <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh" OnClick="ReloadAsync" Disabled="_loading">Refresh</MudButton>
+    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.CopyAll" OnClick="CopyModelsAsync" Disabled="_loading">Copy models...</MudButton>
     <MudButton Variant="Variant.Outlined" Color="Color.Warning" StartIcon="@Icons.Material.Filled.Eject"
                OnClick="UnloadAsync" Disabled="@(Status.LoadedModel is null || Status.CommandPending || _acting)">Unload</MudButton>
 </MudStack>
@@ -107,6 +108,8 @@ else if (_settingsKnown)
                                    Disabled="@(IsLoaded(context) || Status.CommandPending || _acting)"
                                    OnClick="@(() => LoadAsync(context))">Load</MudButton>
                     }
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.CopyAll"
+                               OnClick="@(() => CopyAsync(context))">Copy</MudButton>
                     <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Error"
                                StartIcon="@Icons.Material.Filled.Delete"
                                Disabled="@(!CanDelete(context))"
@@ -412,6 +415,11 @@ else if (_settingsKnown)
             $"Unload the model on {Confirm.On(console)}? The app restarts without a model.",
             "Unload");
     }
+
+    private Task CopyModelsAsync() => Target is null ? Task.CompletedTask : ModelCopyDialog.ShowAsync(Dialogs, Target.Id);
+
+    private Task CopyAsync(ModelFile model) =>
+        Target is null ? Task.CompletedTask : ModelCopyDialog.ShowAsync(Dialogs, Target.Id, [model.AppPath]);
 
     private async Task DeleteAsync(ModelFile model)
     {

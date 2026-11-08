@@ -48,6 +48,12 @@ public interface IPS5FileSystem
     /// <summary>Uploads a stream to <paramref name="path"/>, creating the directory, reporting bytes sent.</summary>
     Task UploadAsync(Stream content, string path, IProgress<long>? progress, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Downloads a file of any size to <paramref name="destination"/>, reporting bytes received.
+    /// A missing file or a refused transfer throws; it does not return an empty stream.
+    /// </summary>
+    Task DownloadToAsync(string path, Stream destination, IProgress<long>? progress, CancellationToken cancellationToken);
+
     /// <summary>Renames a file, replacing the target.</summary>
     Task MoveAsync(string from, string to, CancellationToken cancellationToken);
 

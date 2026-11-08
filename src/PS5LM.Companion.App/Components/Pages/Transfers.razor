@@ -147,7 +147,7 @@ else
         <RowTemplate>
             <MudTd DataLabel="File">
                 @context.FileName<br />
-                <MudText Typo="Typo.caption" Color="Color.Secondary">@context.Repo · @Display.Bytes(context.SizeBytes)</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">@Display.TransferOrigin(context, Consoles) · @Display.Bytes(context.SizeBytes)</MudText>
             </MudTd>
             <MudTd DataLabel="State">
                 <MudChip T="string" Size="Size.Small" Color="@Display.TransferColor(context.State)">@context.State</MudChip>

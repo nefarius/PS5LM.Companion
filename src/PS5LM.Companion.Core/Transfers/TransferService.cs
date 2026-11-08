@@ -14,7 +14,7 @@ namespace PS5LM.Companion.Core.Transfers;
 /// half-copied model is never offered to the app. Each console has its own queue and worker, so transfers to
 /// different consoles run in parallel while each console's ftpsrv only ever sees one at a time.
 /// </summary>
-public sealed class TransferService
+public sealed partial class TransferService
 {
     private const string PartSuffix = ".part";
 
@@ -39,13 +39,27 @@ public sealed class TransferService
         _consoles.Changed += OnConsolesChanged;
     }
 
-    /// <summary>Whether this console still has a queued or running transfer. Removal is refused while it does.</summary>
+    /// <summary>
+    /// Whether this console still has a queued or running transfer, or is staging a copy for other consoles.
+    /// Removal and renaming are refused while it does.
+    /// </summary>
     public bool HasActive(string consoleId)
     {
         lock (_gate)
         {
-            return _transfers.Values.Any(transfer =>
-                transfer.IsActive && string.Equals(transfer.ConsoleId, consoleId, StringComparison.OrdinalIgnoreCase));
+            return _transfers.Values.Any(transfer => transfer.IsActive && Involves(transfer, consoleId))
+                || _items.Values.Any(item => item.IsActive && SameConsole(item.SourceConsoleId, consoleId));
+        }
+    }
+
+    /// <summary>Whether this console is reading a model that will be copied to other consoles.</summary>
+    public bool IsStaging(string consoleId)
+    {
+        lock (_gate)
+        {
+            return _items.Values.Any(item =>
+                SameConsole(item.SourceConsoleId, consoleId)
+                && item.State is CopyItemState.Queued or CopyItemState.Staging or CopyItemState.Verifying);
         }
     }
 
@@ -73,36 +87,8 @@ public sealed class TransferService
         }
     }
 
-    /// <summary>Restores persisted transfers; unfinished ones are queued again and resume from the cache.</summary>
-    public async Task InitializeAsync(CancellationToken cancellationToken)
-    {
-        foreach (var transfer in await _store.LoadAsync(cancellationToken))
-        {
-            var restored = transfer;
-            if (transfer.IsActive)
-            {
-                restored = string.IsNullOrEmpty(transfer.ConsoleId) || _consoles.Find(transfer.ConsoleId) is null
-                    ? transfer with
-                    {
-                        State = TransferState.Failed,
-                        Error = string.IsNullOrEmpty(transfer.ConsoleId)
-                            ? "This transfer was saved without a console id and cannot be resumed. Queue it again."
-                            : $"The console '{transfer.ConsoleId}' is no longer configured, so this transfer cannot be resumed.",
-                    }
-                    : transfer with { State = TransferState.Queued };
-            }
-
-            lock (_gate)
-            {
-                _transfers[restored.Id] = restored;
-            }
-
-            if (restored.State == TransferState.Queued)
-            {
-                _queues[restored.ConsoleId].Writer.TryWrite(restored.Id);
-            }
-        }
-    }
+    /// <summary>Restores persisted transfers and copies. Unfinished hub downloads are queued again and resume from the cache.</summary>
+    public Task InitializeAsync(CancellationToken cancellationToken) => RestoreAsync(cancellationToken);
 
     public async Task<(OperationResult Result, Transfer? Transfer)> EnqueueAsync(TransferRequest request, CancellationToken cancellationToken)
     {
@@ -152,7 +138,7 @@ public sealed class TransferService
 
         lock (_gate)
         {
-            if (_transfers.Values.Any(t => t.IsActive && t.ConsoleId == transfer.ConsoleId && t.Repo == transfer.Repo && t.FileName == transfer.FileName && t.TargetRoot == transfer.TargetRoot))
+            if (_transfers.Values.Any(t => t.IsActive && t.ConsoleId == transfer.ConsoleId && t.FileName == transfer.FileName && t.TargetRoot == transfer.TargetRoot))
             {
                 return (new OperationResult(OperationOutcome.Conflict, "That file is already being transferred."), null);
             }
@@ -225,6 +211,7 @@ public sealed class TransferService
         {
             Update(id, t => t with { State = TransferState.Cancelled });
             await PersistAsync(cancellationToken);
+            RefreshCopyChild(id);
         }
 
         return new OperationResult(OperationOutcome.Accepted);
@@ -243,6 +230,11 @@ public sealed class TransferService
             StartWorker(id);
         }
 
+        foreach (var id in StageQueueIds())
+        {
+            StartStageWorker(id);
+        }
+
         try
         {
             await Task.Delay(Timeout.Infinite, stoppingToken);
@@ -255,11 +247,17 @@ public sealed class TransferService
         List<Task> tasks;
         lock (_gate)
         {
-            tasks = _workers.Values.Select(worker => worker.Task).ToList();
-            var stopping = _workers.Keys.ToList();
-            foreach (var id in stopping)
+            tasks = _workers.Values.Select(worker => worker.Task)
+                .Concat(_stageWorkers.Values.Select(worker => worker.Task))
+                .ToList();
+            foreach (var id in _workers.Keys.ToList())
             {
                 StopWorkerLocked(id);
+            }
+
+            foreach (var id in _stageWorkers.Keys.ToList())
+            {
+                StopStageWorkerLocked(id);
             }
         }
 
@@ -291,6 +289,7 @@ public sealed class TransferService
             }
 
             TryMoveCache(from.Id, renamed.Id);
+            MoveStageQueue(from.Id, renamed.Id);
             return;
         }
 
@@ -306,6 +305,7 @@ public sealed class TransferService
         if (change.Kind == ConsoleChangeKind.Removed && change.Previous is { } previous)
         {
             StopWorker(previous.Id);
+            StopStageWorker(previous.Id);
         }
     }
 
@@ -317,15 +317,27 @@ public sealed class TransferService
             foreach (var id in _transfers.Keys.ToList())
             {
                 var transfer = _transfers[id];
-                if (!string.Equals(transfer.ConsoleId, from, StringComparison.OrdinalIgnoreCase))
+                var next = transfer;
+                if (string.Equals(transfer.ConsoleId, from, StringComparison.OrdinalIgnoreCase))
+                {
+                    next = next with { ConsoleId = to };
+                }
+
+                if (string.Equals(transfer.SourceConsoleId, from, StringComparison.OrdinalIgnoreCase))
+                {
+                    next = next with { SourceConsoleId = to };
+                }
+
+                if (ReferenceEquals(next, transfer))
                 {
                     continue;
                 }
 
-                _transfers[id] = transfer with { ConsoleId = to };
+                _transfers[id] = next;
                 any = true;
             }
 
+            any |= RenameCopiesLocked(from, to);
             return any;
         }
     }
@@ -480,6 +492,12 @@ public sealed class TransferService
 
     private async Task ProcessAsync(Transfer transfer, ConsoleRuntime console, CancellationToken token)
     {
+        if (transfer.SourceKind == TransferSourceKind.Console)
+        {
+            await ProcessCopyChildAsync(transfer, console, token);
+            return;
+        }
+
         var cachePath = CachePath(transfer);
         try
         {
@@ -600,8 +618,13 @@ public sealed class TransferService
             return;
         }
 
-        await using var stream = File.OpenRead(path);
-        var hash = Convert.ToHexString(await SHA256.HashDataAsync(stream, token));
+        // Close the file before deleting it. Windows refuses to delete a file that still has a reader.
+        string hash;
+        await using (var stream = File.OpenRead(path))
+        {
+            hash = Convert.ToHexString(await SHA256.HashDataAsync(stream, token));
+        }
+
         if (!hash.Equals(transfer.Sha256, StringComparison.OrdinalIgnoreCase))
         {
             TryDelete(path);
@@ -670,16 +693,15 @@ public sealed class TransferService
         await _persistGate.WaitAsync(token);
         try
         {
-            List<Transfer> snapshot;
+            TransferStoreState snapshot;
             lock (_gate)
             {
-                var finished = _transfers.Values.Where(t => !t.IsActive).OrderByDescending(t => t.UpdatedAt).Skip(_options.HistoryLimit).Select(t => t.Id).ToList();
-                foreach (var id in finished)
-                {
-                    _transfers.Remove(id);
-                }
-
-                snapshot = _transfers.Values.ToList();
+                PruneHistoryLocked();
+                snapshot = new TransferStoreState(
+                    TransferStoreState.CurrentVersion,
+                    _transfers.Values.ToList(),
+                    _batches.Values.ToList(),
+                    _items.Values.ToList());
             }
 
             await _store.SaveAsync(snapshot, token);

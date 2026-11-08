@@ -2,8 +2,11 @@ using System.Text.Json.Nodes;
 
 using Bunit;
 
+using Microsoft.AspNetCore.Components.Web;
+
 using Microsoft.Extensions.DependencyInjection;
 
+using MudBlazor;
 using MudBlazor.Services;
 
 using PS5LM.Companion.App.Components.Pages;
@@ -63,6 +66,36 @@ public sealed class ModelsPageTests
         });
     }
 
+    [Fact]
+    public async Task The_models_page_can_open_a_copy_for_one_model()
+    {
+        var fs = ConsoleFixtures.PS5LMInstalled().AddFile("/data/PS5LM/models/a.gguf", new byte[1]);
+        var other = ConsoleFixtures.PS5LMInstalled();
+        var den = new ConsoleRuntime("ps5", new PS5Options { Host = "ps5", DisplayName = "Den" }, new FakeConsole(fs).ToConnectors(), TimeProvider.System, ConsoleSource.User);
+        var lab = new ConsoleRuntime("lab", new PS5Options { Host = "lab", DisplayName = "Lab" }, new FakeConsole(other).ToConnectors(), TimeProvider.System, ConsoleSource.User);
+        den.Store.Publish(await den.Status.RefreshAsync(CancellationToken.None));
+        lab.Store.Publish(await lab.Status.RefreshAsync(CancellationToken.None));
+        var registry = new TwoConsoles(den, lab);
+        await using var ctx = new BunitContext();
+        ctx.JSInterop.Mode = JSRuntimeMode.Loose;
+        ctx.Services.AddSingleton<IConsoleRegistry>(registry);
+        ctx.Services.AddSingleton(new TransferService(new FakeHub(), registry, new MemoryTransferStore(), new TransferOptions(), TimeProvider.System));
+        ctx.Services.AddSingleton(sp => new ModelDeletionService(sp.GetRequiredService<TransferService>()));
+        ctx.Services.AddMudServices();
+
+        var dialogs = ctx.Render<MudDialogProvider>();
+        var cut = ctx.Render<Models>(parameters => parameters.Add(page => page.ConsoleId, "ps5"));
+        cut.WaitForAssertion(() => Assert.Contains(">Copy<", cut.Markup, StringComparison.Ordinal));
+        await cut.FindAll("button").Single(button => button.TextContent.Contains("Copy", StringComparison.Ordinal) && !button.TextContent.Contains("models", StringComparison.Ordinal)).ClickAsync(new MouseEventArgs());
+
+        dialogs.WaitForAssertion(() =>
+        {
+            var dialog = dialogs.Find(".mud-dialog");
+            Assert.Contains("a.gguf", dialog.TextContent, StringComparison.Ordinal);
+            Assert.Contains("Lab", dialog.TextContent, StringComparison.Ordinal);
+        });
+    }
+
     private sealed class PageRegistry(ConsoleRuntime console) : IConsoleRegistry
     {
         public IReadOnlyList<ConsoleRuntime> All { get; } = [console];
@@ -71,6 +104,22 @@ public sealed class ModelsPageTests
 
         public ConsoleRuntime? Find(string? id) =>
             string.Equals(id, console.Id, StringComparison.OrdinalIgnoreCase) ? console : null;
+
+        public ConsoleEditResult Add(string id, PS5Options options) => throw new NotSupportedException();
+
+        public ConsoleEditResult Update(string id, PS5Options options, string? newId = null) => throw new NotSupportedException();
+
+        public ConsoleEditResult Remove(string id) => throw new NotSupportedException();
+    }
+
+    private sealed class TwoConsoles(params ConsoleRuntime[] consoles) : IConsoleRegistry
+    {
+        public IReadOnlyList<ConsoleRuntime> All { get; } = consoles;
+
+        public event Action<ConsoleChange>? Changed { add { } remove { } }
+
+        public ConsoleRuntime? Find(string? id) =>
+            consoles.FirstOrDefault(console => string.Equals(console.Id, id, StringComparison.OrdinalIgnoreCase));
 
         public ConsoleEditResult Add(string id, PS5Options options) => throw new NotSupportedException();
 
