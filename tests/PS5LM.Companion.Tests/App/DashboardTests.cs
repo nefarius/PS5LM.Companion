@@ -53,6 +53,7 @@ public sealed class DashboardTests
         Assert.Contains($"aria-label=\"Version v{version}\"", html);
         Assert.Contains($"v{version}", html);
         Assert.Contains("href=\"https://github.com/nefarius/PS5LM.Companion/\"", html);
+        Assert.Contains("href=\"about\"", html);
         Assert.Contains("aria-label=\"Check for updates now\"", html);
         Assert.Contains("aria-label=\"PS5LM Companion on GitHub\"", html);
         Assert.Contains("target=\"_blank\"", html);

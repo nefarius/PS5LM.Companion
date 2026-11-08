@@ -345,9 +345,16 @@ Sony Interactive Entertainment.
 
 ### Dependencies
 
-- [FastEndpoints](https://github.com/FastEndpoints/FastEndpoints)
-- [MudBlazor](https://github.com/MudBlazor/MudBlazor)
-- [Serilog.AspNetCore](https://github.com/serilog/serilog-aspnetcore)
-- [Serilog.Sinks.Console](https://github.com/serilog/serilog-sinks-console)
-- [Serilog.Sinks.File](https://github.com/serilog/serilog-sinks-file)
-- [YARP](https://github.com/dotnet/yarp) (inference gateway forwarding)
+Shipped NuGet packages. The dashboard About page lists the same set.
+
+- [FastEndpoints](https://github.com/FastEndpoints/FastEndpoints) (MIT)
+- [FluentFTP](https://github.com/robinrodricks/FluentFTP) (MIT)
+- [Microsoft.Extensions.Http](https://github.com/dotnet/runtime) and [Microsoft.Extensions.Options.DataAnnotations](https://github.com/dotnet/runtime) (MIT)
+- [Microsoft.Extensions.Http.Resilience](https://github.com/dotnet/extensions) (MIT)
+- [MinVer](https://github.com/adamralph/minver) (Apache-2.0, build-time)
+- [MudBlazor](https://github.com/MudBlazor/MudBlazor) (MIT)
+- [Refit](https://github.com/reactiveui/refit) and [Refit.HttpClientFactory](https://github.com/reactiveui/refit) (MIT)
+- [Serilog.AspNetCore](https://github.com/serilog/serilog-aspnetcore) (Apache-2.0)
+- [Serilog.Sinks.Console](https://github.com/serilog/serilog-sinks-console) (Apache-2.0)
+- [Serilog.Sinks.File](https://github.com/serilog/serilog-sinks-file) (Apache-2.0)
+- [YARP](https://github.com/dotnet/yarp) (MIT, inference gateway forwarding)
