@@ -420,13 +420,17 @@ public sealed class SetupRunnerTests
         };
         harness.VoidShell.SetUp([SetupHarness.TitleId]);
 
-        await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
+        var report = await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
 
         Assert.Contains("load:kstuff-lite.elf", harness.Events);
         Assert.DoesNotContain("load:onionhen.elf", harness.Events);
         Assert.Contains("load:voidshell.elf", harness.Events);
         Assert.True(harness.Events.IndexOf("load:voidshell.elf") > harness.Events.IndexOf("load:kstuff-lite.elf"));
+        Assert.Contains("local/kstuff-lite", harness.Autoload.List, StringComparison.Ordinal);
+        Assert.DoesNotContain("local/onionhen", harness.Autoload.List, StringComparison.Ordinal);
+        Assert.DoesNotContain(report.Lines, line => line.Message.Contains("not confirmed off", StringComparison.Ordinal));
         Assert.DoesNotContain(harness.Messages, message => message.Contains("stays on for this boot", StringComparison.Ordinal));
+        KstuffSafety.AssertBoot(harness, report.ExitCode);
     }
 
     [Fact]

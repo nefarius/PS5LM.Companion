@@ -69,7 +69,8 @@ public static class BootSettings
 
     /// <summary>
     /// Switches bundled kstuff off first, then writes the autoload list from that result. Setup, <c>update --settings</c>
-    /// and the dashboard fix all go through here, so the list cannot name kstuff-lite while the switch is unconfirmed.
+    /// and the dashboard fix all go through here. The list omits kstuff-lite only while a stored OnionHEN could still
+    /// load its bundled copy.
     /// </summary>
     public static async Task ApplyAsync(
         SetupManifest manifest,
@@ -163,9 +164,9 @@ public static class BootSettings
 
     /// <summary>
     /// Switches off OnionHEN's bundled kstuff when the manifest ships kstuff-lite.
-    /// <see cref="KstuffAutoload.Include"/> when the switch is confirmed off, the manifest has no external kstuff, or
-    /// the stored OnionHEN is older than 0.9.0 and the key does not apply.
-    /// <see cref="KstuffAutoload.Exclude"/> when <c>config.ini</c> is absent.
+    /// <see cref="KstuffAutoload.Include"/> when the switch is confirmed off, the manifest has no external kstuff,
+    /// no OnionHEN is stored, or the stored OnionHEN is older than 0.9.0 and the key does not apply.
+    /// <see cref="KstuffAutoload.Exclude"/> when a stored OnionHEN can load bundled kstuff and <c>config.ini</c> is absent.
     /// <see cref="KstuffAutoload.Leave"/> when FTP is not answering, so a list that already names kstuff-lite is kept.
     /// </summary>
     public static async Task<KstuffAutoload> ApplyKstuffAsync(
@@ -183,9 +184,14 @@ public static class BootSettings
         }
 
         var onion = resolved.FirstOrDefault(item => item.Payload.Id.Equals(OnionHenPayloadId, StringComparison.OrdinalIgnoreCase)).Stored;
+        if (onion is null)
+        {
+            return KstuffAutoload.Include;
+        }
+
         if (!SupportsBundledKstuffSwitch(onion))
         {
-            report("OnionHEN kstuff", SetupStatus.Ok, $"OnionHEN {SlotRevision(onion!.Slot)} does not read [kstuff] autoload, so bundled kstuff was left unchanged.");
+            report("OnionHEN kstuff", SetupStatus.Ok, $"OnionHEN {SlotRevision(onion.Slot)} does not read [kstuff] autoload, so bundled kstuff was left unchanged.");
             return KstuffAutoload.Include;
         }
 
@@ -375,9 +381,14 @@ public static class BootSettings
         }
 
         var onion = resolved.FirstOrDefault(item => item.Payload.Id.Equals(OnionHenPayloadId, StringComparison.OrdinalIgnoreCase)).Stored;
+        if (onion is null)
+        {
+            yield break;
+        }
+
         if (!SupportsBundledKstuffSwitch(onion))
         {
-            lines.Add(new ReportLine("OnionHEN kstuff", SetupStatus.Ok, $"OnionHEN {SlotRevision(onion!.Slot)} does not read [kstuff] autoload, so it was not compared."));
+            lines.Add(new ReportLine("OnionHEN kstuff", SetupStatus.Ok, $"OnionHEN {SlotRevision(onion.Slot)} does not read [kstuff] autoload, so it was not compared."));
             yield break;
         }
 
@@ -405,8 +416,8 @@ public static class BootSettings
     }
 
     /// <summary>
-    /// False only when FTP answered and <c>config.ini</c> is missing, so the recommended list omits kstuff-lite.
-    /// A closed FTP port leaves the recommendation unchanged: the file might already say the bundled copy is off.
+    /// False only when a stored OnionHEN can load bundled kstuff, FTP answered, and <c>config.ini</c> is missing.
+    /// No stored OnionHEN, an older OnionHEN, or a closed FTP port leaves kstuff-lite in the recommendation.
     /// </summary>
     private static bool RecommendKstuff(
         IReadOnlyList<(ManifestPayload Payload, ManagedPayload Stored)> resolved,
@@ -419,7 +430,7 @@ public static class BootSettings
         }
 
         var onion = resolved.FirstOrDefault(item => item.Payload.Id.Equals(OnionHenPayloadId, StringComparison.OrdinalIgnoreCase)).Stored;
-        if (!SupportsBundledKstuffSwitch(onion) || !ftpOpen)
+        if (onion is null || !SupportsBundledKstuffSwitch(onion) || !ftpOpen)
         {
             return true;
         }

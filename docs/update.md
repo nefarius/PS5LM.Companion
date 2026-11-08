@@ -69,7 +69,7 @@ that are not pinned payloads are kept. The check flags only the pinned entries:
 - Autoload is off.
 - `AUTOLOAD_DELAY` is reported and is under 10 s. A manager that does not report the countdown is not flagged.
 - OnionHEN's `[kstuff] autoload` is not `false` while kstuff-lite is stored. A console that does not have it stored is not flagged, and its bundled kstuff is left as it is.
-- kstuff-lite is in the autoload list while `/data/OnionHEN/config.ini` does not exist. That is drift: the next boot would load two kstuffs. `--settings` removes the kstuff-lite entry. A list that already omits it is not drift; the missing file stays a warning and boot settings stay pending until OnionHEN creates the file. Once the file exists, the recommendation is kstuff-lite in the list and the bundled copy off, and the same `--settings` run writes the switch before the list.
+- kstuff-lite is in the autoload list while OnionHEN is stored and `/data/OnionHEN/config.ini` does not exist. That is drift: the next boot would load two kstuffs. `--settings` removes the kstuff-lite entry. A list that already omits it is not drift; the missing file stays a warning and boot settings stay pending until OnionHEN creates the file. A console with no stored OnionHEN keeps kstuff-lite in the list, because nothing there loads a bundled copy. Once the file exists, the recommendation is kstuff-lite in the list and the bundled copy off, and the same `--settings` run writes the switch before the list.
 
 `update` will not launch kstuff-lite or OnionHEN when that send would put two kstuffs on the kernel. It reads the process list and the config again immediately before the send. Replacing ftpsrv (`--restart`) happens after `--settings`, so the config read is not racing an ftpsrv handoff.
 

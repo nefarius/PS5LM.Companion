@@ -104,6 +104,49 @@ public sealed class BootSettingsTests
     }
 
     [Fact]
+    public async Task Missing_config_keeps_kstuff_lite_when_no_onionhen_is_stored()
+    {
+        using var harness = await PreparedAsync();
+        harness.Stored.RemoveAll(item => item.FileName == "onionhen.elf");
+        await harness.Files.DeleteAsync(ConfigPath, CancellationToken.None);
+        harness.Autoload = harness.Autoload with
+        {
+            List = harness.Autoload.List
+                .Replace("local/onionhen,!25000,", string.Empty, StringComparison.Ordinal)
+                .Replace("local/kstuff-lite,!8000,", string.Empty, StringComparison.Ordinal),
+        };
+
+        var outcome = await Check(harness);
+
+        Assert.DoesNotContain(outcome.Drift, item => item.Id == "autoload-kstuff");
+        Assert.DoesNotContain(outcome.Lines, line => line.Message.Contains("not confirmed off", StringComparison.Ordinal));
+        Assert.Contains(outcome.Drift, item => item.Id == "autoload-order" && item.Detail.Contains("kstuff-lite", StringComparison.Ordinal));
+
+        var lines = new List<string>();
+        var decision = await BootSettings.ApplyKstuffAsync(
+            harness.Manifest,
+            Resolved(harness),
+            Services(harness),
+            2121,
+            new OnionConfigSession(),
+            (_, _, message) => lines.Add(message),
+            CancellationToken.None);
+        await BootSettings.ApplyAsync(
+            harness.Manifest,
+            Resolved(harness),
+            Services(harness),
+            2121,
+            new OnionConfigSession(),
+            (_, _, _) => { },
+            CancellationToken.None);
+
+        Assert.Equal(KstuffAutoload.Include, decision);
+        Assert.Empty(lines);
+        Assert.Contains("local/kstuff-lite", harness.Autoload.List, StringComparison.Ordinal);
+        Assert.DoesNotContain("local/onionhen", harness.Autoload.List, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task An_unprepared_console_has_no_findings()
     {
         using var harness = new SetupHarness();
