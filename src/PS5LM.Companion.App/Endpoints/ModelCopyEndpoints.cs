@@ -55,7 +55,8 @@ public sealed class CreateModelCopyEndpoint(IConsoleRegistry registry, TransferS
         await Send.ResultAsync(await ApiResults.GuardAsync(async () =>
         {
             var targets = (req.Targets ?? []).Select(target => new CopyTargetRequest(target.ConsoleId ?? string.Empty, target.TargetRoot)).ToList();
-            var result = await transfers.EnqueueCopiesAsync(new CopyRequest(console.Id, req.Paths ?? [], targets), ct);
+            var paths = (req.Paths ?? []).Where(path => path is not null).ToList();
+            var result = await transfers.EnqueueCopiesAsync(new CopyRequest(console.Id, paths, targets), ct);
             if (result.Batch is null)
             {
                 return ApiResults.From(new(result.Outcome, result.Message));

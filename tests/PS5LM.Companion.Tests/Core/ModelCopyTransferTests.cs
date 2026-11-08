@@ -1,5 +1,7 @@
 using System.Text;
 
+using PS5LM.Companion.Core.Consoles;
+using PS5LM.Companion.Core.Discovery;
 using PS5LM.Companion.Core.Models;
 using PS5LM.Companion.Core.Transfers;
 using PS5LM.Companion.Tests.Support;
@@ -287,10 +289,118 @@ public sealed class ModelCopyTransferTests
         harness.StartWorker();
         await den.UploadStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
+        Assert.True(Directory.Exists(Path.Combine(harness.CacheDirectory, ".copies")));
+        Assert.False(Directory.Exists(Path.Combine(harness.CacheDirectory, "copies")));
         Assert.DoesNotContain(den.Files.Keys, path => path.EndsWith(".gguf", StringComparison.Ordinal));
         den.UploadGate.SetResult();
         Assert.Equal(TransferState.Completed, (await harness.WaitUntilFinishedAsync(result.Items.Single().Targets.Single().TransferId!.Value)).State);
         Assert.Equal(ModelBytes, den.Files[ModelPath]);
+    }
+
+    [Fact]
+    public void Renaming_a_console_called_copies_leaves_staged_copies_in_place()
+    {
+        var cache = Path.Combine(Path.GetTempPath(), "ps5lm-tests", Guid.NewGuid().ToString("N"));
+        using var registry = new ConsoleRegistry(new ConsolesOptions(), new FakeConnectorFactory(), TimeProvider.System);
+        var service = new TransferService(new FakeHub(), registry, new MemoryTransferStore(), new TransferOptions
+        {
+            CacheDirectory = cache,
+            StateFile = Path.Combine(cache, "transfers.json"),
+        }, TimeProvider.System);
+        Assert.True(registry.Add("copies", new PS5Options { Host = "10.0.0.8" }).Succeeded);
+        var staged = Path.Combine(cache, ".copies", "item", "model.gguf");
+        var hub = Path.Combine(cache, "copies", "acme", "model.gguf.part");
+        Directory.CreateDirectory(Path.GetDirectoryName(staged)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(hub)!);
+        File.WriteAllBytes(staged, [1, 2, 3]);
+        File.WriteAllBytes(hub, [4]);
+
+        var renamed = registry.Update("copies", new PS5Options { Host = "10.0.0.8" }, "living-room");
+
+        Assert.True(renamed.Succeeded);
+        Assert.Equal(new byte[] { 1, 2, 3 }, File.ReadAllBytes(staged));
+        Assert.Equal(new byte[] { 4 }, File.ReadAllBytes(Path.Combine(cache, "living-room", "acme", "model.gguf.part")));
+        Assert.False(Directory.Exists(Path.Combine(cache, "copies")));
+        GC.KeepAlive(service);
+        Directory.Delete(cache, recursive: true);
+    }
+
+    [Fact]
+    public async Task A_restored_copy_whose_destination_was_removed_fails()
+    {
+        var source = Installed(ModelPath, ModelBytes);
+        await using var harness = new TransferHarness(source, "den");
+        await harness.PrimeAsync();
+        var now = harness.Time.GetUtcNow();
+        var batchId = Guid.NewGuid();
+        var itemId = Guid.NewGuid();
+        var transferId = Guid.NewGuid();
+        Directory.CreateDirectory(Path.Combine(harness.CacheDirectory, ".copies", itemId.ToString("N")));
+        File.WriteAllBytes(Path.Combine(harness.CacheDirectory, ".copies", itemId.ToString("N"), "model.gguf"), ModelBytes);
+        harness.TransferStore.Saved =
+        [
+            new Transfer(
+                transferId, "gone", "ps5", "model.gguf", null, ModelBytes.Length, "Internal storage", TransferState.Staging,
+                0, 0, null, now, now, TransferSourceKind.Console, batchId, itemId, "ps5", ModelPath),
+        ];
+        harness.TransferStore.Batches = [new CopyBatch(batchId, "ps5", [itemId], CopyBatchState.Running, now, now)];
+        harness.TransferStore.Items =
+        [
+            new CopyItem(
+                itemId, batchId, "ps5", ModelPath, ModelPath, "model.gguf", "Internal storage", ModelBytes.Length, null,
+                CopyItemState.Ready, ModelBytes.Length, null,
+                [new CopyTarget("gone", "Internal storage", CopyTargetOutcome.Queued, transferId, null)], now, now),
+        ];
+
+        await harness.Service.InitializeAsync(CancellationToken.None);
+
+        var copy = harness.Service.FindCopy(batchId);
+        Assert.NotNull(copy);
+        Assert.Equal(CopyBatchState.CompletedWithErrors, copy.Batch.State);
+        Assert.Equal(CopyItemState.Failed, copy.Items.Single().State);
+        Assert.Equal(CopyTargetOutcome.Failed, copy.Items.Single().Targets.Single().Outcome);
+        Assert.Contains("no longer configured", copy.Items.Single().Targets.Single().Message, StringComparison.Ordinal);
+        Assert.Equal(TransferState.Failed, copy.Transfers.Single().State);
+        Assert.False(harness.Service.HasActive("ps5"));
+        Assert.False(harness.Connectors["den"].FileSystem.Files.ContainsKey(ModelPath));
+    }
+
+    [Fact]
+    public async Task A_ready_copy_whose_destination_was_cancelled_does_not_complete()
+    {
+        var source = Installed(ModelPath, ModelBytes);
+        await using var harness = new TransferHarness(source, "den");
+        await harness.PrimeAsync();
+        var now = harness.Time.GetUtcNow();
+        var batchId = Guid.NewGuid();
+        var itemId = Guid.NewGuid();
+        var transferId = Guid.NewGuid();
+        Directory.CreateDirectory(Path.Combine(harness.CacheDirectory, ".copies", itemId.ToString("N")));
+        File.WriteAllBytes(Path.Combine(harness.CacheDirectory, ".copies", itemId.ToString("N"), "model.gguf"), ModelBytes);
+        harness.TransferStore.Saved =
+        [
+            new Transfer(
+                transferId, "den", "ps5", "model.gguf", null, ModelBytes.Length, "Internal storage", TransferState.Cancelled,
+                ModelBytes.Length, 0, null, now, now, TransferSourceKind.Console, batchId, itemId, "ps5", ModelPath),
+        ];
+        harness.TransferStore.Batches = [new CopyBatch(batchId, "ps5", [itemId], CopyBatchState.Running, now, now)];
+        harness.TransferStore.Items =
+        [
+            new CopyItem(
+                itemId, batchId, "ps5", ModelPath, ModelPath, "model.gguf", "Internal storage", ModelBytes.Length, null,
+                CopyItemState.Ready, ModelBytes.Length, null,
+                [new CopyTarget("den", "Internal storage", CopyTargetOutcome.Queued, transferId, null)], now, now),
+        ];
+
+        await harness.Service.InitializeAsync(CancellationToken.None);
+
+        var copy = harness.Service.FindCopy(batchId);
+        Assert.NotNull(copy);
+        Assert.Equal(CopyBatchState.Cancelled, copy.Batch.State);
+        Assert.Equal(CopyItemState.Cancelled, copy.Items.Single().State);
+        Assert.Equal(CopyTargetOutcome.Cancelled, copy.Items.Single().Targets.Single().Outcome);
+        Assert.False(harness.Service.HasActive("ps5"));
+        Assert.False(harness.Connectors["den"].FileSystem.Files.ContainsKey(ModelPath));
     }
 
     private static CopyRequest Request(IReadOnlyList<string> consoles) =>

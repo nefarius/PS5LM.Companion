@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 
 using PS5LM.Companion.Tests.Support;
@@ -53,6 +54,10 @@ public sealed class ModelCopyEndpointTests
         Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, path.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, itself.StatusCode);
+
+        using var content = new StringContent("""{"paths":[null],"targets":[{"consoleId":"den"}]}""", Encoding.UTF8, "application/json");
+        using var nullPath = await client.PostAsync("/api/consoles/ps5/model-copies", content);
+        Assert.Equal(HttpStatusCode.BadRequest, nullPath.StatusCode);
     }
 
     [Fact]

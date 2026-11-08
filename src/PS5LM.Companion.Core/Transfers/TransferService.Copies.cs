@@ -348,6 +348,7 @@ public sealed partial class TransferService
             }
         }
 
+        var failedCopyChildren = new List<Guid>();
         foreach (var transfer in state.Transfers)
         {
             var restored = transfer;
@@ -371,11 +372,21 @@ public sealed partial class TransferService
                 _transfers[restored.Id] = restored;
             }
 
+            if (transfer.IsActive && restored.State == TransferState.Failed && restored.CopyItemId is not null)
+            {
+                failedCopyChildren.Add(restored.Id);
+            }
+
             if (restored.State == TransferState.Queued)
             {
                 EnsureQueue(restored.ConsoleId);
                 _queues[restored.ConsoleId].Writer.TryWrite(restored.Id);
             }
+        }
+
+        foreach (var id in failedCopyChildren)
+        {
+            RefreshCopyChild(id);
         }
 
         foreach (var batch in _batches.Values.ToList().Where(batch => !batch.IsActive))
@@ -655,6 +666,7 @@ public sealed partial class TransferService
             File.Move(part, ready, overwrite: true);
             MarkReady(item.Id, hash, length);
             ReleaseChildren(item.Id, hash, length);
+            SettleItem(item.Id);
         }
         catch (OperationCanceledException)
         {
@@ -820,8 +832,22 @@ public sealed partial class TransferService
                 return;
             }
 
-            var state = ItemStateFrom(item.Targets);
-            finished = item with { State = state, UpdatedAt = _time.GetUtcNow() };
+            var targets = item.Targets.Select(target =>
+            {
+                if (target.TransferId is Guid transferId && _transfers.TryGetValue(transferId, out var transfer))
+                {
+                    return target with
+                    {
+                        Outcome = OutcomeOf(transfer),
+                        Message = transfer.State == TransferState.Failed ? transfer.Error : target.Message,
+                    };
+                }
+
+                return target;
+            }).ToList();
+            _userCancelledItems.Remove(itemId);
+            var state = ItemStateFrom(targets);
+            finished = item with { State = state, Targets = targets, UpdatedAt = _time.GetUtcNow() };
             _items[itemId] = finished;
             SettleBatchLocked(item.BatchId);
         }
@@ -1088,7 +1114,8 @@ public sealed partial class TransferService
         _ => CopyTargetOutcome.Queued,
     };
 
-    private string StageDirectory(Guid itemId) => Path.Combine(_options.CacheDirectory, "copies", itemId.ToString("N"));
+    // A leading dot cannot appear in a console id, so renaming a console never moves this folder.
+    private string StageDirectory(Guid itemId) => Path.Combine(_options.CacheDirectory, ".copies", itemId.ToString("N"));
 
     private string ReadyPath(CopyItem item) => ReadyFile(item.Id, item.FileName);
 
