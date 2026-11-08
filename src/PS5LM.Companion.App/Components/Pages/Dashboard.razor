@@ -1,8 +1,10 @@
 @page "/consoles/{ConsoleId}"
 @inherits LiveComponent
+@using Microsoft.JSInterop
 @using PS5LM.Companion.Core.Setup
 @inject ISnackbar Snackbar
 @inject IDialogService Dialogs
+@inject NavigationManager Navigation
 
 <AppPageTitle Page='@(Target is null ? "Console not found" : $"Status - {Target.Name}")' />
 
@@ -68,6 +70,7 @@ else
         }
         @if (Outdated is { Count: > 0 } outdated)
         {
+            <div id="updates" tabindex="-1" class="warning-anchor" @ref="_updatesAnchor">
             <MudAlert Severity="Severity.Warning" Class="mt-2">
                 @(outdated.Count == 1 ? "1 component differs" : $"{outdated.Count} components differ") from this companion's pinned versions:
                 @string.Join(", ", outdated.Select(update => update.Name)).
@@ -75,9 +78,11 @@ else
                 Add <code>--restart</code> to replace a differing stored VoidShell build by stopping and relaunching it, or ShadowMountPlus, which replaces its own running copy when launched again.
                 Stored files that already match the pin are skipped; a console reboot can recover a still-running older copy.
             </MudAlert>
+            </div>
         }
         @if (SettingsDrift is { Count: > 0 } drift)
         {
+            <div id="boot-settings" tabindex="-1" class="warning-anchor" @ref="_settingsAnchor">
             <MudAlert Severity="Severity.Warning" Class="mt-2">
                 Boot settings differ from the recommendation. Fix settings only rewrites configuration. It takes effect at the next console boot or autoload and does not restart any payload.
                 <ul>
@@ -94,6 +99,7 @@ else
                     </MudButton>
                 </div>
             </MudAlert>
+            </div>
         }
         @if (SettingWarnings is { Count: > 0 } settingWarnings)
         {
@@ -327,6 +333,39 @@ else
     private bool _restarting;
     private bool _checking;
     private bool _fixing;
+    private ElementReference _updatesAnchor;
+    private ElementReference _settingsAnchor;
+    private string? _focusedFragment;
+
+    /// <summary>
+    /// A warning link on the overview card ends in #boot-settings or #updates. The browser scrolls there, but the
+    /// section only exists once the status has loaded, and the router focuses the heading otherwise, so focus it here.
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        var fragment = Navigation.ToAbsoluteUri(Navigation.Uri).Fragment;
+        if (fragment is not ("#boot-settings" or "#updates"))
+        {
+            _focusedFragment = null;
+            return;
+        }
+
+        var anchor = fragment == "#updates" ? _updatesAnchor : _settingsAnchor;
+        if (_focusedFragment == fragment || anchor.Context is null)
+        {
+            return;
+        }
+
+        _focusedFragment = fragment;
+        try
+        {
+            await anchor.FocusAsync();
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or InvalidOperationException)
+        {
+            // The circuit ended or the section went away; the link still scrolled to it.
+        }
+    }
 
     private static string RunText(AppRunState state) => state switch
     {

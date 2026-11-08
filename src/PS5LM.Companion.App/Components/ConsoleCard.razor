@@ -21,7 +21,9 @@
     <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">@Console.Host</MudText>
     @if (Warning(status) is { } warning)
     {
-        <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-2" NoIcon="true">@warning</MudAlert>
+        <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-2" NoIcon="true">
+            <MudLink Href="@($"consoles/{Console.Id}{WarningAnchor(status)}")" Color="Color.Inherit" Underline="Underline.Hover">@warning</MudLink>
+        </MudAlert>
     }
     <MudSimpleTable Dense="true" Hover="false" Elevation="0" Class="mb-2">
         <tbody>
@@ -73,6 +75,14 @@
     }
 
     public void Dispose() => Transfers.Changed -= OnTransfersChanged;
+
+    /// <summary>The section of the status page that explains the warning and offers the fix.</summary>
+    private static string WarningAnchor(CompanionStatus status) => status.Updates switch
+    {
+        { Settings.Count: > 0 } => "#boot-settings",
+        { Outdated.Count: > 0 } => "#updates",
+        _ => string.Empty,
+    };
 
     private static string? Warning(CompanionStatus status)
     {
