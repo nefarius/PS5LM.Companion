@@ -147,4 +147,25 @@ public sealed class BootAutoloadTests
         Assert.Contains(harness.Messages, message => message.Contains("countdown 30 s", StringComparison.Ordinal));
         Assert.DoesNotContain("load:kstuff-lite.elf", harness.Events);
     }
+
+    [Fact]
+    public async Task A_missing_status_between_an_in_progress_run_and_the_finish_does_not_launch()
+    {
+        using var harness = Ready();
+        harness.AutoloadRuns.Enqueue(new AutoloadRun("countdown", 5, null, 0, 0));
+        harness.AutoloadRuns.Enqueue(null);
+        harness.AutoloadRuns.Enqueue(new AutoloadRun("done", 0, "", 1, 1));
+        var readsAtFinish = 0;
+        harness.OnAutoloadFinished = () =>
+        {
+            readsAtFinish = harness.AutoloadRunReads;
+            harness.FinishBootAutoload();
+        };
+
+        var report = await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
+
+        Assert.Equal(0, report.ExitCode);
+        Assert.True(readsAtFinish >= 3);
+        Assert.DoesNotContain("load:kstuff-lite.elf", harness.Events);
+    }
 }

@@ -415,7 +415,7 @@ internal sealed class SetupHarness : IDisposable
             }
 
             var run = owner.AutoloadRuns.Count == 1 ? owner.AutoloadRuns.Peek() : owner.AutoloadRuns.Dequeue();
-            if (run is not { InProgress: true })
+            if (run is { InProgress: false })
             {
                 owner.OnAutoloadFinished?.Invoke();
             }

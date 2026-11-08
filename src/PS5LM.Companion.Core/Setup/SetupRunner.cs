@@ -174,21 +174,26 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         {
             var next = await services.Manager.GetAutoloadRunAsync(cancellationToken);
             NoteUnrecognized(next);
-            if (next is not { InProgress: true })
+            if (next is { InProgress: false })
             {
                 finished = true;
                 break;
             }
 
-            // A countdown reported after the first read still has to fit. A smaller later value does not shorten the wait.
-            var allowance = CountdownAllowance(next.RemainingSeconds);
-            if (allowance > covered)
+            // A missing read is not a finished list. Keep polling until one says so, or the deadline passes.
+            if (next is { InProgress: true })
             {
-                deadline += TimeSpan.FromSeconds(allowance - covered);
-                covered = allowance;
+                // A countdown reported after the first read still has to fit. A smaller later value does not shorten the wait.
+                var allowance = CountdownAllowance(next.RemainingSeconds);
+                if (allowance > covered)
+                {
+                    deadline += TimeSpan.FromSeconds(allowance - covered);
+                    covered = allowance;
+                }
+
+                Announce(next);
             }
 
-            Announce(next);
             if (services.Time.GetUtcNow() >= deadline)
             {
                 break;
