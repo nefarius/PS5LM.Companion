@@ -76,7 +76,7 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
                 }
 
                 using var stream = new MemoryStream();
-                return await DownloadAsync(client, stream, path, cancellationToken)
+                return await ReadIntoAsync(client, stream, path, cancellationToken)
                     ? Encoding.UTF8.GetString(stream.ToArray())
                     : null;
             },
@@ -92,13 +92,13 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
                 }
 
                 using var stream = new MemoryStream();
-                return await DownloadAsync(client, stream, path, cancellationToken) ? stream.ToArray() : null;
+                return await ReadIntoAsync(client, stream, path, cancellationToken) ? stream.ToArray() : null;
             },
             cancellationToken);
 
     // FluentFTP reports a refused RETR (ftpsrv answers 550 Invalid argument at times) as false, not as an exception, so
     // without this line a failed read leaves no trace.
-    private async Task<bool> DownloadAsync(AsyncFtpClient client, Stream destination, string path, CancellationToken cancellationToken)
+    private async Task<bool> ReadIntoAsync(AsyncFtpClient client, Stream destination, string path, CancellationToken cancellationToken)
     {
         if (await client.DownloadStream(destination, path, token: cancellationToken))
         {
@@ -132,6 +132,27 @@ public sealed class FtpFileSystem(PS5Options options, ILogger<FtpFileSystem> log
                 if (content.CanSeek)
                 {
                     progress?.Report(content.Length);
+                }
+
+                return true;
+            },
+            cancellationToken,
+            Lane.Bulk);
+
+    public Task DownloadToAsync(string path, Stream destination, IProgress<long>? progress, CancellationToken cancellationToken) =>
+        RunAsync(
+            async client =>
+            {
+                var relay = progress is null ? null : new InlineProgress<FtpProgress>(p => progress.Report(p.TransferredBytes));
+                if (!await client.DownloadStream(destination, path, progress: relay, token: cancellationToken))
+                {
+                    logger.LogWarning("FTP download of {Path} from {Host}:{Port} failed without an error from the console", path, options.Host, options.FtpPort);
+                    throw new IOException($"Downloading {path} from the console failed.");
+                }
+
+                if (destination.CanSeek)
+                {
+                    progress?.Report(destination.Length);
                 }
 
                 return true;

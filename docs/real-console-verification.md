@@ -55,5 +55,12 @@ Configure two consoles (`PS5__Consoles__a__Host`, `PS5__Consoles__b__Host`) and 
     to the same console waits until the first finishes.
 16. **Unreachable console**: with console B off, transfers and commands for A still work and B's calls return `503`.
 17. **Restart**: restart the companion mid-transfer on both consoles; each resumes on its own console.
+18. **Copy between consoles**: with the same model only on console A, use **Copy** on its Models page and select console B.
+    The file appears on B under the chosen storage location, A's copy is unchanged, and B's Downloads page shows the
+    upload as coming from A. Copying again reports that B already has the file and does not replace it.
+    Right-click A in the drawer and use **Copy models from this console...** for the same dialog.
+19. **Drawer console actions**: right-click a console. **Test connection** runs the same checks as Manage consoles.
+    **Edit** and **Delete** appear for a console added in the companion. Delete asks for confirmation and names the
+    console and host; cancelling leaves it in place. Delete is refused while a transfer or a copy is running.
 
 Record any difference (especially in ftpsrv listings, rename behaviour and command-file timing) as a test fixture.

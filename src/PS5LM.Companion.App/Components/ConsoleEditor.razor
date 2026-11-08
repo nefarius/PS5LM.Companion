@@ -71,7 +71,7 @@
     [Parameter]
     public string? InitialHost { get; set; }
 
-    public static async Task<bool> ShowAsync(IDialogService dialogs, string? consoleId, string? initialHost = null)
+    public static async Task<string?> ShowAsync(IDialogService dialogs, string? consoleId, string? initialHost = null)
     {
         var parameters = new DialogParameters<ConsoleEditor>
         {
@@ -82,7 +82,7 @@
             consoleId is null ? "Add a console" : "Edit console",
             parameters,
             new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true });
-        return (await dialog.Result) is { Canceled: false };
+        return (await dialog.Result) is { Canceled: false, Data: string id } ? id : null;
     }
 
     protected override void OnInitialized()
@@ -184,7 +184,7 @@
             return;
         }
 
-        MudDialog.Close(DialogResult.Ok(true));
+        MudDialog.Close(DialogResult.Ok(result.Console?.Id ?? id));
     }
 
     private void Cancel() => MudDialog.Cancel();

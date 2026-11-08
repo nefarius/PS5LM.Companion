@@ -7,6 +7,7 @@
 @inject IConsoleRegistry Registry
 @inject TransferService Transfers
 @inject LatestReleaseChecker VersionChecker
+@inject IDialogService Dialogs
 @inject ISnackbar Snackbar
 
 <MudThemeProvider @bind-IsDarkMode="_dark" />
@@ -71,40 +72,61 @@
             </MudMenu>
             @foreach (var console in Registry.All)
             {
-                var status = console.Store.Current;
+                var current = console;
+                var status = current.Store.Current;
                 var modelLabel = Display.ModelActivity(status);
-                var (running, queued) = Display.TransferActivity(Transfers.Snapshot(console.Id));
+                var (running, queued) = Display.TransferActivity(Transfers.Snapshot(current.Id));
+                if (Transfers.IsStaging(current.Id))
+                {
+                    running = true;
+                }
+
                 var downloadLabel = Display.TransferActivityLabel(running, queued);
-                <MudNavGroup Title="@console.Name"
-                             @bind-Expanded:get="@IsOpen(console.Id)"
-                             @bind-Expanded:set="@(open => SetOpen(console.Id, open))">
-                    <TitleContent>
-                        <span class="nav-activity-row">
-                            <LifecycleDot Lifecycle="@status.Lifecycle" />
-                            <MudText Typo="Typo.body1">@console.Name</MudText>
-                            @if (!IsOpen(console.Id))
-                            {
-                                <NavActivity Busy="@(modelLabel is not null || running)" Pending="@(downloadLabel is not null)"
-                                             Label="@GroupActivityLabel(modelLabel, downloadLabel)" />
-                            }
-                        </span>
-                    </TitleContent>
+                <MudMenu ActivationEvent="@MouseEvent.RightClick" PositionAtCursor="true" Class="d-block" Dense="true">
+                    <ActivatorContent>
+                        <div class="d-block" @oncontextmenu="context.ToggleAsync" @oncontextmenu:preventDefault="true">
+                            <MudNavGroup Title="@current.Name"
+                                         @bind-Expanded:get="@IsOpen(current.Id)"
+                                         @bind-Expanded:set="@(open => SetOpen(current.Id, open))">
+                                <TitleContent>
+                                    <span class="nav-activity-row">
+                                        <LifecycleDot Lifecycle="@status.Lifecycle" />
+                                        <MudText Typo="Typo.body1">@current.Name</MudText>
+                                        @if (!IsOpen(current.Id))
+                                        {
+                                            <NavActivity Busy="@(modelLabel is not null || running)" Pending="@(downloadLabel is not null)"
+                                                         Label="@GroupActivityLabel(modelLabel, downloadLabel)" />
+                                        }
+                                    </span>
+                                </TitleContent>
+                                <ChildContent>
+                                    <MudNavLink Href="@($"consoles/{current.Id}")" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Status</MudNavLink>
+                                    <MudNavLink Href="@($"consoles/{current.Id}/models")" Icon="@Icons.Material.Filled.Memory">
+                                        <span class="nav-activity-row">
+                                            Models
+                                            <NavActivity Busy="@(modelLabel is not null)" Label="@modelLabel" />
+                                        </span>
+                                    </MudNavLink>
+                                    <MudNavLink Href="@($"consoles/{current.Id}/downloads")" Icon="@Icons.Material.Filled.CloudDownload">
+                                        <span class="nav-activity-row">
+                                            Downloads
+                                            <NavActivity Busy="@running" Pending="@(downloadLabel is not null)" Label="@downloadLabel" />
+                                        </span>
+                                    </MudNavLink>
+                                </ChildContent>
+                            </MudNavGroup>
+                        </div>
+                    </ActivatorContent>
                     <ChildContent>
-                        <MudNavLink Href="@($"consoles/{console.Id}")" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Status</MudNavLink>
-                        <MudNavLink Href="@($"consoles/{console.Id}/models")" Icon="@Icons.Material.Filled.Memory">
-                            <span class="nav-activity-row">
-                                Models
-                                <NavActivity Busy="@(modelLabel is not null)" Label="@modelLabel" />
-                            </span>
-                        </MudNavLink>
-                        <MudNavLink Href="@($"consoles/{console.Id}/downloads")" Icon="@Icons.Material.Filled.CloudDownload">
-                            <span class="nav-activity-row">
-                                Downloads
-                                <NavActivity Busy="@running" Pending="@(downloadLabel is not null)" Label="@downloadLabel" />
-                            </span>
-                        </MudNavLink>
+                        <MudMenuItem Icon="@Icons.Material.Filled.Cable" OnClick="@(() => TestConsoleAsync(current))">Test connection</MudMenuItem>
+                        <MudMenuItem Icon="@Icons.Material.Filled.CopyAll" OnClick="@(() => CopyModelsAsync(current))" Disabled="@(Registry.All.Count < 2)">Copy models from this console...</MudMenuItem>
+                        @if (current.Source == ConsoleSource.User)
+                        {
+                            <MudMenuItem Icon="@Icons.Material.Filled.Edit" OnClick="@(() => EditConsoleAsync(current))">Edit</MudMenuItem>
+                            <MudMenuItem Icon="@Icons.Material.Filled.Delete" OnClick="@(() => RemoveConsoleAsync(current))">Delete</MudMenuItem>
+                        }
                     </ChildContent>
-                </MudNavGroup>
+                </MudMenu>
             }
             <MudDivider Class="my-2" />
             <MudNavLink Href="about" Icon="@Icons.Material.Filled.Info">About</MudNavLink>
@@ -220,6 +242,15 @@
         var trimmed = version.Trim();
         return trimmed[0] is 'v' or 'V' ? trimmed : "v" + trimmed;
     }
+
+    private Task TestConsoleAsync(ConsoleRuntime console) => ConsoleActions.TestAsync(Dialogs, console);
+
+    private Task EditConsoleAsync(ConsoleRuntime console) => ConsoleActions.EditAsync(Dialogs, Navigation, console);
+
+    private Task RemoveConsoleAsync(ConsoleRuntime console) =>
+        ConsoleActions.RemoveAsync(Dialogs, Snackbar, Registry, Transfers, console, "Delete");
+
+    private Task CopyModelsAsync(ConsoleRuntime console) => ModelCopyDialog.ShowAsync(Dialogs, console.Id);
 
     private void OnRegistryChanged(ConsoleChange change)
     {

@@ -143,6 +143,20 @@ internal sealed class FakeFileSystem : IPS5FileSystem
     /// <summary>Holds every upload until released.</summary>
     public TaskCompletionSource? UploadGate { get; set; }
 
+    /// <summary>How many times <see cref="DownloadToAsync"/> started.</summary>
+    public int Downloads => _downloads;
+
+    private int _downloads;
+
+    /// <summary>Signalled when a download starts.</summary>
+    public TaskCompletionSource? DownloadStarted { get; set; }
+
+    /// <summary>Holds every download until released.</summary>
+    public TaskCompletionSource? DownloadGate { get; set; }
+
+    /// <summary>Makes a download fail before any bytes are written.</summary>
+    public bool FailDownloads { get; set; }
+
     public async Task UploadAsync(Stream content, string path, IProgress<long>? progress, CancellationToken cancellationToken)
     {
         ThrowIfUnreachable();
@@ -166,6 +180,30 @@ internal sealed class FakeFileSystem : IPS5FileSystem
         }
 
         AddFile(path, buffer.ToArray());
+    }
+
+    public async Task DownloadToAsync(string path, Stream destination, IProgress<long>? progress, CancellationToken cancellationToken)
+    {
+        ThrowIfUnreachable();
+        Interlocked.Increment(ref _downloads);
+        DownloadStarted?.TrySetResult();
+        if (DownloadGate is not null)
+        {
+            await DownloadGate.Task.WaitAsync(cancellationToken);
+        }
+
+        if (FailDownloads)
+        {
+            throw new ConsoleUnreachableException("The connection dropped during the download.");
+        }
+
+        if (Unreadable.Contains(path) || !_files.TryGetValue(path, out var bytes))
+        {
+            throw new IOException($"Downloading {path} from the console failed.");
+        }
+
+        await destination.WriteAsync(bytes, cancellationToken);
+        progress?.Report(bytes.Length);
     }
 
     public Task MoveAsync(string from, string to, CancellationToken cancellationToken) =>

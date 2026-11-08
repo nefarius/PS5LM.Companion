@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Components;
 
 using MudBlazor;
 
+using PS5LM.Companion.Core.Consoles;
 using PS5LM.Companion.Core.Discovery;
 using PS5LM.Companion.Core.Domain;
 using PS5LM.Companion.Core.Transfers;
@@ -303,7 +304,19 @@ internal static class Display
         _ => Color.Info,
     };
 
-    /// <summary>Overall progress: the download counts for the first half and the upload for the second.</summary>
+    /// <summary>The hub repository, or the console a direct copy is coming from.</summary>
+    public static string TransferOrigin(Transfer transfer, IConsoleRegistry consoles)
+    {
+        if (transfer.SourceKind == TransferSourceKind.Console)
+        {
+            var name = consoles.Find(transfer.SourceConsoleId)?.Name;
+            return string.IsNullOrWhiteSpace(name) ? "From another console" : $"From {name}";
+        }
+
+        return transfer.Repo;
+    }
+
+    /// <summary>Overall progress: acquiring the file counts for the first half and the upload for the second.</summary>
     public static double Progress(Transfer transfer)
     {
         if (transfer.State == TransferState.Completed)

@@ -1,0 +1,287 @@
+@using PS5LM.Companion.Core.Abstractions
+@inject IConsoleRegistry Registry
+@inject TransferService Transfers
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        @if (_loading)
+        {
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                <MudText>Reading models...</MudText>
+            </MudStack>
+        }
+        else if (_error is not null)
+        {
+            <MudText Class="mb-2">@_sourceName</MudText>
+            <MudAlert Severity="Severity.Error">@_error</MudAlert>
+        }
+        else
+        {
+            <MudText Typo="Typo.subtitle2" Class="mb-1">Models on @_sourceName</MudText>
+            @if (_models.Count == 0)
+            {
+                <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">This console has no model files.</MudAlert>
+            }
+            else
+            {
+                <MudStack Spacing="1" Class="mb-4">
+                    @foreach (var model in _models)
+                    {
+                        <MudCheckBox T="bool" Value="@_selected.Contains(model.AppPath)" ValueChanged="@(on => ToggleModel(model.AppPath, on))" Disabled="_busy" Color="Color.Primary">
+                            @model.FileName
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@model.Location · @Display.Bytes(model.SizeBytes)</MudText>
+                            @if (model.IsProjector)
+                            {
+                                <MudChip T="string" Size="Size.Small" Class="ml-2">Vision projector</MudChip>
+                            }
+                        </MudCheckBox>
+                    }
+                </MudStack>
+            }
+
+            <MudText Typo="Typo.subtitle2" Class="mb-1">Copy to</MudText>
+            @if (_destinations.Count == 0)
+            {
+                <MudAlert Severity="Severity.Info" Dense="true">Add another console to copy a model.</MudAlert>
+            }
+            else
+            {
+                <MudStack Spacing="2">
+                    @foreach (var destination in _destinations)
+                    {
+                        <MudPaper Class="pa-2" Outlined="true">
+                            <MudCheckBox T="bool" Value="destination.Selected" ValueChanged="@(on => ToggleDestination(destination, on))" Disabled="@(_busy || !destination.Reachable)" Color="Color.Primary" Label="@destination.Label" />
+                            @if (!destination.Reachable)
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Error">@destination.Problem</MudText>
+                            }
+                            else if (destination.Selected)
+                            {
+                                <MudSelect T="string" Value="destination.Root" ValueChanged="@(value => destination.Root = value)" Label="Storage" Disabled="_busy" Margin="Margin.Dense">
+                                    @foreach (var root in destination.Roots)
+                                    {
+                                        <MudSelectItem T="string" Value="@root">@root</MudSelectItem>
+                                    }
+                                </MudSelect>
+                            }
+                        </MudPaper>
+                    }
+                </MudStack>
+            }
+
+            @if (_summary is not null)
+            {
+                <MudAlert Severity="@_summarySeverity" Dense="true" Class="mt-3">@_summary</MudAlert>
+                @if (_outcomes.Count > 0)
+                {
+                    <MudList T="string" Dense="true" Class="mt-2">
+                        @foreach (var outcome in _outcomes)
+                        {
+                            <MudListItem T="string">@outcome</MudListItem>
+                        }
+                    </MudList>
+                }
+            }
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Close">Close</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="CopyAsync" Disabled="@(!CanCopy)">Copy</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private readonly HashSet<string> _selected = new(StringComparer.Ordinal);
+    private readonly List<string> _outcomes = [];
+    private IReadOnlyList<ModelFile> _models = [];
+    private List<DestinationChoice> _destinations = [];
+    private string _sourceName = "this console";
+    private bool _loading = true;
+    private bool _busy;
+    private string? _error;
+    private string? _summary;
+    private Severity _summarySeverity = Severity.Info;
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter]
+    public string SourceConsoleId { get; set; } = string.Empty;
+
+    [Parameter]
+    public IReadOnlyList<string>? SelectedPaths { get; set; }
+
+    public static Task ShowAsync(IDialogService dialogs, string sourceConsoleId, IReadOnlyList<string>? selectedPaths = null)
+    {
+        var parameters = new DialogParameters<ModelCopyDialog>
+        {
+            { dialog => dialog.SourceConsoleId, sourceConsoleId },
+            { dialog => dialog.SelectedPaths, selectedPaths },
+        };
+        return dialogs.ShowAsync<ModelCopyDialog>(
+            "Copy models",
+            parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true });
+    }
+
+    private bool CanCopy => !_loading && !_busy && _error is null && _selected.Count > 0 && _destinations.Any(destination => destination.Selected);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var sourceId = SourceConsoleId;
+        if (Registry.Find(sourceId) is not { } source)
+        {
+            _error = "That console is no longer configured.";
+            _loading = false;
+            return;
+        }
+
+        _sourceName = source.Name;
+        try
+        {
+            var installation = source.Status.LastInstallation;
+            if (installation?.StateRoot is null)
+            {
+                _error = installation?.Message ?? "The console is not reachable.";
+                return;
+            }
+
+            _models = await source.Models.ListAsync(installation, source.Store.Current.LoadedModel, CancellationToken.None);
+            foreach (var path in SelectedPaths ?? [])
+            {
+                if (_models.Any(model => model.AppPath.Equals(path, StringComparison.Ordinal)))
+                {
+                    _selected.Add(path);
+                }
+            }
+
+            var destinations = new List<DestinationChoice>();
+            foreach (var console in Registry.All.Where(console => !string.Equals(console.Id, source.Id, StringComparison.OrdinalIgnoreCase)))
+            {
+                var choice = new DestinationChoice(console.Id, $"{console.Name} ({console.Host})");
+                try
+                {
+                    var found = console.Status.LastInstallation;
+                    if (found?.StateRoot is null)
+                    {
+                        choice.Problem = found?.Message ?? "The console is not reachable.";
+                    }
+                    else
+                    {
+                        var roots = await console.Models.UploadTargetsAsync(found, CancellationToken.None);
+                        choice.Roots.AddRange(roots.Select(root => root.Name));
+                        choice.Root = choice.Roots.FirstOrDefault();
+                        choice.Reachable = choice.Roots.Count > 0;
+                        choice.Problem = choice.Reachable ? null : "That console has nowhere to put a model.";
+                    }
+                }
+                catch (ConsoleUnreachableException ex)
+                {
+                    choice.Problem = ex.Message;
+                }
+
+                destinations.Add(choice);
+            }
+
+            _destinations = destinations;
+        }
+        catch (ConsoleUnreachableException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void ToggleModel(string path, bool on)
+    {
+        if (on)
+        {
+            _selected.Add(path);
+        }
+        else
+        {
+            _selected.Remove(path);
+        }
+    }
+
+    private static void ToggleDestination(DestinationChoice destination, bool on) => destination.Selected = on;
+
+    private async Task CopyAsync()
+    {
+        if (!CanCopy)
+        {
+            return;
+        }
+
+        var sourceId = SourceConsoleId;
+        var paths = _selected.ToList();
+        var targets = _destinations
+            .Where(destination => destination.Selected)
+            .Select(destination => new CopyTargetRequest(destination.Id, destination.Root))
+            .ToList();
+        _busy = true;
+        _outcomes.Clear();
+        try
+        {
+            var result = await Transfers.EnqueueCopiesAsync(new CopyRequest(sourceId, paths, targets), CancellationToken.None);
+            if (result.Batch is null)
+            {
+                _summarySeverity = Severity.Error;
+                _summary = result.Message ?? "The models could not be copied.";
+                Snackbar.Add(_summary, Severity.Error);
+                return;
+            }
+
+            foreach (var item in result.Items)
+            {
+                foreach (var target in item.Targets)
+                {
+                    var name = Registry.Find(target.ConsoleId)?.Name ?? target.ConsoleId;
+                    var detail = string.IsNullOrWhiteSpace(target.Message) ? target.Outcome.ToString() : target.Message;
+                    _outcomes.Add($"{item.FileName} → {name} ({target.TargetRoot}): {detail}");
+                }
+            }
+
+            var queued = result.Items.SelectMany(item => item.Targets).Count(target => target.Outcome == CopyTargetOutcome.Queued);
+            _summarySeverity = result.Outcome == OperationOutcome.Accepted ? Severity.Success : Severity.Info;
+            _summary = queued == 0
+                ? "Nothing new was queued."
+                : queued == 1 ? "1 copy was queued. Progress is on each console's Downloads page." : $"{queued} copies were queued. Progress is on each console's Downloads page.";
+            Snackbar.Add(_summary, _summarySeverity);
+        }
+        catch (Exception ex) when (ex is ConsoleUnreachableException or IOException or UnauthorizedAccessException)
+        {
+            _summarySeverity = Severity.Error;
+            _summary = ex.Message;
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void Close() => MudDialog.Cancel();
+
+    private sealed class DestinationChoice(string id, string label)
+    {
+        public string Id { get; } = id;
+
+        public string Label { get; } = label;
+
+        public bool Selected { get; set; }
+
+        public bool Reachable { get; set; }
+
+        public string? Problem { get; set; }
+
+        public List<string> Roots { get; } = [];
+
+        public string? Root { get; set; }
+    }
+}

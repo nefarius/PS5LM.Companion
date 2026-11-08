@@ -1,10 +1,10 @@
 @page "/settings/consoles"
 @implements IDisposable
 @inject IConsoleRegistry Registry
-@inject IConsoleProbe Probe
 @inject TransferService Transfers
 @inject IDialogService Dialogs
 @inject ISnackbar Snackbar
+@inject NavigationManager Navigation
 
 <AppPageTitle Page="Consoles" />
 
@@ -43,7 +43,7 @@ else
             </MudTd>
             <MudTd DataLabel="Defined by">@DefinedBy(context)</MudTd>
             <MudTd>
-                <MudButton Size="Size.Small" Variant="Variant.Text" Disabled="@(_testing == context.Id)" OnClick="@(() => TestAsync(context))">Test</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => TestAsync(context))">Test</MudButton>
                 @if (context.Source == ConsoleSource.User)
                 {
                     <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => EditAsync(context))">Edit</MudButton>
@@ -54,19 +54,7 @@ else
     </MudTable>
 }
 
-@if (_report is not null)
-{
-    <MudPaper Class="pa-4 mt-4" Elevation="1" aria-label="Last connection test">
-        <MudText Typo="Typo.h6" HtmlTag="h2" Class="mb-2">@_reportTitle</MudText>
-        <ProbeChecks Report="@_report" />
-    </MudPaper>
-}
-
 @code {
-    private string? _testing;
-    private string? _reportTitle;
-    private ConsoleProbeReport? _report;
-
     protected override void OnInitialized() => Registry.Changed += OnChanged;
 
     private void OnChanged(ConsoleChange change)
@@ -94,52 +82,16 @@ else
             : $"{config} · PS5__Consoles__{console.Id}__Host";
     }
 
-    private async Task AddAsync() => await ConsoleEditor.ShowAsync(Dialogs, null);
+    private Task AddAsync() => ConsoleEditor.ShowAsync(Dialogs, null);
 
     private Task ScanAsync() => NetworkScanDialog.ShowAsync(Dialogs);
 
-    private async Task EditAsync(ConsoleRuntime console) => await ConsoleEditor.ShowAsync(Dialogs, console.Id);
+    private Task EditAsync(ConsoleRuntime console) => ConsoleActions.EditAsync(Dialogs, Navigation, console);
 
-    private async Task TestAsync(ConsoleRuntime console)
-    {
-        _testing = console.Id;
-        try
-        {
-            _reportTitle = console.Name;
-            _report = await Probe.TestAsync(console.Options, CancellationToken.None);
-        }
-        finally
-        {
-            _testing = null;
-        }
-    }
+    private Task TestAsync(ConsoleRuntime console) => ConsoleActions.TestAsync(Dialogs, console);
 
-    private async Task RemoveAsync(ConsoleRuntime console)
-    {
-        var active = Transfers.Snapshot(console.Id).Where(transfer => transfer.IsActive).ToList();
-        if (active.Count > 0)
-        {
-            var listed = string.Join("; ", active.Select(transfer => $"{transfer.FileName} ({transfer.State})"));
-            await Dialogs.ShowMessageBoxAsync(new MessageBoxOptions
-            {
-                Title = $"Cannot remove {console.Name}",
-                Message = $"Cancel these transfers first: {listed}",
-                CancelText = "Close",
-            });
-            return;
-        }
-
-        if (!await Confirm.AskAsync(Dialogs, $"Remove {console.Name}",
-                $"Remove {Confirm.On(console)} from this companion? The console itself is left as it is.", "Remove"))
-        {
-            return;
-        }
-
-        var result = Registry.Remove(console.Id);
-        Snackbar.Add(
-            result.Succeeded ? $"{console.Name} was removed." : result.Message ?? "Could not remove the console.",
-            result.Succeeded ? Severity.Success : Severity.Error);
-    }
+    private Task RemoveAsync(ConsoleRuntime console) =>
+        ConsoleActions.RemoveAsync(Dialogs, Snackbar, Registry, Transfers, console);
 
     public void Dispose() => Registry.Changed -= OnChanged;
 }

@@ -1,3 +1,5 @@
+using PS5LM.Companion.Core.Models;
+
 namespace PS5LM.Companion.Core.Transfers;
 
 public enum TransferState
@@ -9,6 +11,19 @@ public enum TransferState
     Completed = 4,
     Failed = 5,
     Cancelled = 6,
+
+    /// <summary>A console-to-console copy is reading the source file before the destination upload starts.</summary>
+    Staging = 7,
+}
+
+/// <summary>Where a transfer's bytes come from.</summary>
+public enum TransferSourceKind
+{
+    /// <summary>Downloaded from the model hub into the companion cache.</summary>
+    Hub = 0,
+
+    /// <summary>Staged from a console, then uploaded to one or more other consoles.</summary>
+    Console = 1,
 }
 
 /// <summary>A model file on a hub repository.</summary>
@@ -44,9 +59,112 @@ public sealed record Transfer(
     long UploadedBytes,
     string? Error,
     DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt,
+    TransferSourceKind SourceKind = TransferSourceKind.Hub,
+    Guid? CopyBatchId = null,
+    Guid? CopyItemId = null,
+    string? SourceConsoleId = null,
+    string? SourceAppPath = null)
+{
+    public bool IsActive => State is TransferState.Queued or TransferState.Downloading or TransferState.Verifying
+        or TransferState.Uploading or TransferState.Staging;
+}
+
+public enum CopyBatchState
+{
+    Queued = 0,
+    Running = 1,
+    Completed = 2,
+    CompletedWithErrors = 3,
+    Cancelled = 4,
+}
+
+public enum CopyItemState
+{
+    Queued = 0,
+    Staging = 1,
+    Verifying = 2,
+    Ready = 3,
+    Completed = 4,
+    Failed = 5,
+    Cancelled = 6,
+}
+
+public enum CopyTargetOutcome
+{
+    Queued = 0,
+    AlreadyPresent = 1,
+    AlreadyQueued = 2,
+    Unavailable = 3,
+    InvalidTarget = 4,
+    Failed = 5,
+    Completed = 6,
+    Cancelled = 7,
+}
+
+/// <summary>One user request to copy one or more models from a console.</summary>
+public sealed record CopyBatch(
+    Guid Id,
+    string SourceConsoleId,
+    IReadOnlyList<Guid> ItemIds,
+    CopyBatchState State,
+    DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt)
 {
-    public bool IsActive => State is TransferState.Queued or TransferState.Downloading or TransferState.Verifying or TransferState.Uploading;
+    public bool IsActive => State is CopyBatchState.Queued or CopyBatchState.Running;
+}
+
+/// <summary>One physical source file, staged once and uploaded to each queued destination.</summary>
+public sealed record CopyItem(
+    Guid Id,
+    Guid BatchId,
+    string SourceConsoleId,
+    string SourceFtpPath,
+    string SourceAppPath,
+    string FileName,
+    string SourceLocation,
+    long SizeBytes,
+    string? Sha256,
+    CopyItemState State,
+    long StagedBytes,
+    string? Error,
+    IReadOnlyList<CopyTarget> Targets,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt)
+{
+    public bool IsActive => State is CopyItemState.Queued or CopyItemState.Staging or CopyItemState.Verifying or CopyItemState.Ready;
+}
+
+/// <summary>What a copy item should do on one destination console and storage root.</summary>
+public sealed record CopyTarget(
+    string ConsoleId,
+    string TargetRoot,
+    CopyTargetOutcome Outcome,
+    Guid? TransferId,
+    string? Message);
+
+/// <summary>A destination of a console-to-console copy. A null root uses that console's first upload location.</summary>
+public sealed record CopyTargetRequest(string ConsoleId, string? TargetRoot);
+
+/// <summary>Copies the models at <paramref name="Paths"/> from one console onto each destination.</summary>
+public sealed record CopyRequest(string SourceConsoleId, IReadOnlyList<string> Paths, IReadOnlyList<CopyTargetRequest> Targets);
+
+/// <summary>The durable result of asking for a copy. <see cref="Batch"/> is null when the request was rejected.</summary>
+public sealed record CopyEnqueueResult(OperationOutcome Outcome, string? Message, CopyBatch? Batch, IReadOnlyList<CopyItem> Items);
+
+/// <summary>A copy batch with the items and destination transfers it owns.</summary>
+public sealed record CopyBatchView(CopyBatch Batch, IReadOnlyList<CopyItem> Items, IReadOnlyList<Transfer> Transfers);
+
+/// <summary>Version 2 of the transfer file. Version 1 was a JSON array of hub transfers.</summary>
+public sealed record TransferStoreState(
+    int Version,
+    IReadOnlyList<Transfer> Transfers,
+    IReadOnlyList<CopyBatch> CopyBatches,
+    IReadOnlyList<CopyItem> CopyItems)
+{
+    public const int CurrentVersion = 2;
+
+    public static TransferStoreState Empty { get; } = new(CurrentVersion, [], [], []);
 }
 
 /// <summary>Thrown when the model hub cannot be reached or refuses a search or listing.</summary>
@@ -88,12 +206,12 @@ public interface IModelHub
     Task DownloadAsync(string repo, string fileName, string destinationPath, IProgress<long>? progress, CancellationToken cancellationToken);
 }
 
-/// <summary>Persists the transfer list so downloads survive a restart of the companion.</summary>
+/// <summary>Persists transfers and console-to-console copies so they survive a restart of the companion.</summary>
 public interface ITransferStore
 {
-    Task<IReadOnlyList<Transfer>> LoadAsync(CancellationToken cancellationToken);
+    Task<TransferStoreState> LoadAsync(CancellationToken cancellationToken);
 
-    Task SaveAsync(IReadOnlyList<Transfer> transfers, CancellationToken cancellationToken);
+    Task SaveAsync(TransferStoreState state, CancellationToken cancellationToken);
 }
 
 /// <summary>Where the companion keeps downloaded models until they are on the console.</summary>
@@ -109,4 +227,7 @@ public sealed class TransferOptions
 
     /// <summary>How many finished transfers are remembered.</summary>
     public int HistoryLimit { get; set; } = 50;
+
+    /// <summary>How many finished console-to-console copy batches are remembered. A batch keeps its items and destination transfers.</summary>
+    public int CopyHistoryLimit { get; set; } = 20;
 }

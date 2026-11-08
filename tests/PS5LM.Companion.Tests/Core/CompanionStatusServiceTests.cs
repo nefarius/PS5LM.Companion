@@ -219,6 +219,8 @@ public sealed class CompanionStatusServiceTests
 
         public Task UploadAsync(Stream content, string path, IProgress<long>? progress, CancellationToken cancellationToken) => HangAsync<bool>(cancellationToken);
 
+        public Task DownloadToAsync(string path, Stream destination, IProgress<long>? progress, CancellationToken cancellationToken) => HangAsync<bool>(cancellationToken);
+
         public Task MoveAsync(string from, string to, CancellationToken cancellationToken) => HangAsync<bool>(cancellationToken);
 
         public Task MoveDirectoryAsync(string from, string to, CancellationToken cancellationToken) => HangAsync<bool>(cancellationToken);

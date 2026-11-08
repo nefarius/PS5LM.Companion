@@ -163,10 +163,10 @@ needs no extra configuration. The overview lists every console; with one console
 pages, and the top bar names the console the page shows. Every console keeps being polled in the background.
 
 - **Status** (`/consoles/{id}`): lifecycle, loaded model, generation speed, sensors, drive space, and the payload dependencies. Launch sends an installed payload through Payload Manager. The result confirms the file was transferred. Whether kstuff-lite, etaHEN and ShadowMountPlus are running comes from the process list.
-- **Models** (`/consoles/{id}/models`): models on the console with Load, Unload and Delete. Delete removes the selected file; see [Deleting models](docs/model-deletion.md).
-- **Downloads** (`/consoles/{id}/downloads`): search Hugging Face, see whether a repository and each file are likely to fit, queue a file, watch download and upload progress, cancel. See [Whether a model fits](docs/downloads.md).
+- **Models** (`/consoles/{id}/models`): models on the console with Load, Unload, Delete and Copy. Delete removes the selected file; see [Deleting models](docs/model-deletion.md). Copy reads selected files from this console and queues them onto other consoles; see [Copying models](docs/downloads.md#copying-a-model-to-other-consoles).
+- **Downloads** (`/consoles/{id}/downloads`): search Hugging Face, see whether a repository and each file are likely to fit, queue a file, watch download and upload progress, cancel. A copy from another console appears here too. See [Whether a model fits](docs/downloads.md).
 - **Inference** (`/inference`): add, edit, rename and delete pools, see which consoles can serve each, run the self-test and benchmark, and download a pool's model to consoles that lack it.
-- **Manage consoles** (`/settings/consoles`): add, edit, rename and remove consoles, scan the local network for them, and test settings before saving. A scan confirms over FTP, and through VoidShell on port 7007 when FTP is closed or the login fails (including a console that has neither app installed yet). When reverse DNS yields a name that points back at the address, that name is offered and the address can still be chosen.
+- **Manage consoles** (`/settings/consoles`): add, edit, rename and remove consoles, scan the local network for them, and test settings before saving. The same test, edit and delete actions are on each console in the drawer; delete asks for confirmation and is refused while a transfer or copy is still running. A scan confirms over FTP, and through VoidShell on port 7007 when FTP is closed or the login fails (including a console that has neither app installed yet). When reverse DNS yields a name that points back at the address, that name is offered and the address can still be chosen.
 
 With `Companion:AccessToken` set, the browser is sent to `/login` once and keeps an HttpOnly cookie.
 
@@ -194,6 +194,9 @@ Console-scoped routes live under `/api/consoles/{consoleId}`; an unknown id retu
 | `POST /api/consoles/{consoleId}/models/load` | `{ "path": "<appPath from models>" }`; only known model paths are accepted |
 | `POST /api/consoles/{consoleId}/models/unload` | Unload the current model |
 | `DELETE /api/consoles/{consoleId}/models` | `{ "path": "<appPath from models>" }`; deletes that one file |
+| `POST /api/consoles/{consoleId}/model-copies` | Copy files already on this console. `{ "paths": ["<appPath>"], "targets": [{ "consoleId", "targetRoot"? }] }`. `202` when a new upload was queued, `200` when every pair was already present or already queued. `400` when the selection is empty, a destination is the source, or two files would write the same name. `404` when the console or a path is unknown. `503` when the source cannot be listed |
+| `GET /api/model-copies/{batchId}` | That copy: each file, and the outcome on each destination |
+| `DELETE /api/model-copies/{batchId}` | Cancel the source read and unfinished uploads. A file already renamed into place is left there |
 | `GET /api/consoles/{consoleId}/transfers` | List that console's transfers |
 | `POST /api/consoles/{consoleId}/transfers` | Queue `{ "repo", "fileName", "targetRoot"? }` for that console |
 | `DELETE /api/consoles/{consoleId}/transfers/{id}` | Cancel a transfer (`404` if it belongs to another console) |
@@ -212,6 +215,8 @@ it restarts or rescans. Projectors (`mmproj-*.gguf`) are separate files and are 
 
 Each console has its own transfer queue and runs one transfer at a time; different consoles transfer in parallel. A transfer: download to the cache (resumes after a dropped connection or restart), verify size and
 SHA-256, upload as `name.gguf.part`, then rename. The apps never see a half-copied model.
+
+Copying a model that is already on a console uses the same upload queue. The companion reads the file once from the source, checks its size and SHA-256, and uploads that copy to each selected console that does not already have the file name. The consoles do not have to be in an inference pool. A projector (`mmproj-*.gguf`) is copied only when it is selected; it is not added automatically with the main model. The read and a large upload on the same console take the FTP bulk lane one at a time, so status and model listings still use the other lane. Restarting the companion continues a copy that had not finished. The transfer list is stored as a versioned JSON object; an older file that is only a JSON array of transfers is still read.
 
 ## Inference gateway
 

@@ -36,3 +36,15 @@ The last line that is not the CPU device is the free memory. `settings.json` sup
 While the page stays open it rereads the log and the settings every 30 seconds, and replans the open repository when the free memory or those limits change.
 
 PS5LM Plus's planner omits the extra compute-buffer terms, about half a GiB at most for a vision or decision model. The companion uses the PS5LM formula for both apps, which is slightly conservative for Plus.
+
+## Copying a model to other consoles
+
+The Models page and each console's drawer menu can copy `.gguf` files that are already on that console, including vision projectors, to one or more other configured consoles. Inference-pool membership is not required.
+
+- The source file is read once into the companion cache, then checked for size and SHA-256.
+- Each destination uses a storage location that accepts uploads. The default is that console's first upload location; a removable drive is used only when it is mounted and selected.
+- A destination that already has the same file name is left unchanged. The copy does not overwrite it.
+- Two selected files that would write the same name onto the same location are rejected.
+- The source console is not a destination of its own copy.
+- Each destination upload is an ordinary transfer: `name.gguf.part`, then rename. Cancel one upload from that console's Downloads page, or cancel the whole batch with `DELETE /api/model-copies/{batchId}`.
+- A restart continues an unfinished copy. A half-read cache file is discarded and the source is read again. A finished batch drops its cache.
