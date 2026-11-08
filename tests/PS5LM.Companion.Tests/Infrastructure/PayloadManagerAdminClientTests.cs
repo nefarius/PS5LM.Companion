@@ -181,5 +181,17 @@ public sealed class PayloadManagerAdminClientTests
         Assert.True(legacy!.InProgress);
 
         Assert.Null(await Client(new StubHandler(_ => Text("no", HttpStatusCode.InternalServerError))).GetAutoloadRunAsync(CancellationToken.None));
+        Assert.True(idle.Understood);
+        Assert.True(busy.Understood);
+        Assert.True(legacy.Understood);
+
+        var unknown = await Client(new StubHandler(_ => Text("""{"state":"paused","remaining":4}"""))).GetAutoloadRunAsync(CancellationToken.None);
+        Assert.Equal("paused", unknown!.State);
+        Assert.False(unknown.Understood);
+        Assert.False(unknown.InProgress);
+
+        var empty = await Client(new StubHandler(_ => Text("{}"))).GetAutoloadRunAsync(CancellationToken.None);
+        Assert.False(empty!.Understood);
+        Assert.False(empty.InProgress);
     }
 }

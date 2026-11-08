@@ -24,18 +24,36 @@ public sealed record AutoloadConfig(bool Enabled, string List, int DelaySeconds 
 /// 0.5.x reports only <see cref="RemainingSeconds"/>.
 /// </summary>
 /// <param name="State"><c>disabled</c>, <c>waiting</c>, <c>countdown</c>, <c>executing</c>, <c>done</c>, <c>aborted</c> or <c>failed</c>. Null when the manager did not send one.</param>
-/// <param name="RemainingSeconds">Countdown seconds still to run. Zero or negative when there is no countdown.</param>
+/// <param name="RemainingSeconds">Countdown seconds still to run. Zero when it was missing or not a number.</param>
 /// <param name="Current">The list entry being sent, when the manager names one.</param>
 public sealed record AutoloadRun(string? State, int RemainingSeconds, string? Current, int Done, int Total)
 {
     /// <summary>
+    /// False when the body parsed but named an unknown state, or named neither a known state nor a numeric countdown.
+    /// A 0.5.x body with only <c>remaining</c> stays understood.
+    /// </summary>
+    public bool Understood { get; init; } = true;
+
+    /// <summary>
     /// True while the boot list can still send a payload. A 0.5.x body has no state, so only a countdown above zero counts.
+    /// An unknown state is not a reason to wait.
     /// </summary>
     public bool InProgress => State is null
         ? RemainingSeconds > 0
         : State.Equals("waiting", StringComparison.OrdinalIgnoreCase)
             || State.Equals("countdown", StringComparison.OrdinalIgnoreCase)
             || State.Equals("executing", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Payload Manager 0.6.x <c>state</c> values. Comparison is ordinal and ignores case.</summary>
+    public static bool IsKnownState(string? state) =>
+        state is not null
+        && (state.Equals("disabled", StringComparison.OrdinalIgnoreCase)
+            || state.Equals("waiting", StringComparison.OrdinalIgnoreCase)
+            || state.Equals("countdown", StringComparison.OrdinalIgnoreCase)
+            || state.Equals("executing", StringComparison.OrdinalIgnoreCase)
+            || state.Equals("done", StringComparison.OrdinalIgnoreCase)
+            || state.Equals("aborted", StringComparison.OrdinalIgnoreCase)
+            || state.Equals("failed", StringComparison.OrdinalIgnoreCase));
 }
 
 /// <summary>Payload Manager's administration surface, in the forms that 0.5.x and 0.6.x share and the 0.6.x extras.</summary>

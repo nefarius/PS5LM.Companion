@@ -157,6 +157,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
     internal async Task<bool> WaitForBootAutoloadAsync(CancellationToken cancellationToken)
     {
         var run = await services.Manager.GetAutoloadRunAsync(cancellationToken);
+        NoteUnrecognized(run);
         if (run is not { InProgress: true })
         {
             return true;
@@ -164,11 +165,12 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
 
         var announced = "";
         Announce(run);
-        var timeout = options.Wait(options.BootAutoloadTimeout) + TimeSpan.FromSeconds(Math.Max(0, run.RemainingSeconds));
+        var timeout = options.Wait(options.BootAutoloadTimeout) + TimeSpan.FromSeconds(CountdownAllowance(run.RemainingSeconds));
         var finished = await WaitForAsync(
             async token =>
             {
                 var next = await services.Manager.GetAutoloadRunAsync(token);
+                NoteUnrecognized(next);
                 if (next is not { InProgress: true })
                 {
                     return true;
@@ -222,6 +224,25 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         }
 
         return parts.Count == 0 ? run.State ?? "running" : string.Join(" | ", parts);
+    }
+
+    /// <summary>Payload Manager stores a countdown of 0 through 3600 seconds. Anything outside that does not extend the wait.</summary>
+    internal static int CountdownAllowance(int remainingSeconds) => Math.Clamp(remainingSeconds, 0, 3600);
+
+    private bool _notedUnrecognizedAutoload;
+
+    private void NoteUnrecognized(AutoloadRun? run)
+    {
+        if (_notedUnrecognizedAutoload || run is not { Understood: false })
+        {
+            return;
+        }
+
+        _notedUnrecognizedAutoload = true;
+        var detail = string.IsNullOrWhiteSpace(run.State)
+            ? "it named neither a state nor a countdown"
+            : "state '" + run.State + "'";
+        Ui.Info($"Payload Manager's autoload status was not recognized ({detail}). This run will not wait for it.");
     }
 
     // Steps 2 and 3: diff the manager's list against the manifest and upload what is missing.

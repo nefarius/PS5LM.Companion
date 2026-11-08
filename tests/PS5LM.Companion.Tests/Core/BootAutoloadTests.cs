@@ -92,4 +92,28 @@ public sealed class BootAutoloadTests
         Assert.DoesNotContain(idle.Messages, message => message.Contains("boot autoload", StringComparison.Ordinal));
         Assert.Contains("load:kstuff-lite.elf", idle.Events);
     }
+
+    [Theory]
+    [InlineData(-1, 0)]
+    [InlineData(0, 0)]
+    [InlineData(7, 7)]
+    [InlineData(3600, 3600)]
+    [InlineData(99999, 3600)]
+    public void A_reported_countdown_outside_an_hour_does_not_extend_the_wait(int reported, int allowance)
+    {
+        Assert.Equal(allowance, SetupRunner.CountdownAllowance(reported));
+    }
+
+    [Fact]
+    public async Task An_unrecognized_autoload_state_is_reported_and_does_not_block_setup()
+    {
+        using var harness = Ready();
+        harness.AutoloadRuns.Enqueue(new AutoloadRun("paused", 4, null, 0, 0) { Understood = false });
+
+        var report = await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
+
+        Assert.Equal(0, report.ExitCode);
+        Assert.Contains("load:kstuff-lite.elf", harness.Events);
+        Assert.Contains(harness.Messages, message => message.Contains("state 'paused'", StringComparison.Ordinal) && message.Contains("will not wait", StringComparison.Ordinal));
+    }
 }

@@ -234,13 +234,14 @@ public sealed class PayloadManagerAdminClient(HttpClient http) : IPayloadManager
                 return null;
             }
 
+            var state = Text(root, "state");
             var seconds = 0;
-            if (root.TryGetProperty("remaining", out var remaining))
+            var countdownKnown = root.TryGetProperty("remaining", out var remaining) && TryDelayValue(remaining, out seconds);
+            var knownState = AutoloadRun.IsKnownState(state);
+            return new AutoloadRun(state, countdownKnown ? seconds : 0, Text(root, "current"), Number(root, "done"), Number(root, "total"))
             {
-                _ = TryDelayValue(remaining, out seconds);
-            }
-
-            return new AutoloadRun(Text(root, "state"), seconds, Text(root, "current"), Number(root, "done"), Number(root, "total"));
+                Understood = knownState || (string.IsNullOrWhiteSpace(state) && countdownKnown),
+            };
         }
         catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException or TimeoutRejectedException && !cancellationToken.IsCancellationRequested)
         {
