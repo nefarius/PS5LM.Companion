@@ -1,0 +1,66 @@
+@page "/about"
+@using PS5LM.Companion.App.About
+@inject LatestReleaseChecker VersionChecker
+
+<AppPageTitle Page="About" />
+
+<MudText Typo="Typo.h4" HtmlTag="h1" Class="mb-2">About</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3" Class="mb-3">
+        <img src="@Assets["logo.svg"]" width="48" height="48" alt="" />
+        <div>
+            <MudText Typo="Typo.h5" HtmlTag="h2">PS5LM Companion</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Version @_version.ChipLabel</MudText>
+        </div>
+    </MudStack>
+    <MudText Class="mb-2">Made by Nefarius Software Solutions e.U. and their trusty AI Orb.</MudText>
+    <MudText Class="mb-4">
+        A headless dashboard that manages models and monitors PS5 consoles running PS5LM or PS5LM Plus.
+        It works before any model is loaded and needs no changes to either app.
+    </MudText>
+    <MudButton Variant="Variant.Outlined"
+               StartIcon="@Icons.Custom.Brands.GitHub"
+               Href="https://github.com/nefarius/PS5LM.Companion/"
+               Target="_blank"
+               Rel="noopener noreferrer">
+        GitHub
+    </MudButton>
+    <MudText Typo="Typo.body2" Class="mt-3">Released under the MIT licence.</MudText>
+</MudPaper>
+
+<MudText Typo="Typo.h6" HtmlTag="h2" Class="mb-2">Dependencies</MudText>
+<MudSimpleTable Hover="true" Dense="true" Bordered="true" aria-label="Dependencies and licences">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Packages</th>
+            <th>Licence</th>
+            <th>Project</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var dependency in ThirdPartyDependencies.All)
+        {
+            <tr>
+                <td>@dependency.Name</td>
+                <td>@string.Join(", ", dependency.PackageIds)</td>
+                <td>@dependency.License</td>
+                <td>
+                    <a href="@dependency.Project" target="_blank" rel="noopener noreferrer">
+                        @dependency.Project.Host@dependency.Project.AbsolutePath
+                    </a>
+                </td>
+            </tr>
+        }
+    </tbody>
+</MudSimpleTable>
+
+@code {
+    private VersionCheckStatus _version = new(null, null, false, null);
+
+    protected override void OnInitialized()
+    {
+        _version = VersionChecker.GetLocalStatus();
+    }
+}

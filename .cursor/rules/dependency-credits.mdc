@@ -1,0 +1,19 @@
+---
+description: Keep the About page dependency credits in step with NuGet package changes
+globs:
+  - Directory.Packages.props
+  - Directory.Build.props
+  - "**/*.csproj"
+alwaysApply: false
+---
+
+# Dependency credits
+
+`src/PS5LM.Companion.App/About/ThirdPartyDependencies.cs` is what the About page lists: name, package ids, licence, and project URL. It covers packages referenced by `src/**/*.csproj` and `Directory.Build.props`. Test-only packages stay off the list.
+
+When a NuGet package is added, removed, renamed, or its version changes:
+
+- Update the entry in `ThirdPartyDependencies` when the package is part of the shipped app.
+- Re-check the licence expression on nuget.org for that version. A licence can change between versions.
+- Re-check the project or repository URL.
+- Keep the README "Dependencies" section on the same set.
