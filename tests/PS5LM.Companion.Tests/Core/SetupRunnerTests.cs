@@ -31,8 +31,9 @@ public sealed class SetupRunnerTests
         Assert.True(harness.Autoload.Enabled);
         Assert.Equal(SetupRunner.MinimumAutoloadDelaySeconds, harness.Autoload.DelaySeconds);
         Assert.Equal(
-            ["elfldr", "kstuff-lite", "ftpsrv", "voidshell", "onionhen", "shadowmountplus", "ps5-web-file-manager"],
+            ["elfldr", "ftpsrv", "kstuff-lite", "voidshell", "onionhen", "shadowmountplus", "ps5-web-file-manager"],
             harness.Events.Where(e => e.StartsWith("load:", StringComparison.Ordinal)).Select(e => e[5..^4]).ToArray());
+        KstuffSafety.AssertBoot(harness, report.ExitCode);
         Assert.Equal("<html>dashboard</html>", harness.Files.Text("/data/voidshell/www/index.html"));
         Assert.DoesNotContain("/data/voidshell/www/index.html.part", harness.Files.Files.Keys);
         Assert.Contains("PPSA00001,PPSA99581", harness.Files.Text("/data/OnionHEN/config.ini"));
@@ -388,23 +389,25 @@ public sealed class SetupRunnerTests
     }
 
     [Fact]
-    public async Task Missing_onionhen_config_warns_and_does_not_invent_one()
+    public async Task Missing_onionhen_config_lets_onionhen_create_it_and_then_switches_bundled_kstuff_off()
     {
-        using var harness = Ready();
-        await harness.Files.DeleteAsync("/data/OnionHEN/config.ini", CancellationToken.None);
+        using var harness = SetupHarness.Fresh();
+        harness.VoidShell.SetUp([SetupHarness.TitleId]);
 
         var report = await harness.Runner(SetupHarness.Options()).RunAsync(CancellationToken.None);
 
-        var line = Assert.Single(report.Lines, l => l.Component == "OnionHEN kstuff");
-        Assert.Equal(SetupStatus.Warn, line.Status);
-        Assert.Contains("does not exist yet", line.Message, StringComparison.Ordinal);
-        Assert.Contains("not confirmed off", line.Message, StringComparison.Ordinal);
-        Assert.DoesNotContain("load:onionhen.elf", harness.Events);
-        Assert.Null(harness.Files.Text("/data/OnionHEN/config.ini"));
-        Assert.Null(harness.Files.Text("/data/OnionHEN/no_kstuff"));
-        var skipped = Assert.Single(report.Lines, l => l.Component == "Launch");
-        Assert.Equal(SetupStatus.Fail, skipped.Status);
-        Assert.Contains("not confirmed off", skipped.Message, StringComparison.Ordinal);
+        Assert.Equal(0, report.ExitCode);
+        Assert.False(harness.ConfigExistedBeforeOnionLaunch);
+        Assert.DoesNotContain("load:kstuff-lite.elf", harness.Events);
+        Assert.Contains("load:onionhen.elf", harness.Events);
+        Assert.Contains("load:shadowmountplus.elf", harness.Events);
+        Assert.Contains("[kstuff]\nautoload=false\n", harness.Files.Text("/data/OnionHEN/config.ini"));
+        Assert.Contains("PPSA99581", harness.Files.Text("/data/OnionHEN/config.ini"));
+        Assert.Contains("local/kstuff-lite", harness.Autoload.List, StringComparison.Ordinal);
+        var onion = harness.Events.IndexOf("load:onionhen.elf");
+        var shell = harness.Events.IndexOf("load:voidshell.elf");
+        Assert.True(onion >= 0 && shell > onion);
+        KstuffSafety.AssertBoot(harness, report.ExitCode);
     }
 
     [Fact]

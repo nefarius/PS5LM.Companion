@@ -68,12 +68,15 @@ that are not pinned payloads are kept. The check flags only the pinned entries:
 - A payload id is listed twice, or more than one kstuff is listed. `--settings` does not save that list; remove the extra entry and run it again.
 - Autoload is off.
 - `AUTOLOAD_DELAY` is reported and is under 10 s. A manager that does not report the countdown is not flagged.
-- OnionHEN's `[kstuff] autoload` is not `false` while kstuff-lite is stored. A console that does not have it is not flagged, and its bundled kstuff is left as it is.
+- OnionHEN's `[kstuff] autoload` is not `false` while kstuff-lite is stored. A console that does not have it stored is not flagged, and its bundled kstuff is left as it is.
+- kstuff-lite is in the autoload list while `/data/OnionHEN/config.ini` does not exist. That is drift: the next boot would load two kstuffs. `--settings` removes the kstuff-lite entry. A list that already omits it is not drift; the missing file stays a warning and boot settings stay pending until OnionHEN creates the file. Once the file exists, the recommendation is kstuff-lite in the list and the bundled copy off, and the same `--settings` run writes the switch before the list.
+
+`update` will not launch kstuff-lite or OnionHEN when that send would put two kstuffs on the kernel. It reads the process list and the config again immediately before the send. Replacing ftpsrv (`--restart`) happens after `--settings`, so the config read is not racing an ftpsrv handoff.
 
 Payload Manager older than 0.6.0 does not store `AUTOLOAD_DELAY` (`get_config` arrived in 0.6.0). Those consoles are not flagged
 and the list is not written. An OnionHEN slot that names a build older than 0.9.0 (`repo/onionhen@v0.0.13`) does not read
 `[kstuff] autoload`, so that switch is not flagged and not written. A `local/onionhen` slot has no revision and is treated as
-current. A missing `/data/OnionHEN/config.ini`, or FTP not answering, is reported as not confirmed and is not drift.
+current. FTP not answering is reported as not confirmed and is not drift; a kstuff-lite entry that is already in the list is left there.
 
 The background file check records these findings on `updates.settings` next to the outdated payloads. `POST /api/consoles/{id}/updates/check`
 refreshes both.

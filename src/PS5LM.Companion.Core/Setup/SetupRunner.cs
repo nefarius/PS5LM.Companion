@@ -54,40 +54,20 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
             }
 
             var resolved = await UploadPayloadsAsync(cancellationToken);
-            await ConfigureAutoloadAsync(resolved, cancellationToken);
-            // OnionHEN reads [kstuff] autoload as it starts. Switch the bundled copy off once the payloads
-            // ahead of it (ftpsrv among them) are up, and before it is sent. A missing config stays a warning.
-            var onionAt = resolved.FindIndex(item => item.Payload.Id.Equals(OnionHenPayloadId, StringComparison.OrdinalIgnoreCase));
-            var beforeHen = onionAt < 0 ? resolved : resolved.Take(onionAt).ToList();
-            var fromHen = onionAt < 0 ? [] : resolved.Skip(onionAt).ToList();
-            var chainContinues = await LaunchPayloadsAsync(beforeHen, cancellationToken);
-            if (chainContinues)
-            {
-                var bundledOff = await DisableBundledKstuffAsync(resolved, cancellationToken);
-                if (fromHen.Count > 0 && !bundledOff)
-                {
-                    SkipAfterKstuff(fromHen, "OnionHEN's bundled kstuff is not confirmed off, so OnionHEN and the payloads after it were not launched.");
-                }
-                else if (fromHen.Count > 0 && await KstuffReadyForHenAsync(beforeHen, fromHen, cancellationToken))
-                {
-                    await LaunchPayloadsAsync(fromHen, cancellationToken);
-                }
-            }
-
+            await LaunchPinnedAsync(resolved, cancellationToken);
             await PlaceExtraFilesAsync(resolved, cancellationToken);
-            if (!chainContinues)
-            {
-                await DisableBundledKstuffAsync(resolved, cancellationToken);
-            }
             if (app is not null)
             {
                 await AllowAppInOnionHenAsync(app, cancellationToken);
                 var install = await InstallAppAsync(app, cancellationToken);
                 if (install == AppInstall.Copied)
                 {
-                    // The rescan runs either way; the registration warning from the wait stays in the report.
-                    await WaitForShadowMountAsync(app, cancellationToken);
-                    await RefreshVoidShellLibraryAsync(app, cancellationToken);
+                    // A ShadowMountPlus that never started cannot register the title. The rescan still runs when it
+                    // did start and the wait simply timed out.
+                    if (await WaitForShadowMountAsync(app, cancellationToken) != ShadowMountWait.NotRunning)
+                    {
+                        await RefreshVoidShellLibraryAsync(app, cancellationToken);
+                    }
                 }
                 else if (install == AppInstall.Unchanged)
                 {
@@ -205,9 +185,118 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         return resolved;
     }
 
-    // Step 4: autoload on, our payloads in order with a pause between every step.
-    private Task ConfigureAutoloadAsync(List<(ManifestPayload Payload, ManagedPayload Stored)> resolved, CancellationToken cancellationToken) =>
-        BootSettings.ApplyAutoloadAsync(resolved, services, Add, cancellationToken);
+    // elfldr and ftpsrv do not need kstuff, and ftpsrv is what makes the OnionHEN config readable. Everything else
+    // waits until a kstuff is actually running. The autoload list is written after that decision, so it cannot name
+    // kstuff-lite while OnionHEN would also load its bundled copy.
+    private async Task LaunchPinnedAsync(List<(ManifestPayload Payload, ManagedPayload Stored)> resolved, CancellationToken cancellationToken)
+    {
+        var early = resolved.Where(item => IsEarlyPayload(item.Payload.Id)).ToList();
+        var rest = resolved.Where(item => !IsEarlyPayload(item.Payload.Id) && !IsKstuff(item.Payload.Id)).ToList();
+        var kstuff = resolved.FirstOrDefault(item => IsKstuff(item.Payload.Id));
+        if (!await LaunchPayloadsAsync(early, cancellationToken))
+        {
+            return;
+        }
+
+        if (!manifest.Payloads.Any(payload => IsKstuff(payload.Id)))
+        {
+            await LaunchPayloadsAsync(rest, cancellationToken);
+            await ApplyBootAsync(resolved, cancellationToken);
+            return;
+        }
+
+        await LaunchWithExternalKstuffAsync(kstuff, rest, resolved, cancellationToken);
+    }
+
+    private async Task LaunchWithExternalKstuffAsync(
+        (ManifestPayload Payload, ManagedPayload Stored) kstuff,
+        List<(ManifestPayload Payload, ManagedPayload Stored)> rest,
+        List<(ManifestPayload Payload, ManagedPayload Stored)> resolved,
+        CancellationToken cancellationToken)
+    {
+        var onionAt = rest.FindIndex(item => item.Payload.Id.Equals(OnionHenPayloadId, StringComparison.OrdinalIgnoreCase));
+        var beforeOnion = onionAt < 0 ? rest : rest.Take(onionAt).ToList();
+        var fromOnion = onionAt < 0 ? [] : rest.Skip(onionAt).ToList();
+        var afterOnion = fromOnion.Skip(1).ToList();
+
+        if (kstuff.Payload is null)
+        {
+            await KstuffReadyForHenAsync([], beforeOnion.Concat(fromOnion).ToList(), cancellationToken);
+            await ApplyBootAsync(resolved, cancellationToken);
+            return;
+        }
+
+        if (!await services.Probe.PortOpenAsync(options.FtpPort, cancellationToken))
+        {
+            await ApplyBootAsync(resolved, cancellationToken);
+            SkipAfterKstuff(fromOnion, "OnionHEN's bundled kstuff is not confirmed off, so OnionHEN and the payloads after it were not launched.");
+            NoteSkipped(beforeOnion, "kstuff is not active, so VoidShell was not launched.");
+            return;
+        }
+
+        var config = await services.Files.ReadTextAsync(BootSettings.OnionConfigPath, MaxTextBytes, cancellationToken);
+        if (config is not null)
+        {
+            await ApplyBootAsync(resolved, cancellationToken);
+            if (!await IsReadyAsync(kstuff.Payload, cancellationToken))
+            {
+                await LaunchPayloadsAsync([kstuff], cancellationToken);
+            }
+
+            if (!await KstuffReadyForHenAsync([kstuff], fromOnion, cancellationToken))
+            {
+                NoteSkipped(beforeOnion, "kstuff is not active, so VoidShell was not launched.");
+                return;
+            }
+
+            await LaunchPayloadsAsync(beforeOnion.Concat(fromOnion).ToList(), cancellationToken);
+            return;
+        }
+
+        if (await IsReadyAsync(kstuff.Payload, cancellationToken))
+        {
+            await LaunchPayloadsAsync(beforeOnion, cancellationToken);
+            SkipAfterKstuff(
+                fromOnion,
+                "kstuff-lite is already running and /data/OnionHEN/config.ini does not exist, so OnionHEN and the payloads after it were not launched. Reboot the console, then run setup again.");
+            await ApplyBootAsync(resolved, cancellationToken);
+            return;
+        }
+
+        if (fromOnion.Count > 0)
+        {
+            await LaunchPayloadsAsync([fromOnion[0]], cancellationToken);
+        }
+
+        var ready = await WaitForAsync(
+            async token => await IsReadyAsync(kstuff.Payload, token)
+                && await services.Files.ReadTextAsync(BootSettings.OnionConfigPath, MaxTextBytes, token) is not null,
+            options.Wait(options.OnionConfigTimeout),
+            cancellationToken);
+        if (!ready)
+        {
+            Ui.Info(await IsReadyAsync(kstuff.Payload, cancellationToken)
+                ? "OnionHEN's bundled kstuff stays on for this boot."
+                : "kstuff did not start, so VoidShell was not launched.");
+        }
+
+        await ApplyBootAsync(resolved, cancellationToken);
+        if (!await IsReadyAsync(kstuff.Payload, cancellationToken))
+        {
+            NoteSkipped(beforeOnion.Concat(afterOnion).ToList(), "kstuff is not active, so it was not launched.");
+            return;
+        }
+
+        await LaunchPayloadsAsync(beforeOnion.Concat(afterOnion).ToList(), cancellationToken);
+    }
+
+    private Task ApplyBootAsync(List<(ManifestPayload Payload, ManagedPayload Stored)> resolved, CancellationToken cancellationToken) =>
+        BootSettings.ApplyAsync(manifest, resolved, services, options.FtpPort, _onionConfig, Add, cancellationToken);
+
+    private static bool IsEarlyPayload(string id) =>
+        id.Equals("elfldr", StringComparison.OrdinalIgnoreCase) || id.Equals("ftpsrv", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsKstuff(string id) => id.Equals(BootSettings.KstuffPayloadId, StringComparison.OrdinalIgnoreCase);
 
     // False when the manifest requires kstuff-lite and it did not resolve, or the resolved copy is not ready.
     // A manifest without kstuff-lite is unaffected. The bundled copy stays off.
@@ -251,14 +340,42 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         }
     }
 
+    private void NoteSkipped(List<(ManifestPayload Payload, ManagedPayload Stored)> payloads, string detail)
+    {
+        foreach (var (payload, _) in payloads)
+        {
+            _notes[payload.Id] = detail;
+        }
+    }
+
     // Step 5: load in order, skipping what already runs. False when elfldr did not come up, so the caller does not send the rest.
     internal async Task<bool> LaunchPayloadsAsync(List<(ManifestPayload Payload, ManagedPayload Stored)> resolved, CancellationToken cancellationToken)
     {
-        foreach (var (payload, stored) in resolved)
+        for (var i = 0; i < resolved.Count; i++)
         {
+            var (payload, stored) = resolved[i];
             if (await IsReadyAsync(payload, cancellationToken))
             {
                 Ui.Info($"{payload.Name} is already running.");
+                continue;
+            }
+
+            var refusal = await KstuffGuard.RefusalAsync(payload, services, options.FtpPort, cancellationToken);
+            if (refusal is not null)
+            {
+                Ui.Info(refusal);
+                if (payload.Id.Equals(OnionHenPayloadId, StringComparison.OrdinalIgnoreCase))
+                {
+                    for (var j = i; j < resolved.Count; j++)
+                    {
+                        _notes[resolved[j].Payload.Id] = refusal;
+                    }
+
+                    Add("Launch", SetupStatus.Fail, refusal);
+                    return true;
+                }
+
+                _notes[payload.Id] = refusal;
                 continue;
             }
 
@@ -338,15 +455,6 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
             }
         }
     }
-
-    // Step 6: one kstuff. OnionHEN v0.9.0 bundles the same kstuff-lite and loads it unless [kstuff] autoload is false.
-    // The bootstrapper ignores /data/OnionHEN/no_kstuff; the Toolbox writes that file alongside the config key, so setup does too.
-    // True when bundled kstuff is confirmed off, the manifest does not ship an external kstuff-lite, or the stored
-    // OnionHEN is older than 0.9.0 and does not read the key.
-    private Task<bool> DisableBundledKstuffAsync(
-        IReadOnlyList<(ManifestPayload Payload, ManagedPayload Stored)> resolved,
-        CancellationToken cancellationToken) =>
-        BootSettings.ApplyKstuffAsync(manifest, resolved, services, options.FtpPort, _onionConfig, Add, cancellationToken);
 
     // Step 7: let the app write /data/PS5LM when OnionHEN is the HEN.
     private async Task AllowAppInOnionHenAsync(ManifestApp app, CancellationToken cancellationToken)
@@ -515,9 +623,35 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
         return $"Installed {installed}, pinned {pinnedTag}. Left in place; run update --apps to upgrade.";
     }
 
-    // Step 9: ShadowMountPlus scans on a timer; nothing can force it, so wait and look.
-    internal async Task<bool> WaitForShadowMountAsync(ManifestApp app, CancellationToken cancellationToken)
+    internal enum ShadowMountWait
     {
+        Registered,
+        TimedOut,
+        NotRunning,
+    }
+
+    // Step 9: ShadowMountPlus scans on a timer; nothing can force it, so wait and look.
+    internal async Task<ShadowMountWait> WaitForShadowMountAsync(ManifestApp app, CancellationToken cancellationToken)
+    {
+        var shadow = manifest.Payloads.FirstOrDefault(payload => payload.Id.Equals("shadowmountplus", StringComparison.OrdinalIgnoreCase));
+        if (shadow is not null)
+        {
+            var processes = await services.Manager.GetProcessesAsync(cancellationToken);
+            if (processes is not null && !await IsReadyAsync(shadow, cancellationToken, processes))
+            {
+                var why = _notes.GetValueOrDefault(shadow.Id);
+                var detail = $"ShadowMountPlus is not running, so {app.TitleId} cannot be registered yet.";
+                if (!string.IsNullOrWhiteSpace(why))
+                {
+                    detail += " " + why;
+                }
+
+                Ui.Info(detail);
+                Add("ShadowMountPlus install", SetupStatus.Warn, detail);
+                return ShadowMountWait.NotRunning;
+            }
+        }
+
         Ui.Info($"Waiting for ShadowMountPlus to register {app.TitleId}");
         var seen = await WaitForAsync(ct => TitleKnownAsync(app.TitleId, ct), options.Wait(options.AppInstallTimeout), cancellationToken);
         Add(
@@ -526,7 +660,7 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
             seen
                 ? $"{app.Name} ({app.TitleId}) is registered on the console."
                 : $"{app.TitleId} did not show up within {options.AppInstallTimeout.TotalMinutes:0} minutes. ShadowMountPlus pauses scanning while a game is in the foreground; check /data/shadowmount/debug.log.");
-        return seen;
+        return seen ? ShadowMountWait.Registered : ShadowMountWait.TimedOut;
     }
 
     // VoidShell only rescans on its own timer and on request; ask it, then confirm it lists the title.
@@ -692,6 +826,8 @@ public sealed class SetupRunner(SetupManifest manifest, SetupOptions options, Se
     }
 
     internal void Add(string component, SetupStatus status, string message) => _lines.Add(new ReportLine(component, status, message));
+
+    internal string? LaunchNote(string payloadId) => _notes.GetValueOrDefault(payloadId);
 
     private void Notify(string message) => Ui.Info(message);
 }

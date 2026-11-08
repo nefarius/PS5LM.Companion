@@ -82,15 +82,25 @@ public sealed class BootSettingsTests
     }
 
     [Fact]
-    public async Task A_missing_config_is_not_confirmed_and_is_not_drift()
+    public async Task A_missing_config_is_pending_and_kstuff_lite_in_the_list_is_drift()
     {
         using var harness = await PreparedAsync();
         await harness.Files.DeleteAsync(ConfigPath, CancellationToken.None);
 
-        var outcome = await Check(harness);
+        var withKstuff = await Check(harness);
 
-        Assert.DoesNotContain(outcome.Drift, item => item.Id == "onionhen-kstuff");
-        Assert.Contains(outcome.Lines, line => line.Status == SetupStatus.Warn && line.Message.Contains("not confirmed off", StringComparison.Ordinal));
+        Assert.DoesNotContain(withKstuff.Drift, item => item.Id == "onionhen-kstuff");
+        Assert.Contains(withKstuff.Drift, item => item.Id == "autoload-kstuff" && item.Detail.Contains("two kstuffs", StringComparison.Ordinal));
+        Assert.Contains(withKstuff.Lines, line => line.Status == SetupStatus.Warn && line.Message.Contains("pending", StringComparison.Ordinal));
+
+        harness.Autoload = harness.Autoload with
+        {
+            List = harness.Autoload.List.Replace("local/kstuff-lite,!8000,", string.Empty, StringComparison.Ordinal),
+        };
+        var without = await Check(harness);
+
+        Assert.DoesNotContain(without.Drift, item => item.Id is "autoload-kstuff" or "onionhen-kstuff");
+        Assert.Contains(without.Lines, line => line.Message.Contains("pending", StringComparison.Ordinal));
     }
 
     [Fact]

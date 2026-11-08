@@ -132,18 +132,15 @@ public sealed class ComponentUpdateService
             }
             else
             {
-                await BootSettings.ApplyAutoloadAsync(resolved, _services, (component, status, message) => lines.Add(new ReportLine(component, status, message)), cancellationToken);
-                if (resolved.Any(item => item.Payload.Id.Equals(BootSettings.KstuffPayloadId, StringComparison.OrdinalIgnoreCase)))
-                {
-                    await BootSettings.ApplyKstuffAsync(
-                        _manifest,
-                        resolved,
-                        _services,
-                        _options.FtpPort,
-                        new OnionConfigSession(),
-                        (component, status, message) => lines.Add(new ReportLine(component, status, message)),
-                        cancellationToken);
-                }
+                await BootSettings.ApplyAsync(
+                    _manifest,
+                    resolved,
+                    _services,
+                    _options.FtpPort,
+                    new OnionConfigSession(),
+                    (component, status, message) => lines.Add(new ReportLine(component, status, message)),
+                    cancellationToken,
+                    onlyWhenKstuffIsStored: true);
             }
             var status = await CheckCoreAsync(cancellationToken);
             var warnings = Combine(lines, status.Warnings);
