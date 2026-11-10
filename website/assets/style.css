@@ -224,6 +224,12 @@ p {
   grid-template-columns: repeat(3,1fr);
   gap: 22px;
 }
+.tour-grid .screenshot a {
+  display: block;
+}
+.tour-grid .screenshot a:focus-visible {
+  outline-offset: -3px;
+}
 .tour-grid figcaption {
   padding: 12px 16px 14px;
   font-size: 13px;
