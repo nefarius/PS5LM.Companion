@@ -49,9 +49,12 @@ fetch the same locked versions from RubyGems.
 All local links and assets use Jekyll URL filters. Update these values if the
 repository is renamed, forked, or moved to a custom domain.
 
-Images in `assets/images` are snapshots of the application logo and the overview,
-downloads, and inference screenshots from the repository. Refresh them when the
-dashboard screenshots change. Edit content in `index.html`, the shared shell in
+Images in `assets/images` are the application logo and copies of the dashboard
+screenshots in `assets/screenshots`: overview for the hero, downloads and
+inference for the feature sections, and status, models, and consoles for the
+dashboard tour. Refresh both copies together. Capture the live dark-theme
+dashboard at 2549×1352 with the navigation drawer open, and use descriptive
+filenames. Edit content in `index.html`, the shared shell in
 `_layouts/default.html`, and presentation in `assets/style.css`.
 
 ## Deployment
