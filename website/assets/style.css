@@ -219,6 +219,22 @@ p {
 .screenshot img {
   width: 100%;
 }
+.tour-grid {
+  display: grid;
+  grid-template-columns: repeat(3,1fr);
+  gap: 22px;
+}
+.tour-grid .screenshot a {
+  display: block;
+}
+.tour-grid .screenshot a:focus-visible {
+  outline-offset: -3px;
+}
+.tour-grid figcaption {
+  padding: 12px 16px 14px;
+  font-size: 13px;
+  color: var(--muted);
+}
 .hero-screen figcaption {
   padding: 12px 20px;
   font-size: 12px;
@@ -457,6 +473,9 @@ p code {
   .feature-grid {
     gap: 22px;
   }
+  .tour-grid {
+    grid-template-columns: 1fr;
+  }
   .quickstart {
     gap: 30px;
     grid-template-columns: 1fr 1.3fr;
@@ -528,7 +547,7 @@ p code {
   .section-heading {
     margin-bottom: 30px;
   }
-  .feature-grid,.spotlight,.spotlight.reverse,.quickstart,.next-steps,.guide-grid {
+  .feature-grid,.spotlight,.spotlight.reverse,.quickstart,.next-steps,.guide-grid,.tour-grid {
     grid-template-columns: 1fr;
   }
   .feature-grid {

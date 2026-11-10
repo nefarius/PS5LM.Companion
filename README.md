@@ -17,13 +17,14 @@ Headless web dashboard that manages models and monitors a PS5 running PS5LM or P
 ## Screenshots
 
 <p align="center">
-  <img src="assets/screenshots/msedge_eJ19bRgB1q.png" width="49%" alt="Overview: two consoles, both ready, with the loaded model">
-  <img src="assets/screenshots/msedge_UwjvgRkSjN.png" width="49%" alt="Status: the PS5LM app and the payload checks">
-  <img src="assets/screenshots/msedge_2fgpuASzZH.png" width="49%" alt="Status: sensors, generation and storage">
-  <img src="assets/screenshots/msedge_vNaQqqDb5e.png" width="49%" alt="Models: load, unload and delete">
-  <img src="assets/screenshots/msedge_bZcXZkHj5t.png" width="49%" alt="Downloads: Hugging Face search and completed transfers">
-  <img src="assets/screenshots/msedge_x756rKPw9g.png" width="49%" alt="Inference: pools and which consoles serve each alias">
-  <br><sub>Overview, Status, Models, Downloads and Inference.</sub>
+  <img src="assets/screenshots/overview.png" width="49%" alt="Overview: five consoles, all ready, with the loaded model">
+  <img src="assets/screenshots/status-health.png" width="49%" alt="Status: the PS5LM app, its version, and the payload checks">
+  <img src="assets/screenshots/status-telemetry.png" width="49%" alt="Status: generation, sensors and storage">
+  <img src="assets/screenshots/models.png" width="49%" alt="Models: auto-load, the default model, and load, copy and delete">
+  <img src="assets/screenshots/downloads.png" width="49%" alt="Downloads: Hugging Face fit guidance and completed transfers">
+  <img src="assets/screenshots/inference.png" width="49%" alt="Inference: a pool and which consoles serve its alias">
+  <img src="assets/screenshots/consoles.png" width="49%" alt="Manage consoles: the fleet, with test, edit and remove">
+  <br><sub>Overview, Status, Models, Downloads, Inference and Manage consoles.</sub>
 </p>
 
 ## About
