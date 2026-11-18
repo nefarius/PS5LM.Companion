@@ -178,6 +178,20 @@ without a reboot and without waiting for a running title. If ftpsrv is dead, pla
 
 To go back to upstream once it ships the fix, repin `version`, `url` and `sha256` of `ftpsrv` and run `setup --verify-manifest`.
 
+## ShadowMountPlus configuration
+
+ShadowMountPlus 1.7beta12 stores settings as configuration format v2. The first launch of that build converts an existing
+`/data/shadowmount/config.ini`, `autotune.ini` and `smb.json` into `config.ini` (global settings and SMB connections) plus
+`profiles.ini` (per game and image). The originals stay in `/data/shadowmount/config-v1-backup/`. To return to an older
+build, restore that backup. The upstream readme says to leave the converted files in place rather than copying the old
+files over them. The companion does not edit these files. Setup still waits on `/data/shadowmount/debug.log` for
+`installed game`.
+
+## PS5 Web File Manager
+
+The ready check is port 8888, with a 30 s timeout. When 8888 is already in use the payload listens on the next free port,
+starting at 8889. Setup then reports it as not up, because it only probes 8888.
+
 ## Bumping a pin
 
 1. Change `version`, `url` and `sha256` in `setup-manifest.json` (`gh release view <tag> --json assets` shows digests), and the

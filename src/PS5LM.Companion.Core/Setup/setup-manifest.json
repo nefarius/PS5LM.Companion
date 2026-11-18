@@ -68,9 +68,9 @@
     {
       "id": "shadowmountplus",
       "name": "ShadowMountPlus",
-      "version": "1.7beta11",
-      "url": "https://github.com/drakmor/ShadowMountPlus/releases/download/1.7beta11/shadowmountplus.elf",
-      "sha256": "08c843018750bef013fe3a4de5f80c5c9738c6c2dafa2406e6b6e68d7585f3da",
+      "version": "1.7beta12",
+      "url": "https://github.com/drakmor/ShadowMountPlus/releases/download/1.7beta12/shadowmountplus.elf",
+      "sha256": "8755172ec9bef1bff5453ea75606e0caf7c41b5963f94f5a1087e7e8c6d9b1bd",
       "ready": { "processes": ["shadowmountplus.elf"] },
       "delayAfterMs": 5000,
       "readyTimeoutSeconds": 30,
@@ -79,9 +79,9 @@
     {
       "id": "ps5-web-file-manager",
       "name": "PS5 Web File Manager",
-      "version": "v1.12",
-      "url": "https://github.com/owendswang/ps5-web-file-manager/releases/download/v1.12/web-file-mgr-v1.12.elf",
-      "sha256": "f3461eb967da7afbbf0420d3294fbc8f999cc2ad53a756bed413aa80c7cfa67a",
+      "version": "v1.14",
+      "url": "https://github.com/owendswang/ps5-web-file-manager/releases/download/v1.14/web-file-mgr-v1.14.elf",
+      "sha256": "8493c0bd11d77f9cce4b6c93564ffcae7185a5b530ecf856a768519c2514e231",
       "ready": { "port": 8888 },
       "readyTimeoutSeconds": 30
     }
