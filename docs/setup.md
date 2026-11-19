@@ -190,8 +190,9 @@ older build and run [`update`](update.md) so the stored payload is replaced befo
 source build uses the manifest you edited. The published image embeds its pin, so mount the repinned file and pass
 `--manifest /setup-manifest.json`, as described there. A `setup` rerun leaves the stored file as it is, so the next
 launch of 1.7beta12 migrates the restored files again.
-Settings changed after the migration are not converted back. The companion does not edit these files. Setup still waits
-on `/data/shadowmount/debug.log` for `installed game`.
+Settings changed after the migration are not converted back. The companion does not edit these files. Setup waits
+for VoidShell to list the title, and reads `/data/shadowmount/debug.log` for an `installed game` line only when
+VoidShell does not list it.
 
 ## PS5 Web File Manager
 
