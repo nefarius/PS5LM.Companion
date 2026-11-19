@@ -49,6 +49,44 @@ internal static class Display
         _ => Color.Default,
     };
 
+    /// <summary>
+    /// The console health shown on the dashboard. When VoidShell confirms that every installed PS5LM app
+    /// is stopped, that replaces the generic no-model state: no model can be loaded while the app is not
+    /// running. An unavailable or uncertain app check keeps the lifecycle text.
+    /// </summary>
+    public static string ConsoleState(CompanionStatus status) =>
+        AppsStopped(status) ? "App not running" : Lifecycle(status.Lifecycle);
+
+    public static Color ConsoleStateColor(CompanionStatus status) =>
+        AppsStopped(status) ? Color.Error : LifecycleColor(status.Lifecycle);
+
+    private static bool AppsStopped(CompanionStatus status)
+    {
+        if (status.Lifecycle != CompanionLifecycle.AppAvailableNoModel
+            || status.AppControl is not { Available: true, Apps: var apps })
+        {
+            return false;
+        }
+
+        var installed = false;
+        foreach (var app in apps)
+        {
+            if (!app.Installed)
+            {
+                continue;
+            }
+
+            if (app.State != AppRunState.NotRunning)
+            {
+                return false;
+            }
+
+            installed = true;
+        }
+
+        return installed;
+    }
+
     public static string Requirement(DependencyRequirement requirement) => requirement switch
     {
         DependencyRequirement.Required => "Required",

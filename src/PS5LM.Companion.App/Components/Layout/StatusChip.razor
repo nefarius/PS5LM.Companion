@@ -1,8 +1,8 @@
 @if (Console is { } console)
 {
-    var lifecycle = console.Store.Current.Lifecycle;
-    <MudChip T="string" Color="@Display.LifecycleColor(lifecycle)" Variant="Variant.Filled" Class="mr-3"
-             aria-label="@($"{console.Name}, {console.Host}, {Display.Lifecycle(lifecycle)}")">
+    var status = console.Store.Current;
+    <MudChip T="string" Color="@Display.ConsoleStateColor(status)" Variant="Variant.Filled" Class="mr-3"
+             aria-label="@($"{console.Name}, {console.Host}, {Display.ConsoleState(status)}")">
         @console.Name · @console.Host
     </MudChip>
 }

@@ -1,5 +1,8 @@
+using MudBlazor;
+
 using PS5LM.Companion.App.Components;
 using PS5LM.Companion.Core.Discovery;
+using PS5LM.Companion.Core.Domain;
 
 namespace PS5LM.Companion.Tests.App;
 
@@ -73,4 +76,63 @@ public sealed class DisplayTests
             "Run <code>update --host 10.0.0.8</code> (POSIX or cmd.exe) to bring them in line.",
             Display.UpdateCommandGuidance("10.0.0.8", new PS5Options { Host = "10.0.0.8" }, apps: false).Value);
     }
+
+    [Fact]
+    public void A_stopped_app_replaces_the_no_model_state()
+    {
+        var status = NoModel(Apps(
+            new AppVariantStatus(PS5Variant.PS5LM, "PPSA99575", "PS5LM", true, AppRunState.NotRunning, true),
+            new AppVariantStatus(PS5Variant.PS5LMPlus, "PPSA99581", "PS5LM Plus", false, AppRunState.Unknown, false)));
+
+        Assert.Equal("App not running", Display.ConsoleState(status));
+        Assert.Equal(Color.Error, Display.ConsoleStateColor(status));
+    }
+
+    [Theory]
+    [InlineData(false, AppRunState.NotRunning)]
+    [InlineData(true, AppRunState.Unknown)]
+    [InlineData(true, AppRunState.RunningVariantUnknown)]
+    public void An_uncertain_app_keeps_the_no_model_state(bool available, AppRunState state)
+    {
+        var status = NoModel(available
+            ? Apps(new AppVariantStatus(PS5Variant.PS5LM, "PPSA99575", "PS5LM", true, state, state != AppRunState.Unknown))
+            : AppControlStatus.NotChecked);
+
+        Assert.Equal("No model loaded", Display.ConsoleState(status));
+        Assert.Equal(Color.Warning, Display.ConsoleStateColor(status));
+    }
+
+    [Fact]
+    public void No_installed_app_keeps_the_no_model_state()
+    {
+        var status = NoModel(Apps(
+            new AppVariantStatus(PS5Variant.PS5LM, "PPSA99575", "PS5LM", false, AppRunState.NotRunning, false)));
+
+        Assert.Equal("No model loaded", Display.ConsoleState(status));
+        Assert.Equal(Color.Warning, Display.ConsoleStateColor(status));
+    }
+
+    [Fact]
+    public void A_loaded_model_keeps_its_lifecycle_when_app_control_says_stopped()
+    {
+        var status = CompanionStatus.Initial with
+        {
+            Lifecycle = CompanionLifecycle.Ready,
+            LoadedModel = "qwen.gguf",
+            AppControl = Apps(new AppVariantStatus(PS5Variant.PS5LM, "PPSA99575", "PS5LM", true, AppRunState.NotRunning, true)),
+        };
+
+        Assert.Equal("Ready", Display.ConsoleState(status));
+        Assert.Equal(Color.Success, Display.ConsoleStateColor(status));
+    }
+
+    private static CompanionStatus NoModel(AppControlStatus control) =>
+        CompanionStatus.Initial with
+        {
+            Lifecycle = CompanionLifecycle.AppAvailableNoModel,
+            AppControl = control,
+        };
+
+    private static AppControlStatus Apps(params AppVariantStatus[] apps) =>
+        new(true, "VoidShell", "V1.1", "", apps);
 }

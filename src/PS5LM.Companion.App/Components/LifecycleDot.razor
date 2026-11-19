@@ -1,7 +1,7 @@
-<MudIcon Icon="@Icons.Material.Filled.Circle" Color="@Display.LifecycleColor(Lifecycle)" Size="Size.Small"
-         aria-label="@Display.Lifecycle(Lifecycle)" />
+<MudIcon Icon="@Icons.Material.Filled.Circle" Color="@Display.ConsoleStateColor(Status)" Size="Size.Small"
+         aria-label="@Display.ConsoleState(Status)" />
 
 @code {
-    [Parameter]
-    public CompanionLifecycle Lifecycle { get; set; }
+    [Parameter, EditorRequired]
+    public CompanionStatus Status { get; set; } = default!;
 }
