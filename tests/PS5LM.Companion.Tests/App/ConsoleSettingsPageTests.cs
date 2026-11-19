@@ -137,6 +137,50 @@ public sealed class ConsoleEditorDialogTests : BunitContext, IAsyncLifetime
         });
     }
 
+    [Fact]
+    public async Task Description_and_location_are_edited_and_blank_text_is_cleared()
+    {
+        using var registry = new ConsoleRegistry(new ConsolesOptions(), new FakeConnectorFactory(), TimeProvider.System);
+        Assert.True(registry.Add("den", new PS5Options
+        {
+            Host = "10.0.0.8",
+            DisplayName = "Den",
+            Description = "Old purpose",
+            Location = "Old room",
+        }).Succeeded);
+        Services.AddSingleton<IConsoleRegistry>(registry);
+        Services.AddSingleton<IConsoleProbe, UnusedProbe>();
+        Services.AddSingleton(new ConsoleSettingsService(
+            registry,
+            new TransferService(new FakeHub(), registry, new MemoryTransferStore(), new TransferOptions(), TimeProvider.System),
+            new HybridInferencePools(new InferenceOptions(), registry)));
+
+        var cut = Render<MudDialogProvider>();
+        var dialogs = Services.GetRequiredService<IDialogService>();
+        var parameters = new DialogParameters<ConsoleEditor> { { editor => editor.ConsoleId, "den" } };
+        await cut.InvokeAsync(() => dialogs.ShowAsync<ConsoleEditor>("Edit console", parameters));
+
+        cut.WaitForAssertion(() => Assert.Contains("Shown under the name in the navigation menu.", cut.Markup, StringComparison.Ordinal));
+        var description = Field(cut, "Shown under the name in the navigation menu.");
+        var location = Field(cut, "Shown on this console's status page.");
+        Assert.Equal("Old purpose", description.GetAttribute("value"));
+        Assert.Equal("Old room", location.GetAttribute("value"));
+
+        description.Change("  Guest inference  ");
+        location.Change("   ");
+        cut.FindAll("button").Single(button => button.TextContent.Trim() == "Save").Click();
+
+        var saved = registry.Find("den");
+        Assert.NotNull(saved);
+        Assert.Equal("Guest inference", saved.Options.Description);
+        Assert.Null(saved.Options.Location);
+        Assert.Equal("Guest inference", saved.Description);
+        Assert.Null(saved.Location);
+    }
+
+    private static AngleSharp.Dom.IElement Field(IRenderedComponent<MudDialogProvider> cut, string helper) =>
+        cut.FindAll(".mud-input-control").Single(control => control.TextContent.Contains(helper, StringComparison.Ordinal)).QuerySelector("input")!;
+
     private sealed class UnusedProbe : IConsoleProbe
     {
         public Task<ConsoleProbeReport> TestAsync(PS5Options options, CancellationToken cancellationToken) =>

@@ -91,7 +91,13 @@
                                 <TitleContent>
                                     <span class="nav-activity-row">
                                         <LifecycleDot Lifecycle="@status.Lifecycle" />
-                                        <MudText Typo="Typo.body1">@current.Name</MudText>
+                                        <span class="nav-console-title">
+                                            <MudText Typo="Typo.body1">@current.Name</MudText>
+                                            @if (current.Description is { } description)
+                                            {
+                                                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="nav-console-description">@description</MudText>
+                                            }
+                                        </span>
                                         @if (!IsOpen(current.Id))
                                         {
                                             <NavActivity Busy="@(modelLabel is not null || running)" Pending="@(downloadLabel is not null)"

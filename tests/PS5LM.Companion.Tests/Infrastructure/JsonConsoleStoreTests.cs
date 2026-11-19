@@ -12,13 +12,22 @@ public sealed class JsonConsoleStoreTests
     {
         var path = Path.Combine(Path.GetTempPath(), "ps5lm-tests", Guid.NewGuid().ToString("N"), "consoles.json");
         var store = new JsonConsoleStore(path, NullLogger<JsonConsoleStore>.Instance);
-        store.Save([new("den", new PS5Options { Host = "10.0.0.8", DisplayName = "Den", FtpPort = 2122 })]);
+        store.Save([new("den", new PS5Options
+        {
+            Host = "10.0.0.8",
+            DisplayName = "Den",
+            Description = "Overnight jobs",
+            Location = "Rack 2",
+            FtpPort = 2122,
+        })]);
 
         var reloaded = new JsonConsoleStore(path, NullLogger<JsonConsoleStore>.Instance).Load();
 
         var console = Assert.Single(reloaded);
         Assert.Equal("den", console.Id);
         Assert.Equal("Den", console.Options.DisplayName);
+        Assert.Equal("Overnight jobs", console.Options.Description);
+        Assert.Equal("Rack 2", console.Options.Location);
         Assert.Equal(2122, console.Options.FtpPort);
     }
 
@@ -38,9 +47,12 @@ public sealed class JsonConsoleStoreTests
         var store = new JsonConsoleStore(path, NullLogger<JsonConsoleStore>.Instance);
 
         var loaded = store.Load();
+        var console = Assert.Single(loaded);
         File.WriteAllText(path, "{ this is not json");
 
-        Assert.Equal("den", Assert.Single(loaded).Id);
+        Assert.Equal("den", console.Id);
+        Assert.Null(console.Options.Description);
+        Assert.Null(console.Options.Location);
         Assert.Empty(store.Load());
         Assert.False(File.Exists(path));
         var preserved = Assert.Single(Directory.GetFiles(directory, "consoles.json.*.unreadable"));

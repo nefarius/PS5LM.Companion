@@ -11,6 +11,10 @@ public class ConsoleSettingsBody
 {
     public string? DisplayName { get; set; }
 
+    public string? Description { get; set; }
+
+    public string? Location { get; set; }
+
     public string Host { get; set; } = string.Empty;
 
     public int FtpPort { get; set; } = 2121;
@@ -38,6 +42,8 @@ public class ConsoleSettingsBody
     public PS5Options ToOptions() => new()
     {
         DisplayName = DisplayName,
+        Description = Description,
+        Location = Location,
         Host = Host,
         FtpPort = FtpPort,
         LlamaPort = LlamaPort,
@@ -55,6 +61,8 @@ public class ConsoleSettingsBody
     public static ConsoleSettingsBody From(PS5Options options) => new()
     {
         DisplayName = options.DisplayName,
+        Description = options.Description,
+        Location = options.Location,
         Host = options.Host,
         FtpPort = options.FtpPort,
         LlamaPort = options.LlamaPort,
