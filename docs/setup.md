@@ -183,9 +183,15 @@ To go back to upstream once it ships the fix, repin `version`, `url` and `sha256
 ShadowMountPlus 1.7beta12 stores settings as configuration format v2. The first launch of that build converts an existing
 `/data/shadowmount/config.ini`, `autotune.ini` and `smb.json` into `config.ini` (global settings and SMB connections) plus
 `profiles.ini` (per game and image). The originals stay in `/data/shadowmount/config-v1-backup/`. To return to an older
-build, restore that backup. The upstream readme says to leave the converted files in place rather than copying the old
-files over them. The companion does not edit these files. Setup still waits on `/data/shadowmount/debug.log` for
-`installed game`.
+build, wait until Payload Manager's boot autoload has finished, then stop ShadowMountPlus, save the current `config.ini`
+and `profiles.ini` separately, and restore `config.ini`, `autotune.ini` and `smb.json` from that backup. An autoload
+that is still running can launch the stored 1.7beta12 after those files are restored. Repin `shadowmountplus` to that
+older build and run [`update`](update.md) so the stored payload is replaced before the next autoload starts it. A
+source build uses the manifest you edited. The published image embeds its pin, so mount the repinned file and pass
+`--manifest /setup-manifest.json`, as described there. A `setup` rerun leaves the stored file as it is, so the next
+launch of 1.7beta12 migrates the restored files again.
+Settings changed after the migration are not converted back. The companion does not edit these files. Setup still waits
+on `/data/shadowmount/debug.log` for `installed game`.
 
 ## PS5 Web File Manager
 
