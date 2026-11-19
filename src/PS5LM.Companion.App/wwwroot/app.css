@@ -35,6 +35,24 @@
     gap: 0.5rem;
 }
 
+.nav-console-title {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.nav-console-title .mud-typography {
+    margin: 0;
+}
+
+.nav-console-description {
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .nav-activity {
     display: inline-flex;
     align-items: center;

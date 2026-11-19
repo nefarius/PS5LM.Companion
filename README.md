@@ -99,6 +99,8 @@ stored in `data/consoles.json` and apply without a restart. A stored console who
 |---|---|---|
 | `PS5:Consoles:{id}:Host` | required | Console IP or host name |
 | `PS5:Consoles:{id}:DisplayName` | the id | Name shown in the dashboard |
+| `PS5:Consoles:{id}:Description` | none | Optional purpose, at most 120 characters, shown under the name in the navigation menu |
+| `PS5:Consoles:{id}:Location` | none | Optional place, at most 80 characters, shown on that console's status page |
 | `PS5:Consoles:{id}:FtpPort` / `LlamaPort` / `ExporterPort` | 2121 / 8081 / 9100 | Service ports |
 | `PS5:Consoles:{id}:VoidShellPort` | 7007 | Required port of the pinned nefarius VoidShell fork (not the companion's own port 8080). 1–65535; 0 is rejected. A stored console with port 0 is skipped at startup |
 | `PS5:Consoles:{id}:ElfldrPort` | 9021 | elfldr, required before Payload Manager can launch anything |

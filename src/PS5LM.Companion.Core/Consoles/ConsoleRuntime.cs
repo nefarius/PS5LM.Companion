@@ -18,6 +18,8 @@ public sealed class ConsoleRuntime : IDisposable
         Options = options;
         Source = source;
         Name = string.IsNullOrWhiteSpace(options.DisplayName) ? id : options.DisplayName.Trim();
+        Description = Text(options.Description);
+        Location = Text(options.Location);
         FileSystem = connectors.FileSystem;
         Store = new CompanionStatusStore();
         LoadTracker = new LoadTracker(time);
@@ -54,6 +56,12 @@ public sealed class ConsoleRuntime : IDisposable
     /// <summary>The text shown to users.</summary>
     public string Name { get; }
 
+    /// <summary>Optional purpose shown under <see cref="Name"/> in the navigation menu. Blank text is omitted.</summary>
+    public string? Description { get; }
+
+    /// <summary>Optional place shown on this console's status page. Blank text is omitted.</summary>
+    public string? Location { get; }
+
     public string Host => Options.Host;
 
     public PS5Options Options { get; }
@@ -85,4 +93,6 @@ public sealed class ConsoleRuntime : IDisposable
     public AppCloseService Closer { get; }
 
     public void Dispose() => (FileSystem as IDisposable)?.Dispose();
+
+    private static string? Text(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
