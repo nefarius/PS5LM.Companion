@@ -189,8 +189,10 @@ files over them. The companion does not edit these files. Setup still waits on `
 
 ## PS5 Web File Manager
 
-The ready check is port 8888, with a 30 s timeout. When 8888 is already in use the payload listens on the next free port,
-starting at 8889. Setup then reports it as not up, because it only probes 8888.
+The ready check opens a TCP connection to port 8888 and waits up to 30 s. It passes when any service
+accepts that connection, and it does not check that Web File Manager is serving. When 8888 is already
+taken, the payload listens on the next free port, starting at 8889. The check still passes, because it
+only sees that port 8888 accepts a connection.
 
 ## Bumping a pin
 
