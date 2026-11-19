@@ -16,7 +16,11 @@ else
 {
 <MudGrid>
     <MudItem xs="12">
-        <MudText Typo="Typo.h4" HtmlTag="h1" Class="mb-2">Status<MudText Typo="Typo.subtitle1" Color="Color.Secondary" Inline="true" Class="ml-3">@Target.Name (@Target.Host)</MudText></MudText>
+        <MudText Typo="Typo.h4" HtmlTag="h1" Class="@(Target.Location is null ? "mb-2" : null)">Status<MudText Typo="Typo.subtitle1" Color="Color.Secondary" Inline="true" Class="ml-3">@Target.Name (@Target.Host)</MudText></MudText>
+        @if (Target.Location is { } location)
+        {
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="console-location mb-2">@location</MudText>
+        }
         @if (Status.Message is { Length: > 0 })
         {
             <MudAlert Severity="@(Status.Lifecycle == CompanionLifecycle.Disconnected ? Severity.Error : Severity.Info)" Class="mb-2">

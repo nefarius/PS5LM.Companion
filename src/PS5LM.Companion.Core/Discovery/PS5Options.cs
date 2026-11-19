@@ -11,6 +11,14 @@ public sealed class PS5Options
     [MaxLength(60)]
     public string? DisplayName { get; set; }
 
+    /// <summary>Optional purpose shown under the name in the navigation menu.</summary>
+    [MaxLength(120, ErrorMessage = "The description must be at most 120 characters.")]
+    public string? Description { get; set; }
+
+    /// <summary>Optional place shown on this console's status page.</summary>
+    [MaxLength(80, ErrorMessage = "The location must be at most 80 characters.")]
+    public string? Location { get; set; }
+
     /// <summary>The console's IP address or host name.</summary>
     [Required]
     public string Host { get; set; } = string.Empty;

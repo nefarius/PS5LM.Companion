@@ -10,6 +10,8 @@
             <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3">@string.Join(" ", _errors)</MudAlert>
         }
         <MudTextField T="string" Value="@_displayName" ValueChanged="NameChanged" Label="Name" Class="mb-2" />
+        <MudTextField @bind-Value="_description" Label="Description" HelperText="Shown under the name in the navigation menu." Class="mb-2" />
+        <MudTextField @bind-Value="_location" Label="Location" HelperText="Shown on this console's status page." Class="mb-2" />
         <MudTextField @bind-Value="_id" Label="Id" Immediate="true" OnBlur="TouchId" Class="mb-2"
                       HelperText="@(_adding ? "Used in the address. Suggested from the name." : "Changing it changes the console's addresses and API paths.")" />
         <MudTextField @bind-Value="_host" Label="Host" Required="true" Class="mb-2" />
@@ -46,6 +48,8 @@
     private bool _busy;
     private string _id = string.Empty;
     private string _displayName = string.Empty;
+    private string _description = string.Empty;
+    private string _location = string.Empty;
     private string _host = string.Empty;
     private string? _payloadManagerUrl;
     private int _ftpPort = 2121;
@@ -101,6 +105,8 @@
         var options = console.Options;
         _id = console.Id;
         _displayName = options.DisplayName ?? string.Empty;
+        _description = options.Description ?? string.Empty;
+        _location = options.Location ?? string.Empty;
         _host = options.Host;
         _payloadManagerUrl = options.PayloadManagerUrl;
         _ftpPort = options.FtpPort;
@@ -129,6 +135,8 @@
     private PS5Options ToOptions() => new()
     {
         DisplayName = string.IsNullOrWhiteSpace(_displayName) ? null : _displayName.Trim(),
+        Description = string.IsNullOrWhiteSpace(_description) ? null : _description.Trim(),
+        Location = string.IsNullOrWhiteSpace(_location) ? null : _location.Trim(),
         Host = _host.Trim(),
         FtpPort = _ftpPort,
         LlamaPort = _llamaPort,

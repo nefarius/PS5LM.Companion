@@ -37,6 +37,8 @@ public sealed class ConsoleManagementEndpointTests
         Assert.Equal("User", createdBody.GetProperty("source").GetString());
         Assert.Equal("User", settings.GetProperty("source").GetString());
         Assert.Equal("10.0.0.8", settings.GetProperty("settings").GetProperty("host").GetString());
+        Assert.Equal(JsonValueKind.Null, settings.GetProperty("settings").GetProperty("description").ValueKind);
+        Assert.Equal(JsonValueKind.Null, settings.GetProperty("settings").GetProperty("location").ValueKind);
         Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
         Assert.Equal("10.0.0.9", afterUpdate.GetProperty("settings").GetProperty("host").GetString());
         Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
@@ -69,6 +71,45 @@ public sealed class ConsoleManagementEndpointTests
         Assert.Equal("10.0.0.9", moved.GetProperty("settings").GetProperty("host").GetString());
         Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
         Assert.NotNull(factory.Registry.Find("living-room"));
+    }
+
+    [Fact]
+    public async Task Description_and_location_round_trip_through_the_settings_api()
+    {
+        await using var factory = new CompanionFactory { ConsoleIds = [] };
+        using var client = factory.CreateClient();
+        using var created = await client.PostAsJsonAsync("/api/consoles", new
+        {
+            id = "den",
+            settings = new { host = "10.0.0.8", displayName = "Den", description = "Overnight jobs", location = "Rack 2" },
+        });
+        var settings = await client.GetFromJsonAsync<JsonElement>("/api/consoles/den/settings");
+
+        using var updated = await client.PutAsJsonAsync("/api/consoles/den", new
+        {
+            host = "10.0.0.8",
+            displayName = "Den",
+            description = "Guest models",
+            location = "Living room",
+        });
+        var afterUpdate = await client.GetFromJsonAsync<JsonElement>("/api/consoles/den/settings");
+        using var tooLong = await client.PutAsJsonAsync("/api/consoles/den", new
+        {
+            host = "10.0.0.8",
+            description = new string('a', 121),
+        });
+        var stored = File.ReadAllText(Path.Combine(factory.DataDirectory, "consoles.json"));
+
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        Assert.Equal("Overnight jobs", settings.GetProperty("settings").GetProperty("description").GetString());
+        Assert.Equal("Rack 2", settings.GetProperty("settings").GetProperty("location").GetString());
+        Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
+        Assert.Equal("Guest models", afterUpdate.GetProperty("settings").GetProperty("description").GetString());
+        Assert.Equal("Living room", afterUpdate.GetProperty("settings").GetProperty("location").GetString());
+        Assert.Equal(HttpStatusCode.BadRequest, tooLong.StatusCode);
+        Assert.Equal("Guest models", factory.Registry.Find("den")!.Options.Description);
+        Assert.Contains("\"description\": \"Guest models\"", stored, StringComparison.Ordinal);
+        Assert.Contains("\"location\": \"Living room\"", stored, StringComparison.Ordinal);
     }
 
     [Fact]

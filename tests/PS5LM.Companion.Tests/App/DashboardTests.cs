@@ -305,6 +305,32 @@ public sealed class DashboardTests
     }
 
     [Fact]
+    public async Task The_nav_shows_a_description_only_when_one_is_set()
+    {
+        var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
+        var http = new HttpClient(handler, disposeHandler: false);
+        var checker = new LatestReleaseChecker(http, new FixedVersion("1.0.0"));
+        await using var ctx = new BunitContext();
+        ctx.JSInterop.Mode = JSRuntimeMode.Loose;
+        ctx.Services.AddSingleton(checker);
+        var registry = new FixedRegistry(
+            NavConsole("den", "Den", "Overnight jobs"),
+            NavConsole("living-room", "Living room"),
+            NavConsole("lab", "Lab", "   "));
+        ctx.Services.AddSingleton<IConsoleRegistry>(registry);
+        ctx.Services.AddSingleton(IdleTransfers(registry));
+        ctx.Services.AddMudServices();
+
+        var cut = ctx.Render<PS5LM.Companion.App.Components.Layout.MainLayout>();
+
+        var description = cut.Find(".mud-nav-group[aria-label='Den'] .nav-console-description");
+        Assert.Equal("Overnight jobs", description.TextContent.Trim());
+        Assert.Contains("mud-typography-caption", description.ClassName, StringComparison.Ordinal);
+        Assert.Empty(cut.FindAll(".mud-nav-group[aria-label='Living room'] .nav-console-description"));
+        Assert.Empty(cut.FindAll(".mud-nav-group[aria-label='Lab'] .nav-console-description"));
+    }
+
+    [Fact]
     public async Task The_status_page_shows_the_console_firmware()
     {
         await using var factory = new CompanionFactory();
@@ -421,6 +447,48 @@ public sealed class DashboardTests
         Assert.Contains("consoles/den/downloads", html);
         Assert.Contains("living-room · 127.0.0.1", html);
         Assert.DoesNotContain("den · 127.0.0.1", html);
+    }
+
+    [Fact]
+    public async Task The_status_page_shows_a_location_and_other_console_pages_do_not()
+    {
+        await using var factory = new CompanionFactory
+        {
+            Settings = new Dictionary<string, string>
+            {
+                ["PS5:Consoles:ps5:DisplayName"] = "Den",
+                ["PS5:Consoles:ps5:Description"] = "Overnight jobs",
+                ["PS5:Consoles:ps5:Location"] = "Rack 2",
+            },
+        };
+        using var client = factory.CreateClient();
+
+        var status = await client.GetStringAsync("/consoles/ps5");
+        var models = await client.GetStringAsync("/consoles/ps5/models");
+        var downloads = await client.GetStringAsync("/consoles/ps5/downloads");
+
+        Assert.Contains("nav-console-description", status);
+        Assert.Contains("Overnight jobs", status);
+        Assert.Contains("console-location", status);
+        Assert.Contains("Rack 2", status);
+        Assert.Contains("Overnight jobs", models);
+        Assert.DoesNotContain("console-location", models);
+        Assert.DoesNotContain("Rack 2", models);
+        Assert.Contains("Overnight jobs", downloads);
+        Assert.DoesNotContain("console-location", downloads);
+        Assert.DoesNotContain("Rack 2", downloads);
+    }
+
+    [Fact]
+    public async Task A_console_without_metadata_omits_the_nav_subtitle_and_status_location()
+    {
+        await using var factory = new CompanionFactory();
+        using var client = factory.CreateClient();
+
+        var status = await client.GetStringAsync("/consoles/ps5");
+
+        Assert.DoesNotContain("nav-console-description", status);
+        Assert.DoesNotContain("console-location", status);
     }
 
     [Theory]
@@ -744,8 +812,8 @@ public sealed class DashboardTests
     private static TransferService IdleTransfers(IConsoleRegistry registry) =>
         new(new FakeHub(), registry, new MemoryTransferStore(), new TransferOptions(), TimeProvider.System);
 
-    private static ConsoleRuntime NavConsole(string id, string name) =>
-        new(id, new PS5Options { Host = "10.0.0.8", DisplayName = name }, new FakeConsole().ToConnectors(), TimeProvider.System, ConsoleSource.User);
+    private static ConsoleRuntime NavConsole(string id, string name, string? description = null) =>
+        new(id, new PS5Options { Host = "10.0.0.8", DisplayName = name, Description = description }, new FakeConsole().ToConnectors(), TimeProvider.System, ConsoleSource.User);
 
     private static string VersionInAppRow(string html, string appName)
     {
