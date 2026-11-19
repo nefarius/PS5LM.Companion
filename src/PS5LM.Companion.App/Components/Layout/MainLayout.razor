@@ -90,7 +90,7 @@
                                          @bind-Expanded:set="@(open => SetOpen(current.Id, open))">
                                 <TitleContent>
                                     <span class="nav-activity-row">
-                                        <LifecycleDot Lifecycle="@status.Lifecycle" />
+                                        <LifecycleDot Status="@status" />
                                         <span class="nav-console-title">
                                             <MudText Typo="Typo.body1">@current.Name</MudText>
                                             @if (current.Description is { } description)

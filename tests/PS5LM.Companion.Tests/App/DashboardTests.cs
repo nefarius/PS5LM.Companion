@@ -385,6 +385,53 @@ public sealed class DashboardTests
     }
 
     [Fact]
+    public async Task A_stopped_app_replaces_no_model_loaded_on_the_overview_and_status_page()
+    {
+        await using var factory = new CompanionFactory { ConsoleIds = ["den", "room"] };
+        await factory.WaitForFirstCheckAsync();
+        var checkedAt = DateTimeOffset.UtcNow;
+        factory.Registry.Find("den")!.Store.Publish(CompanionStatus.Initial with
+        {
+            Lifecycle = CompanionLifecycle.AppAvailableNoModel,
+            Variant = PS5Variant.PS5LM,
+            UpdatedAt = checkedAt,
+            AppControl = new AppControlStatus(
+                true,
+                "VoidShell",
+                "V1.1",
+                "",
+                [
+                    new AppVariantStatus(PS5Variant.PS5LM, "PPSA99575", "PS5LM", true, AppRunState.NotRunning, true),
+                    new AppVariantStatus(PS5Variant.PS5LMPlus, "PPSA99581", "PS5LM Plus", false, AppRunState.Unknown, false),
+                ]),
+        });
+        factory.Registry.Find("room")!.Store.Publish(CompanionStatus.Initial with
+        {
+            Lifecycle = CompanionLifecycle.AppAvailableNoModel,
+            Variant = PS5Variant.PS5LM,
+            UpdatedAt = checkedAt,
+        });
+        using var client = factory.CreateClient();
+
+        var status = await client.GetStringAsync("/consoles/den");
+        var overview = await client.GetStringAsync("/");
+
+        var state = StateChip(status);
+        Assert.Equal("App not running", state.Text);
+        Assert.Contains("mud-chip-color-error", state.Class, StringComparison.Ordinal);
+        Assert.Contains("aria-label=\"App not running\"", status, StringComparison.Ordinal);
+        Assert.Contains("den · 127.0.0.1", status, StringComparison.Ordinal);
+        Assert.Contains("App not running", status, StringComparison.Ordinal);
+
+        var stopped = OverviewChip(overview, "den");
+        var waiting = OverviewChip(overview, "room");
+        Assert.Equal("App not running", stopped.Text);
+        Assert.Contains("mud-chip-color-error", stopped.Class, StringComparison.Ordinal);
+        Assert.Equal("No model loaded", waiting.Text);
+        Assert.Contains("mud-chip-color-warning", waiting.Class, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task A_known_app_without_a_readable_version_says_so()
     {
         await using var factory = new CompanionFactory { ConsoleIds = ["den", "room"] };
@@ -814,6 +861,25 @@ public sealed class DashboardTests
 
     private static ConsoleRuntime NavConsole(string id, string name, string? description = null) =>
         new(id, new PS5Options { Host = "10.0.0.8", DisplayName = name, Description = description }, new FakeConsole().ToConnectors(), TimeProvider.System, ConsoleSource.User);
+
+    private static (string Text, string Class) StateChip(string html)
+    {
+        var document = new AngleSharp.Html.Parser.HtmlParser().ParseDocument(html);
+        var row = document.QuerySelectorAll("tr").Single(candidate =>
+            candidate.QuerySelector("td")?.TextContent.Trim() == "State");
+        var chip = row.QuerySelector(".mud-chip")!;
+        return (chip.TextContent.Trim(), chip.ClassName ?? "");
+    }
+
+    private static (string Text, string Class) OverviewChip(string html, string consoleId)
+    {
+        var document = new AngleSharp.Html.Parser.HtmlParser().ParseDocument(html);
+        var title = document.QuerySelectorAll("a").Single(link =>
+            link.GetAttribute("href") == $"consoles/{consoleId}"
+            && link.ClassName?.Contains("mud-typography-h6", StringComparison.Ordinal) == true);
+        var chip = title.ParentElement!.QuerySelector(".mud-chip")!;
+        return (chip.TextContent.Trim(), chip.ClassName ?? "");
+    }
 
     private static string VersionInAppRow(string html, string appName)
     {

@@ -13,10 +13,10 @@
 
 <MudPaper Class="pa-4" Elevation="1">
     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-1">
-        <LifecycleDot Lifecycle="@status.Lifecycle" />
+        <LifecycleDot Status="@status" />
         <MudLink Href="@($"consoles/{Console.Id}")" Typo="Typo.h6">@Console.Name</MudLink>
         <MudSpacer />
-        <MudChip T="string" Size="Size.Small" Color="@Display.LifecycleColor(status.Lifecycle)">@Display.Lifecycle(status.Lifecycle)</MudChip>
+        <MudChip T="string" Size="Size.Small" Color="@Display.ConsoleStateColor(status)">@Display.ConsoleState(status)</MudChip>
     </MudStack>
     <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">@Console.Host</MudText>
     @if (Warning(status) is { } warning)
