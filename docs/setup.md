@@ -178,6 +178,29 @@ without a reboot and without waiting for a running title. If ftpsrv is dead, pla
 
 To go back to upstream once it ships the fix, repin `version`, `url` and `sha256` of `ftpsrv` and run `setup --verify-manifest`.
 
+## ShadowMountPlus configuration
+
+ShadowMountPlus 1.7beta12 stores settings as configuration format v2. The first launch of that build converts an existing
+`/data/shadowmount/config.ini`, `autotune.ini` and `smb.json` into `config.ini` (global settings and SMB connections) plus
+`profiles.ini` (per game and image). The originals stay in `/data/shadowmount/config-v1-backup/`. To return to an older
+build, wait until Payload Manager's boot autoload has finished, then stop ShadowMountPlus, save the current `config.ini`
+and `profiles.ini` separately, and restore `config.ini`, `autotune.ini` and `smb.json` from that backup. An autoload
+that is still running can launch the stored 1.7beta12 after those files are restored. Repin `shadowmountplus` to that
+older build and run [`update`](update.md) so the stored payload is replaced before the next autoload starts it. A
+source build uses the manifest you edited. The published image embeds its pin, so mount the repinned file and pass
+`--manifest /setup-manifest.json`, as described there. A `setup` rerun leaves the stored file as it is, so the next
+launch of 1.7beta12 migrates the restored files again.
+Settings changed after the migration are not converted back. The companion does not edit these files. Setup waits
+for VoidShell to list the title, and reads `/data/shadowmount/debug.log` for an `installed game` line only when
+VoidShell does not list it.
+
+## PS5 Web File Manager
+
+The ready check opens a TCP connection to port 8888 and waits up to 30 s. It passes when any service
+accepts that connection, and it does not check that Web File Manager is serving. When 8888 is already
+taken, the payload listens on the next free port, starting at 8889. The check still passes, because it
+only sees that port 8888 accepts a connection.
+
 ## Bumping a pin
 
 1. Change `version`, `url` and `sha256` in `setup-manifest.json` (`gh release view <tag> --json assets` shows digests), and the
